@@ -82,3 +82,45 @@ test("--dev without --dir is refused", async () => {
   expect(code).not.toBe(0);
   expect(stderr).toContain("--dev needs --dir");
 });
+
+test("a New Session in a Project's main tree streams the Agent's reply and its tool call", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      prompts: {
+        hello: [
+          { say: "Hi " },
+          { say: "there" },
+          { tool: { id: "t1", title: "ls", kind: "execute", status: "pending" } },
+          { toolUpdate: { id: "t1", status: "completed", rawOutput: "README.md" } },
+        ],
+      },
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("hello");
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.getByText("Hi there")).toBeVisible();
+    await expect(conversation.locator(".state")).toHaveText("Idle");
+    await conversation.getByText("ls", { exact: true }).click(); // expand the tool card
+    await expect(conversation.getByText("README.md")).toBeVisible();
+    await expect(conversation.getByText("completed")).toBeVisible();
+    await expect(conversation.getByRole("button", { name: "Send" })).toBeDisabled(); // empty composer
+  } finally {
+    await fh.dispose();
+  }
+});

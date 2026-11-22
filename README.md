@@ -122,11 +122,49 @@ fh keeps your Projects in `~/.config/fullharness/projects.toml`. Only fh writes 
 Each Project lists every git Worktree, with:
 
 - its branch;
-- a **main tree** tag for the Project's own folder, or an **Agent worktree** tag. fh shows an Agent worktree but never starts a Session in it or removes it. For now, that's every Worktree fh didn't create;
+- a **main tree** tag for the Project's own folder, or an **Agent worktree** tag. fh shows an Agent worktree but never starts a Session in it or removes it. That's every Worktree fh didn't create itself;
 - its uncommitted files;
 - its commits ahead of and behind `origin/<default branch>`, or the local `main` (else `master`) when there's no remote.
 
 fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. A Worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
+
+### Sessions
+
+Start one with **+ New Session** in the left rail. Pick:
+
+- a Project;
+- a Worktree: a new one on a new branch, or a free existing one;
+- the Agent (Claude Code for now);
+- an optional starting prompt.
+
+A Worktree that already has a Session, or is an Agent worktree, is greyed out with the reason.
+
+A new Worktree goes to `<project>.worktrees/<branch>/`, next to the Project's folder. Its branch starts from `origin/<default branch>`, or the local default branch when there's no remote.
+
+The conversation shows your messages, the Agent's reply as it streams in, and each tool call as a card you can expand. While the Agent works, **Cancel** replaces **Send**.
+
+Not there yet:
+
+- fh can't answer permission requests yet (#5). It denies them and says so in the conversation, so Claude Code can read and answer but not edit files or run commands.
+- Sessions don't survive an fh restart yet (#9). Quitting fh stops their Agents.
+
+### Agents
+
+Claude Code needs `claude` and Node (`node`, `npx`). If one is missing, New Session greys Claude Code out and shows the install command.
+
+fh starts Claude Code through its ACP adapter, `@agentclientprotocol/claude-agent-acp`, at a version fh has tested. It removes `ANTHROPIC_API_KEY` from Claude Code's environment, so Claude Code uses your Claude login rather than billing an API key.
+
+To change how an Agent starts, override it in `config.toml`:
+
+```toml
+[agents.claude]
+command = ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.109.1"]
+env = { ANTHROPIC_API_KEY = "your-api-key" }   # only if you do want API billing
+```
+
+### Logs
+
+fh logs to the terminal and to `~/.config/fullharness/fh.log`, which it starts over at 10 MB. Each Session's Agent writes its error output to `~/.config/fullharness/logs/<session-id>.log`; a Session whose Agent crashed shows the last 20 lines. The logs never contain the launch token or what you or the Agent wrote, and only you can read them.
 
 Flags override the config file:
 
@@ -135,6 +173,7 @@ Flags override the config file:
 | `--port N` | Listen on port `N` instead. |
 | `--no-open` | Print the URL instead of opening the browser. |
 | `--dir PATH` | Use another config and state folder. |
+| `--verbose` | Log at debug level. |
 
 Each launch creates a new token, so a tab left open across a restart stops working and tells you to run `fh` again.
 

@@ -1,12 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { useEventChannel, type Connection } from "./events";
 import { Projects } from "./Projects";
+import { Conversation, NewSession, SessionList } from "./Sessions";
 
 type View = "sessions" | "factory" | "inbox";
 
 export function App() {
-  const conn = useEventChannel();
+  const [conn, update] = useEventChannel();
   const [view, setView] = useState<View>("sessions");
+  // What the Sessions view shows: the New Session dialog, or a Session.
+  const [opened, setOpened] = useState<"new" | string | undefined>();
   const snapshot = conn.status === "open" ? conn.snapshot : undefined;
   const inboxCount = snapshot?.inbox.length ?? 0;
 
@@ -35,14 +38,24 @@ export function App() {
       <ConnectionBanner conn={conn} />
       <div className="shell" data-view={view}>
         <nav className="rail" aria-label="Sessions and Projects">
-          <section>
-            <h3>Sessions</h3>
-            <p className="empty">No Sessions yet.</p>
-          </section>
+          {snapshot && (
+            <SessionList
+              sessions={snapshot.sessions}
+              current={opened}
+              onOpen={(id) => {
+                setView("sessions");
+                setOpened(id);
+              }}
+              onNew={() => {
+                setView("sessions");
+                setOpened("new");
+              }}
+            />
+          )}
           {snapshot && <Projects projects={snapshot.projects} />}
         </nav>
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
-          {view === "sessions" && <Empty title="Sessions" text="Sessions you start appear here." />}
+          {view === "sessions" && sessionsView()}
           {view === "factory" && (
             <Empty title="Software factory" text="Each Project's Features appear here by Stage." />
           )}
@@ -51,6 +64,27 @@ export function App() {
       </div>
     </div>
   );
+
+  // sessionsView is a plain function, not a component, so the New Session
+  // form keeps its input when an event re-renders App.
+  function sessionsView() {
+    if (!snapshot) return null;
+    if (opened === "new") {
+      return (
+        <NewSession
+          projects={snapshot.projects}
+          sessions={snapshot.sessions}
+          onStarted={setOpened}
+          onCancel={() => setOpened(undefined)}
+        />
+      );
+    }
+    const session = snapshot.sessions.find((s) => s.id === opened);
+    if (session) return <Conversation session={session} snapshot={snapshot} update={update} />;
+    return (
+      <Empty title="Sessions" text="Start one with + New Session, or open one from the list." />
+    );
+  }
 }
 
 function Tab(props: {
