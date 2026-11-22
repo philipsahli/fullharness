@@ -137,7 +137,10 @@ func TestProjectsFileIsPrivateAndConfigIsNeverWritten(t *testing.T) {
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("projects.toml mode %o, want 600", perm)
 	}
-	got, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
+	got, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(got) != config {
 		t.Errorf("config.toml changed to %q", got)
 	}

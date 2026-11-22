@@ -81,3 +81,19 @@ func TestRefreshCommandPushesChangesAtOnce(t *testing.T) {
 		t.Errorf("uncommitted = %v, want 1", got)
 	}
 }
+
+// With no tab open nothing refreshes, so a tab that connects after a quiet
+// spell must not be left with old state until the next tick.
+func TestATabConnectingAfterAQuietSpellGetsCurrentState(t *testing.T) {
+	f := startFhWith(t, app.Options{Dir: t.TempDir(), Port: new(int), RefreshInterval: time.Hour})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	writeFile(t, filepath.Join(repo, "new.txt"), "x\n") // while no tab is open
+
+	tab := f.connectTab(c)
+
+	if got := uncommittedIn(t, nextEvent(t, tab, 5*time.Second), repo); got != float64(1) {
+		t.Errorf("uncommitted = %v, want 1", got)
+	}
+}

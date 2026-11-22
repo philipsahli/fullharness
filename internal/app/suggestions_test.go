@@ -33,11 +33,13 @@ func (f *fh) suggestions(c *http.Client) []string {
 
 func TestScanFolderSuggestsReposUpToTwoLevelsDown(t *testing.T) {
 	dir := t.TempDir()
-	scan := realPath(t, t.TempDir())
-	shop := newRepo(t, scan, "shop")                                                  // level 1
-	billing := newRepo(t, filepath.Join(scan, "acme"), "billing")                     // level 2
+	// Not resolved: on macOS t.TempDir sits behind the /var symlink, like a
+	// scan_folder a user writes through a symlinked path.
+	scan := t.TempDir()
+	shop := realPath(t, newRepo(t, scan, "shop"))                                     // level 1
+	billing := realPath(t, newRepo(t, filepath.Join(scan, "acme"), "billing"))        // level 2
 	newRepo(t, filepath.Join(scan, "deep", "er"), "tooFar")                           // level 3
-	added := newRepo(t, scan, "added")                                                // already a Project
+	added := realPath(t, newRepo(t, scan, "added"))                                   // already a Project
 	git(t, shop, "worktree", "add", "-q", "-b", "wt", filepath.Join(scan, "shop-wt")) // .git file
 	writeFile(t, filepath.Join(scan, "notes.txt"), "not a folder\n")
 	writeConfig(t, dir, fmt.Sprintf("scan_folder = %q\n", scan))

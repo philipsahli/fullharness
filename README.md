@@ -103,27 +103,30 @@ fh reads `~/.config/fullharness/config.toml`. fh never writes this file, so your
 
 ```toml
 port = 4815               # the port fh listens on
-scan_folder = "~/work"    # where Add Project looks for repos to suggest
+scan_folder = "~/work"    # where Add Project looks for git repositories to suggest
 ```
 
-`scan_folder` suggestions go two levels deep, so both `~/work/<repo>` and `~/work/<org>/<repo>` show up. fh never adds a repo on its own.
+`scan_folder` suggestions go two levels deep, so both `~/work/<name>` and `~/work/<org>/<name>` show up. fh never adds a Project on its own.
 
 ### Projects
 
-Add the git repos you work in with **+ Add Project** in the left rail. You can type a path, or pick a suggestion from `scan_folder`.
+Add the git repositories you work in as Projects with **+ Add Project** in the left rail. Type a path, or pick a suggestion from `scan_folder`.
 
-- A path inside a repo adds the whole repo.
-- A linked worktree is refused; add its main repo instead, which lists all its worktrees.
-- **Remove** takes a Project out of fh. The repo on disk stays as it is.
+- A path inside a git repository adds the whole repository.
+- fh refuses a linked worktree.
+- Add the linked worktree's main repository instead; its Project lists all its Worktrees.
+- **Remove** takes a Project out of fh. The folder on disk stays as it is.
 
 fh keeps your Projects in `~/.config/fullharness/projects.toml`. Only fh writes that file.
 
-Each Project lists every git worktree:
-- its branch, and whether it is the **main tree** or an **Agent worktree** (one fh didn't create);
-- uncommitted files;
-- commits ahead of and behind `origin/<default branch>`, or the local `main` if there's no remote.
+Each Project lists every git Worktree, with:
 
-fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. The worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
+- its branch;
+- a **main tree** tag for the Project's own folder, or an **Agent worktree** tag. fh shows an Agent worktree but never starts a Session in it or removes it. For now, that's every Worktree fh didn't create;
+- its uncommitted files;
+- its commits ahead of and behind `origin/<default branch>`, or the local `main` (else `master`) when there's no remote.
+
+fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. A Worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
 
 Flags override the config file:
 

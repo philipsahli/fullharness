@@ -24,6 +24,11 @@ func (r *Registry) Suggest(scanDir string) []Suggestion {
 	if scanDir == "" {
 		return out
 	}
+	// Project paths come from git, which resolves symlinks; resolve the scan
+	// folder too, or added Projects would still be suggested.
+	if real, err := filepath.EvalSymlinks(scanDir); err == nil {
+		scanDir = real
+	}
 	added := map[string]bool{}
 	for _, p := range r.List() {
 		added[p.Path] = true
@@ -32,7 +37,7 @@ func (r *Registry) Suggest(scanDir string) []Suggestion {
 	walk = func(dir string, depth int) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return
+			return // an unreadable folder has nothing to suggest
 		}
 		for _, e := range entries {
 			if !e.IsDir() {

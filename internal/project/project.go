@@ -39,14 +39,22 @@ type Registry struct {
 	file     string
 	onChange func([]Project)
 
-	mu       sync.Mutex
+	// change serialises Add, Remove and Refresh including their onChange
+	// call, so tabs get events in the order the changes happened and an
+	// older git read never overwrites a newer one.
+	change sync.Mutex
+
+	mu       sync.Mutex // guards projects for readers
 	projects []Project
 }
 
+// stored is projects.toml: one [[project]] table per Project.
 type stored struct {
-	Project []struct {
-		Path string `toml:"path"`
-	} `toml:"project"`
+	Project []storedProject `toml:"project"`
+}
+
+type storedProject struct {
+	Path string `toml:"path"`
 }
 
 // Open loads projects.toml from dir. onChange gets the new list after every
@@ -71,7 +79,7 @@ func (r *Registry) List() []Project {
 }
 
 // ErrExists means the repo is already a Project.
-var ErrExists = errors.New("this repo is already a Project")
+var ErrExists = errors.New("this git repository is already a Project")
 
 // Add adds the git repo containing path. It returns a
 // *worktree.InvalidPathError for a path that isn't a repo, or ErrExists.
@@ -80,20 +88,15 @@ func (r *Registry) Add(path string) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	p := read(top)
-	r.mu.Lock()
-	if slices.ContainsFunc(r.projects, func(q Project) bool { return q.Path == top }) {
-		r.mu.Unlock()
+	r.change.Lock()
+	defer r.change.Unlock()
+	if slices.ContainsFunc(r.List(), func(q Project) bool { return q.Path == top }) {
 		return Project{}, ErrExists
 	}
-	r.projects = append(r.projects, p)
-	err = r.save()
-	list := append([]Project{}, r.projects...)
-	r.mu.Unlock()
-	if err != nil {
+	p := read(top)
+	if err := r.set(append(r.List(), p), true); err != nil {
 		return Project{}, err
 	}
-	r.onChange(list)
 	return p, nil
 }
 
@@ -102,62 +105,53 @@ var ErrNotFound = errors.New("no Project with that path")
 
 // Remove drops the Project at path from fh. The repo on disk is untouched.
 func (r *Registry) Remove(path string) error {
-	r.mu.Lock()
-	i := slices.IndexFunc(r.projects, func(p Project) bool { return p.Path == path })
+	r.change.Lock()
+	defer r.change.Unlock()
+	list := r.List()
+	i := slices.IndexFunc(list, func(p Project) bool { return p.Path == path })
 	if i < 0 {
-		r.mu.Unlock()
 		return ErrNotFound
 	}
-	r.projects = slices.Delete(r.projects, i, i+1)
-	err := r.save()
-	list := append([]Project{}, r.projects...)
-	r.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	r.onChange(list)
-	return nil
+	return r.set(slices.Delete(list, i, i+1), true)
 }
 
 // Refresh re-reads every Project from git and calls onChange only if
-// something changed, so idle tabs get no traffic. git runs outside the lock;
-// if a Project was added or removed meanwhile, this result is dropped and the
-// next refresh picks the change up.
+// something changed, so idle tabs get no traffic.
 func (r *Registry) Refresh() {
-	r.mu.Lock()
-	paths := make([]string, len(r.projects))
-	for i, p := range r.projects {
-		paths[i] = p.Path
+	r.change.Lock()
+	defer r.change.Unlock()
+	old := r.List()
+	fresh := make([]Project, len(old))
+	for i, p := range old {
+		fresh[i] = read(p.Path)
 	}
-	r.mu.Unlock()
-
-	fresh := make([]Project, len(paths))
-	for i, path := range paths {
-		fresh[i] = read(path)
-	}
-
-	r.mu.Lock()
-	same := len(r.projects) == len(paths)
-	for i := 0; same && i < len(paths); i++ {
-		same = r.projects[i].Path == paths[i]
-	}
-	if !same || reflect.DeepEqual(r.projects, fresh) {
-		r.mu.Unlock()
+	if reflect.DeepEqual(old, fresh) {
 		return
 	}
-	r.projects = fresh
-	list := append([]Project{}, fresh...)
-	r.mu.Unlock()
-	r.onChange(list)
+	// The paths didn't change, so projects.toml stays as it is.
+	_ = r.set(fresh, false) // returns an error only when saving
 }
 
-// save writes projects.toml; the caller holds r.mu.
-func (r *Registry) save() error {
+// set replaces the list, saves projects.toml if save, and tells onChange.
+// The caller holds r.change.
+func (r *Registry) set(list []Project, save bool) error {
+	if save {
+		if err := r.write(list); err != nil {
+			return err
+		}
+	}
+	r.mu.Lock()
+	r.projects = list
+	r.mu.Unlock()
+	r.onChange(append([]Project{}, list...))
+	return nil
+}
+
+// write saves the Project paths to projects.toml.
+func (r *Registry) write(list []Project) error {
 	var s stored
-	for _, p := range r.projects {
-		s.Project = append(s.Project, struct {
-			Path string `toml:"path"`
-		}{p.Path})
+	for _, p := range list {
+		s.Project = append(s.Project, storedProject{Path: p.Path})
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(s); err != nil {
@@ -173,6 +167,8 @@ func read(path string) Project {
 		p.Missing = true
 		return p
 	}
+	// A folder that is no longer a git repository lists no Worktrees; the
+	// user sees an empty Project and can remove it.
 	if wts, err := worktree.List(path); err == nil {
 		p.Worktrees = wts
 	}

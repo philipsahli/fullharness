@@ -41,7 +41,7 @@ test("adding a Project shows its main tree, and a non-repo shows why not", async
   const projects = page.getByRole("region", { name: "Projects" });
 
   await projects.getByRole("button", { name: "+ Add Project" }).click();
-  const path = projects.getByLabel("Path to a git repo");
+  const path = projects.getByLabel("Path to a git repository");
   await path.fill(tempFolder());
   await projects.getByRole("button", { name: "Add", exact: true }).click();
   await expect(projects.getByRole("alert")).toContainText("is not a git repository");

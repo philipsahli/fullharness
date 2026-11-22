@@ -26,13 +26,14 @@ const cookieName = "fh_token"
 
 // Server is one fh HTTP server bound to a listener.
 type Server struct {
-	token   string
-	launch  string          // random ID of this launch, sent in every snapshot
-	origins map[string]bool // Origin values allowed on /ws and on commands
-	http    *http.Server
-	mux     *http.ServeMux
-	ln      net.Listener
-	state   func() map[string]any // extra snapshot fields, e.g. "projects"
+	token     string
+	launch    string          // random ID of this launch, sent in every snapshot
+	origins   map[string]bool // Origin values allowed on /ws and on commands
+	http      *http.Server
+	mux       *http.ServeMux
+	ln        net.Listener
+	state     func() map[string]any // extra snapshot fields, e.g. "projects"
+	onConnect func()                // runs when a tab opens its event channel
 
 	mu    sync.Mutex
 	conns map[*websocket.Conn]bool
@@ -86,6 +87,10 @@ func (s *Server) Broadcast(ev any) {
 		cancel()
 	}
 }
+
+// OnConnect sets a function to run (in its own goroutine) each time a tab
+// opens its event channel. Call it before Serve.
+func (s *Server) OnConnect(f func()) { s.onConnect = f }
 
 // Tabs returns how many event channels are open.
 func (s *Server) Tabs() int {
@@ -164,9 +169,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	s.mu.Lock()
-	s.conns[conn] = true
-	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.conns, conn)
@@ -175,8 +177,22 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	ctx := conn.CloseRead(r.Context()) // the client sends nothing; commands are HTTP POSTs
-	if err := wsjson.Write(ctx, conn, s.snapshot()); err != nil {
+	// Snapshot and registration happen under s.mu, which Broadcast also
+	// takes: a change is either in the snapshot or sent as an event after
+	// it, never sent before it and then overwritten by an older snapshot.
+	s.mu.Lock()
+	wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	err = wsjson.Write(wctx, conn, s.snapshot())
+	cancel()
+	if err == nil {
+		s.conns[conn] = true
+	}
+	s.mu.Unlock()
+	if err != nil {
 		return
+	}
+	if s.onConnect != nil {
+		go s.onConnect()
 	}
 	<-ctx.Done()
 }
@@ -186,7 +202,7 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 		api := strings.HasPrefix(r.URL.Path, "/api/")
 		if !s.authorised(r) {
 			if api {
-				writeAPIError(w, http.StatusUnauthorized, "not authorised; run fh to open a new tab")
+				WriteError(w, http.StatusUnauthorized, "not authorised; run fh to open a new tab")
 			} else {
 				writeUnauthorised(w)
 			}
@@ -196,18 +212,24 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 		// the Origin check is the second lock spec #1 asks for on anything
 		// that changes state. Browsers always send Origin on a POST.
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.origins[r.Header.Get("Origin")] {
-			writeAPIError(w, http.StatusForbidden, "forbidden origin")
+			WriteError(w, http.StatusForbidden, "forbidden origin")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// writeAPIError answers an API request with {"error": message}.
-func writeAPIError(w http.ResponseWriter, status int, message string) {
+// WriteJSON answers an API request with v as JSON.
+func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message}) // client gone if this fails
+	_ = json.NewEncoder(w).Encode(v) // an error means the client went away
+}
+
+// WriteError answers an API request with {"error": message}; the UI shows
+// message as is.
+func WriteError(w http.ResponseWriter, status int, message string) {
+	WriteJSON(w, status, map[string]string{"error": message})
 }
 
 func (s *Server) authorised(r *http.Request) bool {

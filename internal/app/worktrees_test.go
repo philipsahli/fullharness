@@ -159,3 +159,23 @@ func TestAMissingProjectCanBeRemoved(t *testing.T) {
 		t.Fatalf("status %d, want 204", status)
 	}
 }
+
+func TestARemoteWithoutOriginHeadStillComparesWithOrigin(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	upstream := newRepo(t, parent, "upstream")
+	repo := newRepo(t, parent, "shop") // not a clone: no origin/HEAD
+	git(t, repo, "remote", "add", "origin", upstream)
+	git(t, repo, "fetch", "-q", "origin")
+	commitFile(t, upstream, "u.txt", "1\n")
+	git(t, repo, "fetch", "-q", "origin")
+	// git 2.48+ creates origin/HEAD on fetch; older git and some setups don't.
+	git(t, repo, "remote", "set-head", "origin", "-d")
+
+	w := worktreeAt(t, f.addProject(c, repo), repo)
+
+	if w["base"] != "origin/main" || w["behind"] != float64(1) {
+		t.Errorf("base %v behind %v, want origin/main 1", w["base"], w["behind"])
+	}
+}

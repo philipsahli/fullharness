@@ -2,7 +2,10 @@ import { useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import type { Project, Worktree } from "./events";
 
-// Projects is the rail's Projects section: every added repo with its
+// Suggestion matches internal/project.Suggestion.
+type Suggestion = { path: string; name: string };
+
+// Projects is the rail's Projects section: every Project with its
 // Worktrees, plus adding and removing Projects. Changes come back as
 // "projects" events, so nothing here keeps its own copy of the list.
 export function Projects({ projects }: { projects: Project[] }) {
@@ -45,7 +48,7 @@ function ProjectItem({ project }: { project: Project }) {
           className="link"
           onClick={() => void remove()}
           aria-label={`Remove ${project.name}`}
-          title="Remove from fh; the repo on disk stays"
+          title="Remove from fh; the folder on disk stays"
         >
           Remove
         </button>
@@ -90,13 +93,11 @@ function AddProject() {
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState("");
   const [error, setError] = useState("");
-  const [suggestions, setSuggestions] = useState<{ path: string; name: string }[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const show = async () => {
     setOpen(true);
-    setSuggestions(
-      (await get<{ path: string; name: string }[]>("/api/projects/suggestions")) ?? [],
-    );
+    setSuggestions((await get<Suggestion[]>("/api/projects/suggestions")) ?? []);
   };
 
   const add = async (p: string) => {
@@ -125,7 +126,7 @@ function AddProject() {
   return (
     <form className="addform" onSubmit={submit} aria-label="Add Project">
       <label>
-        Path to a git repo
+        Path to a git repository
         <input
           value={path}
           onChange={(e) => setPath(e.target.value)}

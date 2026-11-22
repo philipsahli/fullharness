@@ -109,6 +109,9 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return map[string]any{"projects": reg.List()}
 	})
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
+	// Nothing refreshes while no tab is open, so a tab that connects after a
+	// quiet spell gets the last state read, then the current one at once.
+	srv.OnConnect(reg.Refresh)
 	inst.srv = srv
 	inst.stop = make(chan struct{})
 	interval := opts.RefreshInterval

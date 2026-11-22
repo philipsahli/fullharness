@@ -225,30 +225,28 @@ func decodeObject(t *testing.T, body string) map[string]any {
 	return m
 }
 
-// projects returns the snapshot's projects list.
-func projects(t *testing.T, snapshot map[string]any) []map[string]any {
+// projects returns the "projects" list of a snapshot or projects event.
+func projects(t *testing.T, ev map[string]any) []map[string]any {
 	t.Helper()
-	raw, ok := snapshot["projects"].([]any)
-	if !ok {
-		t.Fatalf("snapshot projects = %v, want a list", snapshot["projects"])
-	}
-	out := make([]map[string]any, len(raw))
-	for i, p := range raw {
-		out[i] = p.(map[string]any)
-	}
-	return out
+	return objects(t, ev, "projects")
 }
 
-// worktrees returns a project's worktrees list.
+// worktrees returns a project's "worktrees" list.
 func worktrees(t *testing.T, project map[string]any) []map[string]any {
 	t.Helper()
-	raw, ok := project["worktrees"].([]any)
+	return objects(t, project, "worktrees")
+}
+
+// objects returns m[key] as a list of JSON objects.
+func objects(t *testing.T, m map[string]any, key string) []map[string]any {
+	t.Helper()
+	raw, ok := m[key].([]any)
 	if !ok {
-		t.Fatalf("project worktrees = %v, want a list", project["worktrees"])
+		t.Fatalf("%s = %v, want a list", key, m[key])
 	}
 	out := make([]map[string]any, len(raw))
-	for i, w := range raw {
-		out[i] = w.(map[string]any)
+	for i, v := range raw {
+		out[i] = v.(map[string]any)
 	}
 	return out
 }

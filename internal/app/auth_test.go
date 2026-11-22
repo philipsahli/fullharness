@@ -115,7 +115,10 @@ func TestCommandsFromAnotherOriginAreRejected(t *testing.T) {
 	c := f.authorisedClient()
 
 	for _, origin := range []string{"https://evil.example", "null", ""} {
-		req, _ := http.NewRequest("POST", f.origin()+"/api/projects/refresh", nil)
+		req, err := http.NewRequest("POST", f.origin()+"/api/projects/refresh", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if origin != "" {
 			req.Header.Set("Origin", origin)
 		}
