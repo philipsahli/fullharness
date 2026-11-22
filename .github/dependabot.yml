@@ -1,5 +1,6 @@
 # ADR 0007: weekly updates, minor and patch grouped into one PR per
 # ecosystem; major updates stay separate PRs so each gets its own look.
+# Exception: the npm "react" group below takes React majors too (#34).
 version: 2
 updates:
   - package-ecosystem: gomod

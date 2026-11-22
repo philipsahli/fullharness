@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useEventChannel, type Connection } from "./events";
 
 type View = "sessions" | "factory" | "inbox";
@@ -55,7 +55,7 @@ function Tab(props: {
   view: View;
   current: View;
   onSelect: (v: View) => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
