@@ -25,7 +25,7 @@ export function App() {
       note.close();
     };
   }, []);
-  const [conn, update] = useEventChannel(showNotification);
+  const [conn, update, reconnect] = useEventChannel(showNotification);
 
   const [switcher, setSwitcher] = useState(false);
 
@@ -55,7 +55,10 @@ export function App() {
             className="notify-on"
             type="button"
             onClick={() =>
-              void Notification.requestPermission().then((p) => setNotifyPermission(p))
+              void Notification.requestPermission().then((p) => {
+                setNotifyPermission(p);
+                if (p === "granted") reconnect(); // tell fh this tab can notify now
+              })
             }
             title="Get a notification when a Session needs you and no fh tab shows it"
           >

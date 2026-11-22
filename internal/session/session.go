@@ -994,8 +994,15 @@ func (s *session) waitingForLocked() string {
 	if s.sum.Waiting == WaitingTurn {
 		return s.sum.AgentName + " finished its turn"
 	}
+	// Name the oldest open request: the one the Inbox lists first.
+	var oldest *Request
 	for _, p := range s.pending {
-		return s.sum.AgentName + " asks to run " + s.transcript[p.index].Permission.Title
+		if r := s.transcript[p.index].Permission; oldest == nil || r.CreatedAt.Before(oldest.CreatedAt) {
+			oldest = r
+		}
+	}
+	if oldest != nil {
+		return s.sum.AgentName + " asks to run " + oldest.Title
 	}
 	return s.sum.AgentName + " is waiting"
 }

@@ -105,8 +105,14 @@ const retryMs = 2000;
 // looking at it (#8).
 export type Notify = { session: string; title: string; body: string };
 
-export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Update] {
+// Reconnect closes the event channel so it reconnects, e.g. after the tab
+// got notification permission and fh should know.
+export type Reconnect = () => void;
+
+export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Update, Reconnect] {
   const [conn, setConn] = useState<Connection>({ status: "connecting" });
+  const socket = useRef<WebSocket | undefined>(undefined);
+  const reconnect = useCallback(() => socket.current?.close(), []);
   const notify = useRef(onNotify);
   useEffect(() => {
     notify.current = onNotify;
@@ -130,7 +136,11 @@ export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Up
 
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      // notify=1 tells fh this tab can show notifications; without such a
+      // tab fh notifies natively instead (#8).
+      const canNotify = "Notification" in window && Notification.permission === "granted";
+      ws = new WebSocket(`${proto}://${location.host}/ws${canNotify ? "?notify=1" : ""}`);
+      socket.current = ws;
       ws.onmessage = (e) => {
         const ev = JSON.parse(e.data);
         if (ev.type === "notify") {
@@ -190,7 +200,7 @@ export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Up
     };
   }, [update]);
 
-  return [conn, update];
+  return [conn, update, reconnect];
 }
 
 // apply folds one event into the snapshot.

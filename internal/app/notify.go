@@ -44,9 +44,11 @@ func (n *notifier) enteredWaiting(sum session.Summary, what string, viewed bool)
 	n.mu.Unlock()
 
 	title := "fh: " + sum.Title
-	if n.srv.Tabs() > 0 {
-		// Every tab shows it with the Session ID as its tag; the browser
-		// keeps one notification per tag, so several tabs show it once.
+	if n.srv.NotifyingTabs() > 0 {
+		// Every tab that can shows it with the Session ID as its tag; the
+		// browser keeps one notification per tag, so several tabs show it
+		// once. A tab without permission would drop it, so without such a
+		// tab the notification goes native instead.
 		n.srv.Broadcast(map[string]any{"type": "notify", "session": sum.ID, "title": title, "body": what})
 		return
 	}

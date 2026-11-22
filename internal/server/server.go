@@ -36,7 +36,7 @@ type Server struct {
 	onConnect func()                // runs when a tab opens its event channel
 
 	mu    sync.Mutex
-	conns map[*websocket.Conn]bool
+	conns map[*websocket.Conn]bool // open event channels → the tab can show notifications
 }
 
 // New returns a Server that requires token on every request and serves the
@@ -97,6 +97,19 @@ func (s *Server) Tabs() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.conns)
+}
+
+// NotifyingTabs returns how many open tabs can show notifications.
+func (s *Server) NotifyingTabs() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, canNotify := range s.conns {
+		if canNotify {
+			n++
+		}
+	}
+	return n
 }
 
 // Serve blocks until the server is closed.
@@ -185,7 +198,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	err = wsjson.Write(wctx, conn, s.snapshot())
 	cancel()
 	if err == nil {
-		s.conns[conn] = true
+		// A tab connects with notify=1 when it has browser notification
+		// permission; only those tabs can deliver a notification (#8).
+		s.conns[conn] = r.URL.Query().Get("notify") == "1"
 	}
 	s.mu.Unlock()
 	if err != nil {

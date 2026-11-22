@@ -176,9 +176,11 @@ The Sessions list covers all Projects and puts what needs you first:
 
 When a Session starts Waiting and you're not looking at it, fh notifies you:
 
-- With an fh tab open, as a browser notification. Click **Turn on notifications** in the header once to allow it. Clicking the notification opens the Session.
-- With no fh tab open, as a macOS notification.
-- At most one per Session per minute, and none for the Session you're looking at.
+- Through an fh tab that may show notifications, as a browser notification. Click **Turn on notifications** in the header once to allow it.
+- Clicking a browser notification opens its Session.
+- Otherwise (no fh tab open, or none allowed to notify), as a macOS notification.
+- At most one per Session per minute.
+- None for the Session you're looking at.
 
 Press **⌘K** (Ctrl+K off macOS) to jump to a Session by words from its title, Project or Agent, or to start a New Session.
 

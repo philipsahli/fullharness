@@ -26,8 +26,7 @@ type fh struct {
 	t      *testing.T
 	inst   *app.Instance
 	opts   app.Options // as started, for a restart with the same settings
-	opened []string
-	tabs   []*websocket.Conn // event channels this test opened    // URLs fh asked the browser to open
+	opened []string    // URLs fh asked the browser to open
 }
 
 // startFh launches fh on any free port, so tests can run in parallel.
@@ -111,11 +110,17 @@ func get(t *testing.T, c *http.Client, u string) *http.Response {
 // refused.
 func (f *fh) dialWS(c *http.Client, origin string) (*websocket.Conn, int, error) {
 	f.t.Helper()
+	return f.dialWSPath(c, origin, "/ws")
+}
+
+// dialWSPath is dialWS with a path and query, e.g. "/ws?notify=1".
+func (f *fh) dialWSPath(c *http.Client, origin, path string) (*websocket.Conn, int, error) {
+	f.t.Helper()
 	h := http.Header{}
 	if origin != "" {
 		h.Set("Origin", origin)
 	}
-	wsURL := "ws" + strings.TrimPrefix(f.origin(), "http") + "/ws"
+	wsURL := "ws" + strings.TrimPrefix(f.origin(), "http") + path
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPClient: c, HTTPHeader: h})
@@ -124,7 +129,6 @@ func (f *fh) dialWS(c *http.Client, origin string) (*websocket.Conn, int, error)
 		status = resp.StatusCode
 	}
 	if conn != nil {
-		f.tabs = append(f.tabs, conn)
 		f.t.Cleanup(func() { _ = conn.CloseNow() }) // already closed if fh stopped first
 	}
 	return conn, status, err
@@ -158,17 +162,6 @@ func startFhWith(t *testing.T, opts app.Options) *fh {
 	f.inst = inst
 	t.Cleanup(func() { stopFh(t, inst) })
 	return f
-}
-
-// closeTabs closes every event channel this test opened and waits until fh
-// has none, as when the user closes all fh tabs.
-func (f *fh) closeTabs() {
-	f.t.Helper()
-	for _, c := range f.tabs {
-		_ = c.Close(websocket.StatusNormalClosure, "tab closed") // already gone is fine
-	}
-	f.tabs = nil
-	time.Sleep(100 * time.Millisecond) // fh notices a closed channel on its next read
 }
 
 // stop stops this launch the way Ctrl+C does.
