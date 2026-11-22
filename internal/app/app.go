@@ -33,6 +33,11 @@ type Options struct {
 	Port *int
 	// OpenBrowser opens a URL in the user's browser.
 	OpenBrowser func(url string)
+	// Dev keeps the token of the previous launch in Dir across restarts, so
+	// an open tab stays authorised and only reloads (make dev). The token
+	// still lives only in the 0600 launch file. cmd/fh allows it only with an
+	// explicit --dir, never for the real config folder.
+	Dev bool
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
@@ -47,6 +52,7 @@ const DefaultRefreshInterval = 10 * time.Second
 type Instance struct {
 	dir   string
 	token string
+	dev   bool           // keep the launch file on Close, for the next launch's token
 	srv   *server.Server // nil when the launch handed off to a running instance
 
 	done      chan struct{}
@@ -76,7 +82,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return handOff(li, opts), nil
 	}
 
-	token, err := newToken()
+	token, err := launchToken(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +101,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return nil, fmt.Errorf("write launch file: %w", err)
 	}
 
-	inst := &Instance{dir: opts.Dir, token: token, done: make(chan struct{})}
+	inst := &Instance{dir: opts.Dir, token: token, dev: opts.Dev, done: make(chan struct{})}
 	var srv *server.Server
 	reg, err := project.Open(opts.Dir, func(ps []project.Project) {
 		srv.Broadcast(map[string]any{"type": "projects", "projects": ps})
@@ -106,7 +112,8 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return nil, err
 	}
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
-		return map[string]any{"projects": reg.List()}
+		// dev tells the tab to reload on a restart instead of stopping.
+		return map[string]any{"projects": reg.List(), "dev": opts.Dev}
 	})
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
@@ -188,11 +195,25 @@ func (i *Instance) Close() error {
 	i.closeOnce.Do(func() {
 		close(i.stop)
 		err = i.srv.Close()
+		if i.dev {
+			return // the next dev launch reuses the token from this file
+		}
 		if rmErr := removeLaunchFile(i.dir, i.token); err == nil {
 			err = rmErr
 		}
 	})
 	return err
+}
+
+// launchToken returns the token for this launch: new each time, except in
+// Dev mode, where the previous (no longer running) launch's token is kept.
+func launchToken(opts Options) (string, error) {
+	if opts.Dev {
+		if li, ok := readLaunchFile(opts.Dir); ok {
+			return li.Token, nil
+		}
+	}
+	return newToken()
 }
 
 func newToken() (string, error) {

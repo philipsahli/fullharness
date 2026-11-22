@@ -28,7 +28,14 @@ func run() error {
 	noOpen := flag.Bool("no-open", false, "print the URL instead of opening the browser")
 	uiURL := flag.String("ui-url", "", "open the UI from this origin instead (make dev uses the Vite dev server)")
 	dir := flag.String("dir", "", "config and state folder (default ~/.config/fullharness)")
+	dev := flag.Bool("dev", false, "keep the token across restarts so open tabs reload (make dev); needs --dir")
 	flag.Parse()
+
+	// --dev keeps a token in a file across launches; never do that for the
+	// real config folder, where a new token per launch is the protection.
+	if *dev && *dir == "" {
+		return fmt.Errorf("--dev needs --dir, a separate folder from your real fh")
+	}
 
 	if *dir == "" {
 		home, err := os.UserHomeDir()
@@ -39,6 +46,7 @@ func run() error {
 	}
 	opts := app.Options{
 		Dir: *dir,
+		Dev: *dev,
 		OpenBrowser: func(u string) {
 			if *uiURL != "" {
 				u = withOrigin(u, *uiURL)

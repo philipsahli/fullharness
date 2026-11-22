@@ -27,6 +27,7 @@ export type Project = {
 export type Snapshot = {
   type: "snapshot";
   launch: string; // random ID of the fh launch; changes on restart
+  dev: boolean; // fh --dev: the token survives restarts, so a tab reloads
   sessions: unknown[];
   inbox: unknown[];
   projects: Project[];
@@ -76,7 +77,10 @@ export function useEventChannel(): Connection {
         const snap = ev as Snapshot;
         launch ??= snap.launch;
         if (snap.launch !== launch) {
-          restarted();
+          // In dev mode the restarted fh accepts this tab's cookie, so it
+          // can pick up the new build itself.
+          if (snap.dev) location.reload();
+          else restarted();
           return;
         }
         setConn({ status: "open", snapshot: snap });

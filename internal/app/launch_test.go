@@ -129,3 +129,30 @@ func TestSimultaneousLaunchesEndWithOneServer(t *testing.T) {
 		t.Fatalf("launches opened different URLs %q and %q, want both on the one server", urls[0], urls[1])
 	}
 }
+
+func TestDevRestartKeepsTheTokenSoOpenTabsStayAuthorised(t *testing.T) {
+	dir := t.TempDir()
+	first := startFhWith(t, app.Options{Dir: dir, Port: new(int), Dev: true})
+	oldTab := first.authorisedClient()
+	before := first.state(oldTab)
+	port, _ := strconv.Atoi(first.launchURL().Port())
+	first.stop()
+
+	restarted := startFhWith(t, app.Options{Dir: dir, Port: &port, Dev: true})
+
+	after := restarted.state(oldTab) // fails the test unless the old cookie gets 200
+	if after["dev"] != true {
+		t.Errorf("snapshot dev = %v, want true", after["dev"])
+	}
+	if after["launch"] == before["launch"] {
+		t.Errorf("launch ID %v did not change; the tab needs it to notice the restart", after["launch"])
+	}
+}
+
+func TestWithoutDevTheSnapshotSaysSo(t *testing.T) {
+	f := startFh(t, t.TempDir())
+
+	if dev := f.state(f.authorisedClient())["dev"]; dev != false {
+		t.Errorf("snapshot dev = %v, want false", dev)
+	}
+}

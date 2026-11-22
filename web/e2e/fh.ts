@@ -16,10 +16,12 @@ export class Fh {
   private constructor(
     readonly port: number,
     readonly dir: string,
+    readonly dev: boolean,
   ) {}
 
-  static async start(): Promise<Fh> {
-    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")));
+  // start launches fh; dev adds --dev (the token survives restarts).
+  static async start({ dev = false } = {}): Promise<Fh> {
+    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev);
     await fh.launch();
     return fh;
   }
@@ -52,7 +54,9 @@ export class Fh {
   // launch starts fh with --no-open, which prints the launch URL instead of
   // opening it.
   private launch(): Promise<void> {
-    const proc = spawn(binary, ["--no-open", "--port", String(this.port), "--dir", this.dir], {
+    const args = ["--no-open", "--port", String(this.port), "--dir", this.dir];
+    if (this.dev) args.push("--dev");
+    const proc = spawn(binary, args, {
       stdio: ["ignore", "pipe", "inherit"],
     });
     this.proc = proc;
@@ -84,5 +88,16 @@ function freePort(): Promise<number> {
       const { port } = srv.address() as net.AddressInfo;
       srv.close(() => resolve(port));
     });
+  });
+}
+
+// runFh runs the fh binary with args to completion and returns its exit code
+// and stderr, for checking flag errors.
+export function runFh(args: string[]): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn(binary, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    proc.once("exit", (code) => resolve({ code, stderr }));
   });
 }
