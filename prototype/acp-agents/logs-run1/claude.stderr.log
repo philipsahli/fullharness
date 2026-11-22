@@ -1,0 +1,19 @@
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=validate-cwd durationMs=0 totalMs=0
+[session/models] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=read-transcript durationMs=8 totalMs=8 messages=14 model=claude-opus-5-5
+[session/replay] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=read durationMs=0 messages=14
+[session/replay] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=publish durationMs=2 totalMs=2 messages=14
+[session/models] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=read-transcript-tail durationMs=10 totalMs=10 model=unknown permissionMode=auto
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=resume-transcript durationMs=10 totalMs=10
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=settings durationMs=9 totalMs=19
+[session/query] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 resume=f709dcce-956d-4c6b-9308-0dd48b70a8f3 apiType=native baseUrl=native
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=prepare-query durationMs=3 totalMs=21
+[authStatus] discarding a probe that predates the latest auth change
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=sdk-initialize durationMs=995 totalMs=1017
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=models durationMs=1 totalMs=1018
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=modes durationMs=0 totalMs=1018
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=agents durationMs=0 totalMs=1018
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=ultracode durationMs=2 totalMs=1020
+[session/create] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=register durationMs=1 totalMs=1021
+[session/load] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=session-ready durationMs=1022 totalMs=1022
+[session/load] sessionId=f709dcce-956d-4c6b-9308-0dd48b70a8f3 phase=replay durationMs=0 totalMs=1022
+[idle-compaction] skip: context 31447 tokens is below the 200000 minimum

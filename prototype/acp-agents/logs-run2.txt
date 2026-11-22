@@ -1,0 +1,41 @@
+MCP test server: http://127.0.0.1:55272/mcp
+== claude
+   @agentclientprotocol/claude-agent-acp 0.109.1; protocol v1; loadSession=true; mcp http=true sse=true
+   1 PASS stop="end_turn" err=<nil> reply="PONG-1"
+   2 PASS listed=true ran=true stop="end_turn" commands=[demo-naming,prompt-master,sara-architecture-advisor,fh-spike-echo,super-changelog,super-persona,super-review,super-security,deep-research,product-management:bra…] reply="ECHO-MARKER-4412"
+   3 PASS permission_requested=true stop="end_turn" file_created=true reply="DONE"
+   4 PASS load_err=<nil> history_replayed=true remembered=true
+   5 PASS checks 1-4 all passed with empty clientCapabilities: true
+   6 PASS check 1 passed through claude-agent-acp
+   7 PASS skill from .claude/skills/ produced marker=true
+   8 PASS stop="end_turn" reply="FH-PING-7731"
+== copilot
+   Copilot 1.0.109; protocol v1; loadSession=true; mcp http=true sse=true
+   1 PASS stop="end_turn" err=<nil> reply="PONG-1"
+   2 PASS listed=true ran=true stop="end_turn" commands=[add-dir,allow-all,permissions,autopilot,compact,blame,chronicle,context,cwd,env,every,after,fleet,index,init,list-dirs,mcp,memory,model,plan,plugin,rename,resea…] reply="ECHO-MARKER-4412"
+   3 PASS permission_requested=true stop="end_turn" file_created=true reply="DONE"
+   4 PASS load_err=<nil> history_replayed=true remembered=true
+   5 PASS checks 1-4 all passed with empty clientCapabilities: true
+   6 -    
+   7 PASS skill from .claude/skills/ produced marker=true
+   8 PASS stop="end_turn" reply="FH-PING-7731"
+== opencode
+   OpenCode 1.19.6; protocol v1; loadSession=true; mcp http=true sse=true
+   1 PASS stop="end_turn" err=<nil> reply="PONG-1"
+   2 PASS listed=true ran=true stop="end_turn" commands=[built-in-browser,chrome-browser,computer-use,customize-opencode,deep-research,demo-naming,docs,docx,fh-spike-echo,gerber-mentor,google-workspace,import-memory,i…] reply="ECHO-MARKER-4412"
+   3 PASS permission_requested=true stop="end_turn" file_created=true reply="DONE"
+   4 PASS load_err=<nil> history_replayed=true remembered=true
+   5 PASS checks 1-4 all passed with empty clientCapabilities: true
+   6 -    
+   7 PASS skill from .claude/skills/ produced marker=true
+   8 PASS stop="end_turn" reply="FH-PING-7731"
+
+check                 claude  copilot  opencode
+1 drive over ACP      PASS    PASS     PASS      
+2 slash skills        PASS    PASS     PASS      
+3 waiting             PASS    PASS     PASS      
+4 reopen              PASS    PASS     PASS      
+5 no fs/terminal      PASS    PASS     PASS      
+6 claude adapter      PASS    -        -         
+7 skill location      PASS    PASS     PASS      
+8 MCP pass-through    PASS    PASS     PASS      
