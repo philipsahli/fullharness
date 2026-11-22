@@ -3,6 +3,7 @@ import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
 import { Switcher } from "./Switcher";
+import { Board } from "./Board";
 
 type View = "sessions" | "factory" | "inbox";
 
@@ -120,9 +121,7 @@ export function App() {
         </nav>
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
           {view === "sessions" && sessionsView()}
-          {view === "factory" && (
-            <Empty title="Software factory" text="Each Project's Features appear here by Stage." />
-          )}
+          {view === "factory" && snapshot && <Board projects={snapshot.projects} />}
           {view === "inbox" && snapshot && (
             <Inbox
               inbox={snapshot.inbox}

@@ -195,6 +195,23 @@ Quitting fh stops every Agent. When fh starts again, your Sessions are listed as
 
 A Session whose Agent exited also frees its Worktree for a new Session.
 
+### Software factory
+
+The **Software factory** tab shows one Project's Features, each under its Stage: Idea, Spec, Tickets, Implementing, Review, Shipped. Pick the Project at the top. Open a Feature to see its Tickets with their label, Stage and blockers; **Startable** marks the ones an Agent can pick up (labelled `ready-for-agent`, no open blockers).
+
+fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`. Without that file, a `.scratch/` folder means local markdown, and a GitHub remote means GitHub. Local markdown follows the files [Matt Pocock's skills](https://github.com/mattpocock/skills) write:
+
+- `.scratch/<feature>/spec.md` is a Feature's Spec; `.scratch/<feature>/issues/<NN>-<slug>.md` are its Tickets.
+- A Ticket's `**Status:**` line is its label (`ready-for-agent`, `needs-triage`, …).
+- `**Status:** done` (or `closed`) closes a Ticket.
+- No skill writes that line yet: add it yourself when a Ticket is done.
+- A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
+- `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
+
+A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base: `origin/<default branch>`, or the local default branch without a remote. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
+
+GitHub boards come with #12. Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
+
 ### Agents
 
 fh knows three Agents. Each needs its CLI installed and logged in:
