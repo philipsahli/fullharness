@@ -31,8 +31,12 @@ The single list of everything waiting for the user's answer across all Sessions:
 _Avoid_: queue, notifications, approvals
 
 **Session state**:
-Where a Session is in its life: **Working** (producing output), **Waiting** (the Agent wants input from the user), **Idle** (quiet, not asking for anything), or **Exited**.
-_Avoid_: status, busy, blocked
+Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, login needed, or closed by the user.
+_Avoid_: status, busy, blocked, error (an error is an Exited reason)
+
+**Close (a Session)**:
+Remove a Session from fullharness and free its Worktree; a live Session's Agent is stopped first. The Agent keeps its own history.
+_Avoid_: delete, kill, end
 
 ## Software factory
 
