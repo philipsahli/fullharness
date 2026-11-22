@@ -9,11 +9,14 @@ This file governs all automated and human-assisted updates to `README.md`, `CONT
 * **Voice:** Welcoming, practical, and direct. Write like a helpful maintainer, not a marketing brochure.
 * **Anti-slop rules (strictly forbidden):**
   * Do not use AI filler words: *delve, tapestry, seamless, supercharge, leverage, robust, elevate, game-changer, empower*.
-  * Do not make exaggerated claims (e.g., "blazingly fast", "revolutionary") unless backed by a linked benchmark in `benchmarks/`.
+  * Do not make exaggerated claims (e.g., "blazingly fast", "revolutionary") unless backed by a linked, reproducible measurement in the repo (script and results). Targets are allowed when labelled as targets (e.g., "Target: 10 Sessions at once").
   * Use second-person ("you") for instructions and first-person plural ("we") for project conventions.
 
 ## 2. Required `README.md` Structure
 Maintain these sections in this exact order. Do not remove sections unless instructed by a human maintainer.
+
+* **Extra sections** may sit between required ones, as long as the required ones keep their order.
+* **Before there is code:** until the first runnable build, a required section may hold one line saying it doesn't apply yet, with a link to the plan. The PR that makes it runnable replaces that line.
 
 1. **Title & One-Liner:** Project name + one crisp sentence explaining *what it does* and *who it is for*.
 2. **Badges:** Keep existing CI, license, and version badges intact. Do not invent new badges.
@@ -25,7 +28,7 @@ Maintain these sections in this exact order. Do not remove sections unless instr
 8. **License:** One-line reference to `LICENSE`.
 
 ## 3. Code Snippets & Command Verification ("Brakes")
-* **Every shell command must be runnable.** Before opening a PR, verify that install, build, and CLI examples match actual scripts in `package.json`, `Makefile`, `pyproject.toml`, or `Cargo.toml`.
+* **Every shell command must be runnable.** Before opening a PR, verify that install, build, and CLI examples match the repo's actual build entry points (for fh: `go.mod`, `web/package.json`, and any `Makefile` or task runner we add).
 * **Specify language tags** on all fenced code blocks (`bash`, `json`, `ts`, `yaml`).
 * **Use realistic placeholders:** Use `your-api-key` or `example.com`—never leave real tokens, internal URLs, or local user paths (`/Users/name/...`).
 * **Output examples:** When showing a CLI command, include a short, accurate comment or output block showing what the user should expect to see.
@@ -44,4 +47,4 @@ When running autonomously, the agent must **NOT**:
 
 ## 6. Compounding Log (Agent Lessons)
 *Add specific rules here whenever a human reviewer rejects or edits an agent-generated doc PR.*
-* [Example] Always mention Node/Python minimum version prerequisites in Quickstart if `.nvmrc` or `.python-version` changes.
+* Before removing a command or label from `docs/agents/`, check whether a skill depends on it. Create the missing thing instead of deleting the reference (PR #20, `wayfinder:*` labels).
