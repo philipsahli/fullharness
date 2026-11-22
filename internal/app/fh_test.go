@@ -1,7 +1,9 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -175,4 +177,95 @@ func writeConfig(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// post sends a JSON command the way the UI does: with the cookie and fh's own
+// Origin. It returns the status and the decoded JSON body (nil when empty).
+func (f *fh) post(c *http.Client, path string, body any) (int, map[string]any) {
+	f.t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req, err := http.NewRequest("POST", f.origin()+path, bytes.NewReader(b))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", f.origin())
+	resp, err := c.Do(req)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return resp.StatusCode, decodeObject(f.t, readBody(f.t, resp))
+}
+
+// state returns the current snapshot from GET /api/state.
+func (f *fh) state(c *http.Client) map[string]any {
+	f.t.Helper()
+	resp, err := c.Get(f.origin() + "/api/state")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		f.t.Fatalf("GET /api/state: status %d", resp.StatusCode)
+	}
+	return decodeObject(f.t, readBody(f.t, resp))
+}
+
+func decodeObject(t *testing.T, body string) map[string]any {
+	t.Helper()
+	if strings.TrimSpace(body) == "" {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(body), &m); err != nil {
+		t.Fatalf("decode %q: %v", body, err)
+	}
+	return m
+}
+
+// projects returns the snapshot's projects list.
+func projects(t *testing.T, snapshot map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := snapshot["projects"].([]any)
+	if !ok {
+		t.Fatalf("snapshot projects = %v, want a list", snapshot["projects"])
+	}
+	out := make([]map[string]any, len(raw))
+	for i, p := range raw {
+		out[i] = p.(map[string]any)
+	}
+	return out
+}
+
+// worktrees returns a project's worktrees list.
+func worktrees(t *testing.T, project map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := project["worktrees"].([]any)
+	if !ok {
+		t.Fatalf("project worktrees = %v, want a list", project["worktrees"])
+	}
+	out := make([]map[string]any, len(raw))
+	for i, w := range raw {
+		out[i] = w.(map[string]any)
+	}
+	return out
+}
+
+// nextEvent reads one event, or returns nil if none arrives within d. A read
+// that times out closes the connection, so call it last on a conn when
+// expecting nil.
+func nextEvent(t *testing.T, conn *websocket.Conn, d time.Duration) map[string]any {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	var ev map[string]any
+	if err := wsjson.Read(ctx, conn, &ev); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		t.Fatalf("read event: %v", err)
+	}
+	return ev
 }

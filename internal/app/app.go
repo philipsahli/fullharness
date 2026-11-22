@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
 	"github.com/philipsahli/fullharness/web"
 )
@@ -32,7 +33,14 @@ type Options struct {
 	Port *int
 	// OpenBrowser opens a URL in the user's browser.
 	OpenBrowser func(url string)
+	// RefreshInterval is how often Worktree state is re-read while a tab is
+	// connected; zero means DefaultRefreshInterval.
+	RefreshInterval time.Duration
 }
+
+// DefaultRefreshInterval keeps Worktree state about as fresh as a glance
+// needs, at a few git calls per Worktree per tick (#3).
+const DefaultRefreshInterval = 10 * time.Second
 
 // Instance is the result of a launch. If another fh was already running, the
 // Instance only opened a tab on it: Wait returns at once and Close does nothing.
@@ -42,6 +50,7 @@ type Instance struct {
 	srv   *server.Server // nil when the launch handed off to a running instance
 
 	done      chan struct{}
+	stop      chan struct{} // ends the refresh loop
 	serveErr  error
 	closeOnce sync.Once
 }
@@ -87,7 +96,26 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 
 	inst := &Instance{dir: opts.Dir, token: token, done: make(chan struct{})}
-	inst.srv = server.New(ln, token, web.Dist())
+	var srv *server.Server
+	reg, err := project.Open(opts.Dir, func(ps []project.Project) {
+		srv.Broadcast(map[string]any{"type": "projects", "projects": ps})
+	})
+	if err != nil {
+		_ = ln.Close() // the projects.toml error is the one worth reporting
+		_ = removeLaunchFile(opts.Dir, token)
+		return nil, err
+	}
+	srv = server.New(ln, token, web.Dist(), func() map[string]any {
+		return map[string]any{"projects": reg.List()}
+	})
+	registerProjectRoutes(srv, reg, cfg.ScanFolder)
+	inst.srv = srv
+	inst.stop = make(chan struct{})
+	interval := opts.RefreshInterval
+	if interval == 0 {
+		interval = DefaultRefreshInterval
+	}
+	go refreshLoop(reg, srv, interval, inst.stop)
 	go func() {
 		inst.serveErr = inst.srv.Serve()
 		close(inst.done)
@@ -121,6 +149,24 @@ func waitForRunning(dir string, d time.Duration) (launchInfo, bool) {
 	}
 }
 
+// refreshLoop re-reads Worktree state every interval while a tab is
+// connected; with no tab open nobody would see the result. A tab that
+// connects gets the last state read, and the next tick updates it.
+func refreshLoop(reg *project.Registry, srv *server.Server, interval time.Duration, stop <-chan struct{}) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			if srv.Tabs() > 0 {
+				reg.Refresh()
+			}
+		}
+	}
+}
+
 // Wait blocks until the server stops.
 func (i *Instance) Wait() error {
 	<-i.done
@@ -137,6 +183,7 @@ func (i *Instance) Close() error {
 	}
 	var err error
 	i.closeOnce.Do(func() {
+		close(i.stop)
 		err = i.srv.Close()
 		if rmErr := removeLaunchFile(i.dir, i.token); err == nil {
 			err = rmErr
