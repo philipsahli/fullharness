@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -296,5 +297,111 @@ func TestQuittingFhStopsItsAgents(t *testing.T) {
 
 	if out, err := exec.Command("kill", "-0", pid).CombinedOutput(); err == nil {
 		t.Errorf("Agent process %s still runs after fh quit (%s)", pid, out)
+	}
+}
+
+func TestTwoPromptsAtOnceStartOnlyOneTurn(t *testing.T) {
+	f := startFhWithAgent(t, script{"default": []any{map[string]any{"waitCancel": true}}})
+	c, _, id, _ := newSessionIn(t, f, "")
+
+	statuses := make(chan int, 2)
+	for range 2 {
+		go func() {
+			status, _ := f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "go"})
+			statuses <- status
+		}()
+	}
+	got := []int{<-statuses, <-statuses}
+
+	slices.Sort(got) // 202 sorts before 409
+	if got[0] != http.StatusAccepted || got[1] != http.StatusConflict {
+		t.Fatalf("statuses %v, want one 202 and one 409", got)
+	}
+}
+
+func TestAnAgentThatFailsToStartEndsExitedNotStarting(t *testing.T) {
+	// A command that runs but never speaks ACP: initialize gets no answer
+	// it can use, while the process stays alive.
+	dir := t.TempDir()
+	writeConfig(t, dir, "[agents.claude]\ncommand = [\"cat\"]\n")
+	f := startFhWith(t, appOptions(dir))
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+
+	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})
+
+	if s := waitState(t, tab, id, "exited"); s["reason"] != "Agent crashed" {
+		t.Errorf("reason = %v, want Agent crashed", s["reason"])
+	}
+}
+
+func TestAnAgentWithoutTheAskingModeSaysSoInTheConversation(t *testing.T) {
+	f := startFhWithAgent(t, script{"noDefaultMode": true})
+	c, _, id, _ := newSessionIn(t, f, "")
+
+	items := f.transcript(c, id)
+	if len(items) == 0 || items[0]["type"] != "notice" || !strings.Contains(items[0]["text"].(string), "without asking") {
+		t.Errorf("transcript = %v, want a notice that the Agent may act without asking", items)
+	}
+}
+
+func TestTheDenialPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
+	f := startFhWithAgent(t, script{
+		"rejectAlwaysFirst": true,
+		"default":           []any{map[string]any{"permission": map[string]any{"id": "t1", "title": "rm x"}}},
+	})
+	c, _, id, _ := newSessionIn(t, f, "")
+	tab := f.connectTab(c)
+	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "go"})
+	waitTurn(t, tab, id)
+
+	items := f.transcript(c, id)
+	if got := items[len(items)-1]["text"]; got != "permission=reject" {
+		t.Errorf("agent saw %q, want the reject_once option", got)
+	}
+}
+
+func TestANewWorktreesBranchTracksNothing(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	origin := newRepo(t, parent, "origin")
+	repo := filepath.Join(parent, "shop")
+	git(t, parent, "clone", "-q", origin, repo)
+	f.addProject(c, repo)
+
+	_, body := f.post(c, "/api/sessions", map[string]any{"project": repo, "branch": "feature", "agent": "claude"})
+
+	wt, _ := body["worktree"].(string)
+	if up := git(t, repo, "for-each-ref", "--format=%(upstream)", "refs/heads/feature"); up != "" || wt == "" {
+		t.Errorf("branch feature tracks %q (worktree %q); want no upstream, so a push doesn't go to main", up, wt)
+	}
+}
+
+func TestQuittingWhileAnAgentStartsLeavesNoProcessBehind(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"pidFile": pidFile}, map[string]any{"sleepMs": 5000}}})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})
+	var pid []byte
+	for range 100 {
+		if b, err := os.ReadFile(pidFile); err == nil && len(b) > 0 {
+			pid = b
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if pid == nil {
+		t.Fatal("fake agent never started")
+	}
+
+	f.stop() // the Session is still Starting
+
+	if out, err := exec.Command("kill", "-0", string(pid)).CombinedOutput(); err == nil {
+		t.Errorf("Agent process %s outlived fh (%s)", pid, out)
 	}
 }

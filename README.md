@@ -145,8 +145,10 @@ The conversation shows your messages, the Agent's reply as it streams in, and ea
 
 Not there yet:
 
-- fh can't answer permission requests yet (#5). It denies them and says so in the conversation, so Claude Code can read and answer but not edit files or run commands.
+- fh can't answer permission requests yet (#5). It denies each one and says so in the conversation.
+- Until then, Claude Code can read and answer, but not edit files or run commands.
 - Sessions don't survive an fh restart yet (#9). Quitting fh stops their Agents.
+- There's no way to close a Session yet (#9). A Session whose Agent exited frees its Worktree for a new one.
 
 ### Agents
 
@@ -164,7 +166,11 @@ env = { ANTHROPIC_API_KEY = "your-api-key" }   # only if you do want API billing
 
 ### Logs
 
-fh logs to the terminal and to `~/.config/fullharness/fh.log`, which it starts over at 10 MB. Each Session's Agent writes its error output to `~/.config/fullharness/logs/<session-id>.log`; a Session whose Agent crashed shows the last 20 lines. The logs never contain the launch token or what you or the Agent wrote, and only you can read them.
+fh logs to the terminal and to `~/.config/fullharness/fh.log`, which it starts over at 10 MB. `fh.log` never contains the launch token or the text of your messages or the Agent's replies.
+
+Each Session's Agent writes its own error output to `~/.config/fullharness/logs/<session-id>.log`, unfiltered. A Session whose Agent crashed shows the last 20 lines of it.
+
+Only you can read these files.
 
 Flags override the config file:
 

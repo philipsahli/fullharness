@@ -37,6 +37,7 @@ type action struct {
 	Stderr     string      `json:"stderr,omitempty"` // write a line to stderr
 	Exit       *int        `json:"exit,omitempty"`   // exit the process with this code
 	WriteFile  string      `json:"writeFile,omitempty"`
+	PIDFile    string      `json:"pidFile,omitempty"` // write the process ID to this path
 }
 
 type toolAction struct {
@@ -52,6 +53,12 @@ type script struct {
 	OnStart []action            `json:"onStart"`
 	Prompts map[string][]action `json:"prompts"`
 	Default []action            `json:"default"`
+	// NoDefaultMode leaves "default" out of the offered modes, like an Agent
+	// that can't be told to ask before acting.
+	NoDefaultMode bool `json:"noDefaultMode"`
+	// RejectAlwaysFirst lists "reject always" before "reject once" in
+	// permission requests.
+	RejectAlwaysFirst bool `json:"rejectAlwaysFirst"`
 }
 
 type agent struct {
@@ -84,12 +91,13 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 	if _, err := a.run(ctx, id, a.script.OnStart); err != nil {
 		return acp.NewSessionResponse{}, err
 	}
+	modes := []acp.SessionMode{{Id: "default", Name: "Manual"}, {Id: "auto", Name: "Auto"}}
+	if a.script.NoDefaultMode {
+		modes = modes[1:]
+	}
 	return acp.NewSessionResponse{
 		SessionId: id,
-		Modes: &acp.SessionModeState{
-			CurrentModeId:  acp.SessionModeId(a.mode),
-			AvailableModes: []acp.SessionMode{{Id: "default", Name: "Manual"}, {Id: "auto", Name: "Auto"}},
-		},
+		Modes:     &acp.SessionModeState{CurrentModeId: acp.SessionModeId(a.mode), AvailableModes: modes},
 	}, nil
 }
 
@@ -170,10 +178,7 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			resp, perr := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 				SessionId: sid,
 				ToolCall:  acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(t.ID), Title: acp.PatchSet(t.Title)},
-				Options: []acp.PermissionOption{
-					{OptionId: "allow-once", Name: "Yes", Kind: acp.PermissionOptionKindAllowOnce},
-					{OptionId: "reject", Name: "No", Kind: acp.PermissionOptionKindRejectOnce},
-				},
+				Options:   a.permissionOptions(),
 			})
 			if perr != nil {
 				return false, perr
@@ -196,6 +201,8 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			fmt.Fprintln(os.Stderr, s.Stderr)
 		case s.Exit != nil:
 			os.Exit(*s.Exit)
+		case s.PIDFile != "":
+			err = os.WriteFile(s.PIDFile, []byte(fmt.Sprint(os.Getpid())), 0o644)
 		case s.WriteFile != "":
 			err = os.WriteFile(a.cwd+"/"+s.WriteFile, []byte("written by fakeagent\n"), 0o644)
 		}
@@ -204,6 +211,18 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 		}
 	}
 	return false, nil
+}
+
+func (a *agent) permissionOptions() []acp.PermissionOption {
+	opts := []acp.PermissionOption{
+		{OptionId: "allow-once", Name: "Yes", Kind: acp.PermissionOptionKindAllowOnce},
+		{OptionId: "reject", Name: "No", Kind: acp.PermissionOptionKindRejectOnce},
+	}
+	if a.script.RejectAlwaysFirst {
+		always := acp.PermissionOption{OptionId: "reject-always", Name: "Never", Kind: acp.PermissionOptionKindRejectAlways}
+		opts = append([]acp.PermissionOption{always}, opts...)
+	}
+	return opts
 }
 
 // The rest of the Agent interface is unused by fh in #4.

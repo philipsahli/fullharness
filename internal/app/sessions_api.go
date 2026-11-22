@@ -30,6 +30,21 @@ type agentInfo struct {
 	Missing string `json:"missing,omitempty"` // why it can't start, with the install command
 }
 
+// newSession is a New Session request: an existing Worktree, or a new one on
+// Branch.
+type newSession struct {
+	Project  string `json:"project"`
+	Worktree string `json:"worktree"`
+	Branch   string `json:"branch"`
+	Agent    string `json:"agent"`
+	Prompt   string `json:"prompt"`
+}
+
+// badRequest is a New Session request fh refuses, with the reason.
+type badRequest string
+
+func (e badRequest) Error() string { return string(e) }
+
 func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 	srv.Handle("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
 		out := []agentInfo{}
@@ -40,20 +55,14 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 	})
 
 	srv.Handle("POST /api/sessions", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Project  string `json:"project"`
-			Worktree string `json:"worktree"` // an existing Worktree, or
-			Branch   string `json:"branch"`   // a new Worktree on this new branch
-			Agent    string `json:"agent"`
-			Prompt   string `json:"prompt"`
-		}
+		var req newSession
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			server.WriteError(w, http.StatusBadRequest, "send {project, worktree or branch, agent, prompt}")
 			return
 		}
-		status, msg, sum := d.start(req.Project, req.Worktree, req.Branch, req.Agent, req.Prompt)
-		if status != http.StatusCreated {
-			server.WriteError(w, status, msg)
+		sum, err := d.start(req)
+		if err != nil {
+			writeSessionError(w, err)
 			return
 		}
 		server.WriteJSON(w, http.StatusCreated, sum)
@@ -62,7 +71,7 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 	srv.Handle("GET /api/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
 		det, err := d.sessions.Get(r.PathValue("id"))
 		if err != nil {
-			server.WriteError(w, http.StatusNotFound, err.Error())
+			writeSessionError(w, err)
 			return
 		}
 		server.WriteJSON(w, http.StatusOK, det)
@@ -76,80 +85,93 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 			server.WriteError(w, http.StatusBadRequest, `send {"text": "…"}`)
 			return
 		}
-		writeSessionResult(w, d.sessions.Prompt(r.PathValue("id"), req.Text))
+		accepted(w, d.sessions.Prompt(r.PathValue("id"), req.Text))
 	})
 
 	srv.Handle("POST /api/sessions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		writeSessionResult(w, d.sessions.Cancel(r.PathValue("id")))
+		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
 }
 
-func writeSessionResult(w http.ResponseWriter, err error) {
+func accepted(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeSessionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// writeSessionError maps every Session error to its status in one place.
+func writeSessionError(w http.ResponseWriter, err error) {
+	var bad badRequest
+	var refused *worktree.RefusedError
 	switch {
-	case err == nil:
-		w.WriteHeader(http.StatusAccepted)
+	case errors.As(err, &bad), errors.As(err, &refused):
+		server.WriteError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrNotFound):
 		server.WriteError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning):
+	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse):
 		server.WriteError(w, http.StatusConflict, err.Error())
 	default:
 		server.WriteError(w, http.StatusInternalServerError, err.Error())
 	}
 }
 
-// start checks a New Session request and starts it. It returns the HTTP
-// status, an error message for anything but 201, and the new Session.
-func (d sessionDeps) start(projectPath, wtPath, branch, agentID, prompt string) (int, string, session.Summary) {
-	p, ok := d.projects.Get(projectPath)
+// start checks a New Session request and starts the Session.
+func (d sessionDeps) start(req newSession) (session.Summary, error) {
+	p, ok := d.projects.Get(req.Project)
 	if !ok {
-		return http.StatusBadRequest, "no Project at " + projectPath, session.Summary{}
+		return session.Summary{}, badRequest("no Project at " + req.Project)
 	}
-	i := slices.IndexFunc(d.agents, func(a agent.Definition) bool { return a.ID == agentID })
+	i := slices.IndexFunc(d.agents, func(a agent.Definition) bool { return a.ID == req.Agent })
 	if i < 0 {
-		return http.StatusBadRequest, "no Agent " + agentID, session.Summary{}
+		return session.Summary{}, badRequest("no Agent " + req.Agent)
 	}
 	def := d.agents[i]
 	if missing := def.Missing(); missing != "" {
-		return http.StatusBadRequest, def.Name + " can't start: " + missing, session.Summary{}
+		return session.Summary{}, badRequest(def.Name + " can't start: " + missing)
 	}
-	if (wtPath == "") == (branch == "") {
-		return http.StatusBadRequest, "pick an existing Worktree or a new branch, not both", session.Summary{}
+	if (req.Worktree == "") == (req.Branch == "") {
+		return session.Summary{}, badRequest("pick an existing Worktree or a new branch, not both")
 	}
+	wtPath, branch := req.Worktree, req.Branch
 	if branch != "" {
-		path, err := worktree.Create(p.Path, branch)
-		var invalid *worktree.InvalidPathError
-		if errors.As(err, &invalid) {
-			return http.StatusBadRequest, invalid.Reason, session.Summary{}
-		}
+		path, err := d.createWorktree(p.Path, branch)
 		if err != nil {
-			return http.StatusInternalServerError, err.Error(), session.Summary{}
+			return session.Summary{}, err
 		}
-		if err := d.state.AddWorktree(path); err != nil {
-			return http.StatusInternalServerError, err.Error(), session.Summary{}
-		}
-		d.log.Info("worktree created", "path", path)
-		d.projects.Refresh()
 		wtPath = path
 	} else {
 		j := slices.IndexFunc(p.Worktrees, func(w worktree.Worktree) bool { return w.Path == wtPath })
 		if j < 0 {
-			return http.StatusBadRequest, wtPath + " is not a Worktree of " + p.Name, session.Summary{}
+			return session.Summary{}, badRequest(wtPath + " is not a Worktree of " + p.Name)
 		}
-		wt := p.Worktrees[j]
-		switch {
+		switch wt := p.Worktrees[j]; {
 		case wt.Agent:
-			return http.StatusBadRequest, "fh never starts a Session in an Agent worktree", session.Summary{}
+			return session.Summary{}, badRequest("fh never starts a Session in an Agent worktree")
 		case wt.Missing:
-			return http.StatusBadRequest, "the Worktree's folder is gone", session.Summary{}
+			return session.Summary{}, badRequest("the Worktree's folder is gone")
+		default:
+			branch = wt.Branch
 		}
-		branch = wt.Branch
 	}
-	sum, err := d.sessions.Start(def, p.Path, wtPath, branch, prompt)
-	if errors.Is(err, session.ErrWorktreeUse) {
-		return http.StatusConflict, err.Error(), session.Summary{}
+	return d.sessions.Start(def, p.Path, wtPath, branch, req.Prompt)
+}
+
+// createWorktree records the new Worktree in state.json before git creates
+// it, so it can never exist unrecorded and show up as an Agent worktree.
+func (d sessionDeps) createWorktree(repo, branch string) (string, error) {
+	path := worktree.NewPath(repo, branch)
+	if err := d.state.AddWorktree(path); err != nil {
+		return "", err
 	}
-	if err != nil {
-		return http.StatusInternalServerError, err.Error(), session.Summary{}
+	if _, err := worktree.Create(repo, branch); err != nil {
+		if rmErr := d.state.RemoveWorktree(path); rmErr != nil {
+			d.log.Info("forget failed worktree", "path", path, "err", rmErr)
+		}
+		return "", err
 	}
-	return http.StatusCreated, "", sum
+	d.log.Info("worktree created", "path", path)
+	d.projects.Refresh()
+	return path, nil
 }

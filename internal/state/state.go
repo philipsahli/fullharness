@@ -56,11 +56,24 @@ func (s *Store) AddWorktree(path string) error {
 		return nil
 	}
 	s.data.CreatedWorktrees = append(s.data.CreatedWorktrees, path)
+	return s.save()
+}
+
+// save writes state.json; the caller holds s.mu.
+func (s *Store) save() error {
 	b, err := json.MarshalIndent(s.data, "", "  ")
 	if err != nil {
 		return err
 	}
 	return fileutil.WriteAtomic(s.file, b)
+}
+
+// RemoveWorktree forgets path, after creating it failed.
+func (s *Store) RemoveWorktree(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.CreatedWorktrees = slices.DeleteFunc(s.data.CreatedWorktrees, func(p string) bool { return p == path })
+	return s.save()
 }
 
 // CreatedWorktree reports whether fh created the Worktree at path.

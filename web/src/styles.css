@@ -527,7 +527,7 @@ button:disabled {
   white-space: nowrap;
   min-width: 0;
 }
-.chat {
+.conversation .items {
   flex: 1;
   overflow: auto;
   padding: 14px 0;

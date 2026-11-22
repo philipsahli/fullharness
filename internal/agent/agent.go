@@ -24,6 +24,9 @@ type Definition struct {
 	Env map[string]string
 	// requires lists the CLIs the command needs, each with how to install it.
 	requires []requirement
+	// Mode is the session mode in which the Agent asks before acting; fh
+	// sets it on every Session. Empty for an Agent without modes.
+	Mode string
 	// claude marks Claude Code, whose environment fh adjusts (see Environ).
 	claude bool
 }
@@ -47,6 +50,7 @@ func Defaults() []Definition {
 			{"node", "install Node: brew install node"},
 			{"npx", "install Node: brew install node"},
 		},
+		Mode:   "default",
 		claude: true,
 	}}
 }

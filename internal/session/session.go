@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	sdk "github.com/coder/acp-go-sdk"
 
@@ -93,6 +94,9 @@ type Config struct {
 	Broadcast func(event any) // sends an event to every tab
 	TurnEnded func()          // runs after each turn, e.g. a Worktree refresh
 	Log       *slog.Logger
+	// StartTimeout bounds initialize and session/new. The first Claude Code
+	// start can take a while: npx downloads the adapter.
+	StartTimeout time.Duration
 }
 
 // Manager holds all Sessions.
@@ -101,6 +105,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions []*session
+	closed   bool // set by StopAll: fh is quitting, start nothing new
 }
 
 // New returns an empty Manager.
@@ -125,8 +130,14 @@ type session struct {
 // branch is the Worktree's branch, the Session's first title.
 func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt string) (Summary, error) {
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return Summary{}, ErrNotRunning
+	}
 	for _, s := range m.sessions {
-		if s.summary().Worktree == worktree {
+		// An Exited Session frees its Worktree. Until Close exists (#9) that
+		// is the only way a crashed Session's Worktree becomes usable again.
+		if sum := s.summary(); sum.Worktree == worktree && sum.State != Exited {
 			m.mu.Unlock()
 			return Summary{}, ErrWorktreeUse
 		}
@@ -145,13 +156,6 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 	s.publish()
 	go s.run(prompt)
 	return s.summary(), nil
-}
-
-// UsedWorktree reports whether a Session uses the Worktree at path.
-func (m *Manager) UsedWorktree(path string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return slices.ContainsFunc(m.sessions, func(s *session) bool { return s.summary().Worktree == path })
 }
 
 // List returns every Session's summary, never nil.
@@ -183,18 +187,30 @@ func (m *Manager) Prompt(id, text string) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	state := s.sum.State
-	s.mu.Unlock()
-	switch state {
-	case Idle:
-	case Exited:
-		return ErrNotRunning
-	default:
-		return ErrBusy
+	if err := s.beginTurn(Idle); err != nil {
+		return err
 	}
 	go s.prompt(text)
 	return nil
+}
+
+// beginTurn moves the Session from state from to Working, checked and set
+// under one lock, so two sends at once can't both start a turn.
+func (s *session) beginTurn(from string) error {
+	s.mu.Lock()
+	switch s.sum.State {
+	case from:
+		s.sum.State = Working
+		s.mu.Unlock()
+		s.publish()
+		return nil
+	case Exited:
+		s.mu.Unlock()
+		return ErrNotRunning
+	default:
+		s.mu.Unlock()
+		return ErrBusy
+	}
 }
 
 // Cancel asks the Agent to end the current turn.
@@ -215,6 +231,7 @@ func (m *Manager) Cancel(id string) error {
 // StopAll ends every Agent process, as when fh quits (ADR 0002).
 func (m *Manager) StopAll() {
 	m.mu.Lock()
+	m.closed = true
 	all := slices.Clone(m.sessions)
 	m.mu.Unlock()
 	var wg sync.WaitGroup
@@ -258,34 +275,67 @@ func (s *session) run(prompt string) {
 	}
 	s.mu.Lock()
 	s.proc = proc
+	stopping := s.stopping
 	s.mu.Unlock()
 	go s.watch(proc)
-
-	ctx := context.Background()
-	if err := proc.Initialize(ctx); err != nil {
-		s.m.cfg.Log.Info("agent initialize failed", "session", s.sum.ID, "err", err)
-		return // watch reports the crash
-	}
-	sid, modes, err := proc.NewSession(ctx, s.summary().Worktree)
-	if err != nil {
-		s.m.cfg.Log.Info("agent session/new failed", "session", s.sum.ID, "err", err)
+	if stopping {
+		// fh began quitting while this Agent was being launched; StopAll
+		// saw no process to stop, so stop it here (ADR 0002).
 		proc.Stop()
 		return
 	}
-	// Claude Code otherwise keeps the user's own permission mode (the spike
-	// saw "auto") and never asks, so nothing would reach the Inbox (ADR 0003).
-	if slices.Contains(modes, "default") {
-		if err := proc.SetMode(ctx, sid, "default"); err != nil {
-			s.m.cfg.Log.Info("agent set_mode failed", "session", s.sum.ID, "err", err)
-		}
+
+	// A failure here would otherwise leave the Session Starting for good:
+	// note why in the Session log, whose tail the Exited Session shows, and
+	// stop the Agent so watch reports it.
+	fail := func(step string, err error) {
+		_, _ = fmt.Fprintf(logFile, "fh: %s failed: %v\n", step, err) // best effort; the log is the only place to say it
+		s.m.cfg.Log.Info("agent start failed", "session", s.sum.ID, "step", step, "err", err)
+		proc.Stop()
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), s.m.cfg.StartTimeout)
+	defer cancel()
+	if err := proc.Initialize(ctx); err != nil {
+		fail("initialize", err)
+		return
+	}
+	sid, modes, err := proc.NewSession(ctx, s.summary().Worktree)
+	if err != nil {
+		fail("session/new", err)
+		return
+	}
+	s.setAskingMode(ctx, proc, sid, modes)
 	s.mu.Lock()
 	s.acpID = sid
 	s.mu.Unlock()
-	s.setState(Idle)
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
-	if prompt != "" {
+	if prompt == "" {
+		s.setState(Idle)
+		return
+	}
+	// Straight from Starting to Working: an Idle in between would let a
+	// second message in before the starting prompt.
+	if s.beginTurn(Starting) == nil {
 		s.prompt(prompt)
+	}
+}
+
+// setAskingMode puts the Agent in the mode where it asks before acting.
+// Claude Code otherwise keeps the user's own mode (the spike saw "auto")
+// and never asks (ADR 0003). If that fails, the user is told in the
+// conversation instead of finding out from an unasked edit.
+func (s *session) setAskingMode(ctx context.Context, proc *acp.Process, sid sdk.SessionId, modes []string) {
+	mode := s.def.Mode
+	if mode == "" {
+		return
+	}
+	err := fmt.Errorf("the Agent doesn't offer mode %q", mode)
+	if slices.Contains(modes, mode) {
+		err = proc.SetMode(ctx, sid, mode)
+	}
+	if err != nil {
+		s.m.cfg.Log.Info("agent set_mode failed", "session", s.sum.ID, "err", err)
+		s.addItem(Item{Type: "notice", Text: "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."})
 	}
 }
 
@@ -308,11 +358,19 @@ func (s *session) prompt(text string) {
 	proc, sid := s.proc, s.acpID
 	s.mu.Unlock()
 	s.addItem(Item{Type: "user", Text: text})
-	s.setState(Working)
 	reason, err := proc.Prompt(context.Background(), sid, text)
 	if err != nil {
 		s.m.cfg.Log.Info("prompt failed", "session", s.sum.ID, "err", err)
-		return // a dead process is reported by watch
+		select {
+		case <-proc.Done():
+			return // watch reports the exit
+		default:
+		}
+		// The Agent is alive but refused the turn (an auth error, for
+		// example); show it and let the user try again.
+		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
+		s.setState(Idle)
+		return
 	}
 	if reason == sdk.StopReasonCancelled {
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
@@ -376,8 +434,10 @@ func (s *session) Update(n sdk.SessionNotification) {
 func (s *session) Permission(r sdk.RequestPermissionRequest) sdk.RequestPermissionResponse {
 	title, _ := r.ToolCall.Title.Value()
 	s.addItem(Item{Type: "notice", Text: fmt.Sprintf("The Agent asked to run %q. fh can't answer permission requests yet (#5), so this one was denied.", title)})
+	// reject_once only: "reject always" would change the Agent's rules for
+	// the rest of the Session, which the user never chose.
 	for _, o := range r.Options {
-		if o.Kind == sdk.PermissionOptionKindRejectOnce || o.Kind == sdk.PermissionOptionKindRejectAlways {
+		if o.Kind == sdk.PermissionOptionKindRejectOnce {
 			return sdk.RequestPermissionResponse{Outcome: sdk.RequestPermissionOutcome{
 				Selected: &sdk.RequestPermissionOutcomeSelected{OptionId: o.OptionId},
 			}}
@@ -391,9 +451,8 @@ func (s *session) appendAgentText(text string) {
 	n := len(s.transcript)
 	if n > 0 && s.transcript[n-1].Type == "agent" {
 		s.transcript[n-1].Text += text
-		id := s.sum.ID
 		s.mu.Unlock()
-		s.m.cfg.Broadcast(map[string]any{"type": "chunk", "session": id, "index": n - 1, "text": text})
+		s.emit("chunk", n-1, "text", text)
 		return
 	}
 	s.mu.Unlock()
@@ -411,17 +470,17 @@ func (s *session) upsertTool(id string, apply func(*Tool)) {
 	t := *s.transcript[i].Tool
 	apply(&t)
 	s.transcript[i].Tool = &t
-	item, sid := s.transcript[i], s.sum.ID
+	item := s.transcript[i]
 	s.mu.Unlock()
-	s.m.cfg.Broadcast(map[string]any{"type": "item", "session": sid, "index": i, "item": item})
+	s.emit("item", i, "item", item)
 }
 
 func (s *session) addItem(it Item) {
 	s.mu.Lock()
 	s.transcript = append(s.transcript, it)
-	i, sid := len(s.transcript)-1, s.sum.ID
+	i := len(s.transcript) - 1
 	s.mu.Unlock()
-	s.m.cfg.Broadcast(map[string]any{"type": "item", "session": sid, "index": i, "item": it})
+	s.emit("item", i, "item", it)
 }
 
 func (s *session) setState(state string) {
@@ -447,6 +506,12 @@ func (s *session) summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.sum
+}
+
+// emit sends a conversation event: kind "item" (a new or replaced item at
+// index) or "chunk" (text appended to the agent message at index).
+func (s *session) emit(kind string, index int, key string, value any) {
+	s.m.cfg.Broadcast(map[string]any{"type": kind, "session": s.sum.ID, "index": index, key: value})
 }
 
 func (s *session) publish() {

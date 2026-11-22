@@ -31,7 +31,7 @@ func startFhWithAgent(t *testing.T, s script) *fh {
 // appOptions starts fh on a free port with periodic refresh effectively off,
 // so tests see only the refreshes they cause.
 func appOptions(dir string) app.Options {
-	return app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour}
+	return app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour, AgentStartTimeout: 2 * time.Second}
 }
 
 // startSession posts a New Session and returns the new Session's ID.

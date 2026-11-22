@@ -47,10 +47,17 @@ type Options struct {
 	Stderr io.Writer
 	// Verbose logs at debug level.
 	Verbose bool
+	// AgentStartTimeout bounds an Agent's start-up (initialize and
+	// session/new); zero means DefaultAgentStartTimeout.
+	AgentStartTimeout time.Duration
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
 }
+
+// DefaultAgentStartTimeout leaves room for npx to download the Claude Code
+// adapter on its first start.
+const DefaultAgentStartTimeout = 2 * time.Minute
 
 // DefaultRefreshInterval keeps Worktree state about as fresh as a glance
 // needs, at a few git calls per Worktree per tick (#3).
@@ -143,9 +150,14 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if err != nil {
 		return fail(err)
 	}
+	startTimeout := opts.AgentStartTimeout
+	if startTimeout == 0 {
+		startTimeout = DefaultAgentStartTimeout
+	}
 	sessions := session.New(session.Config{
-		LogDir:    logDir,
-		Broadcast: func(ev any) { srv.Broadcast(ev) },
+		StartTimeout: startTimeout,
+		LogDir:       logDir,
+		Broadcast:    func(ev any) { srv.Broadcast(ev) },
 		// A turn usually changes files; show it without waiting for a tick.
 		TurnEnded: reg.Refresh,
 		Log:       log,

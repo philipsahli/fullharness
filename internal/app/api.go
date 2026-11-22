@@ -19,7 +19,7 @@ func registerProjectRoutes(srv *server.Server, reg *project.Registry, scanFolder
 			return
 		}
 		p, err := reg.Add(path)
-		var invalid *worktree.InvalidPathError
+		var invalid *worktree.RefusedError
 		switch {
 		case errors.As(err, &invalid):
 			server.WriteError(w, http.StatusBadRequest, invalid.Reason)

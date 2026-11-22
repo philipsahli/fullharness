@@ -82,7 +82,10 @@ func TestFhLogIsPrivateAndHoldsNoTokenOrMessageText(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("fh.log: %v %v, want mode 0600", err, info)
 	}
-	log, _ := os.ReadFile(path)
+	log, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	token := f.launchURL().Query().Get("token")
 	for _, secret := range []string{token, "secret prompt text", "secret reply text"} {
 		if strings.Contains(string(log), secret) {

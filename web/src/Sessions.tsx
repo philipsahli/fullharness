@@ -77,6 +77,7 @@ export function NewSession(props: {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // get never rejects: a failure resolves to undefined, shown as no Agents.
     void get<AgentInfo[]>("/api/agents").then((list) => {
       setAgents(list ?? []);
       setAgent((list ?? []).find((a) => !a.missing)?.id ?? "");
@@ -245,7 +246,7 @@ export function Conversation(props: {
           {session.agent} · {session.worktree}
         </span>
       </header>
-      <div className="chat">
+      <div className="items">
         {(items ?? []).map((it, i) => (
           <ItemView key={i} item={it} />
         ))}

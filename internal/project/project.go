@@ -94,7 +94,7 @@ func (r *Registry) Get(path string) (Project, bool) {
 var ErrExists = errors.New("this git repository is already a Project")
 
 // Add adds the git repo containing path. It returns a
-// *worktree.InvalidPathError for a path that isn't a repo, or ErrExists.
+// *worktree.RefusedError for a path that isn't a repo, or ErrExists.
 func (r *Registry) Add(path string) (Project, error) {
 	top, err := worktree.TopLevel(path)
 	if err != nil {
