@@ -234,6 +234,11 @@ tr:last-child td { border-bottom: 0; }
 .rtop { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .rmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rmove { display: flex; gap: 6px; justify-content: flex-end; }
+.radios.stack { flex-direction: column; align-items: stretch; }
+.radios label.dis { opacity: .5; cursor: not-allowed; }
+.radios small { color: var(--muted); }
+.radios input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: inherit; font-family: var(--f-mono); font-size: 12.5px; background: var(--bg); color: var(--fg); }
+.field select { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; background: var(--bg); color: var(--fg); }
 .modal ul.fails { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 
 @media (max-width: 1080px) {
@@ -268,6 +273,7 @@ tr:last-child td { border-bottom: 0; }
     <nav class="rail" aria-label="Sessions and Projects">
       <section>
         <h3><span>Sessions</span><span id="sess-sum"></span></h3>
+        <button class="addp" type="button" data-new="1" style="width:calc(100% - 16px);margin-bottom:8px">+ New Session</button>
         <ul class="slist" id="slist"></ul>
       </section>
       <section>
@@ -664,7 +670,8 @@ function openPalette() {
     const q = $("#pal-q").value.toLowerCase();
     const list = sorted().filter(s => (s.title + proj(s.project).name + s.wt + AGENTS[s.agent].name).toLowerCase().includes(q));
     hl = Math.min(hl, Math.max(0, list.length - 1));
-    $("#pal-list").innerHTML = list.map((s, i) => `<li><button class="${i === hl ? "hl" : ""}" data-open="${s.id}"><span class="dot ${s.state}"></span><span>${s.title} <span class="crumb">· ${proj(s.project).name}</span></span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span></button></li>`).join("") || `<li class="empty-note">No Session matches.</li>`;
+    const newItem = !q || "new session".includes(q) ? `<li><button data-new="1"><span></span><span><strong>+ New Session…</strong> <span class="crumb">· any Project, Worktree and Agent</span></span><span></span></button></li>` : "";
+    $("#pal-list").innerHTML = newItem + list.map((s, i) => `<li><button class="${i === hl ? "hl" : ""}" data-open="${s.id}"><span class="dot ${s.state}"></span><span>${s.title} <span class="crumb">· ${proj(s.project).name}</span></span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span></button></li>`).join("") || `<li class="empty-note">No Session matches.</li>`;
     return list;
   };
   draw();
@@ -675,6 +682,41 @@ function openPalette() {
     if (e.key === "ArrowDown") { hl = Math.min(hl + 1, list.length - 1); draw(); e.preventDefault(); }
     if (e.key === "ArrowUp") { hl = Math.max(hl - 1, 0); draw(); e.preventDefault(); }
     if (e.key === "Enter" && list[hl]) { go(list[hl].id); }
+  });
+}
+function openNew(pid = ui.view === "sessions" ? sess(ui.current).project : "fh") {
+  const p = proj(pid);
+  const wts = p.worktrees.map(w => {
+    const taken = sessions.find(s => s.project === p.id && s.wt === w.path);
+    const why = w.agentWt ? "Agent worktree" : taken ? `has a Session (${STATE_LABEL[taken.state]})` : "";
+    return `<label class="${why ? "dis" : ""}"><input type="radio" name="wt" value="${w.path}" ${why ? "disabled" : ""}><span class="mono">${w.path}</span>${why ? `<small>· ${why}</small>` : ""}</label>`;
+  }).join("");
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="New Session">
+    <form id="new-form"><h3>New Session</h3>
+      <label class="field"><span>Project</span><select id="nw-proj">${projects.map(x => `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.name}</option>`).join("")}</select></label>
+      <div class="field"><span>Worktree</span><div class="radios stack">
+        <label><input type="radio" name="wt" value="__new" checked>New Worktree on branch <input type="text" id="nw-branch" value="quick-${sessions.length + 1}" aria-label="Branch name"></label>
+        ${wts}
+      </div><small class="crumb">One Session per Worktree. New Worktrees go to ${p.name}.worktrees/.</small></div>
+      <div class="field"><span>Agent</span><div class="radios">
+        ${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" id="nw-ag-${k}" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}
+      </div></div>
+      <label class="field"><span>Starting prompt (optional)</span><input type="text" id="nw-prompt" placeholder="A message, or a skill such as /diagnosing-bugs"></label>
+      <label class="toggle"><input type="checkbox" id="nw-auto"><span>Auto-approve in this Session<small>Off by default. Permission requests then go to the Inbox.</small></span></label>
+      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
+    </form></div></div>`;
+  $("#nw-proj").addEventListener("change", e => openNew(e.target.value));
+  $("#new-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const fd = new FormData(e.target), agent = fd.get("agent"), choice = fd.get("wt");
+    const branch = choice === "__new" ? ($("#nw-branch").value.trim() || `quick-${sessions.length + 1}`) : choice;
+    if (choice === "__new") p.worktrees.push({ path: branch, branch });
+    const prompt = $("#nw-prompt").value.trim().replace(/</g, "&lt;");
+    const id = "n" + Date.now();
+    sessions.push({ id, title: prompt ? (prompt.length > 44 ? prompt.slice(0, 44) + "…" : prompt) : "New Session", project: p.id, wt: branch, agent,
+      state: prompt ? "working" : "idle", feature: null, stage: null, acp: "sess_new…", started: "just now",
+      git: { ahead: 0, behind: 0, files: [], pr: "none" }, msgs: prompt ? [{ r: "user", t: prompt }] : [] });
+    closeOverlay(); toast(`Session started: ${AGENTS[agent].name} in ${p.name} / ${branch}`); go(id);
   });
 }
 function closeOverlay() { $("#overlay").innerHTML = ""; }
@@ -724,6 +766,7 @@ document.addEventListener("click", e => {
   if (d.fproj) { ui.factoryProject = d.fproj; ui.feature = (factory[d.fproj] || [])[0]?.id; return renderMain(); }
   if (d.feat) { ui.feature = d.feat; return renderMain(); }
   if (d.start) return openStart(+d.start);
+  if (d.new) return openNew();
   if (d.confirm) return openConfirm(d.confirm);
   if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return renderMain(); }
   if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
