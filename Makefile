@@ -55,6 +55,7 @@ test:
 	go test -race ./...
 
 e2e: build
+	go build -o bin/fakeagent ./internal/acp/fakeagent  # the Agent the e2e Sessions talk to
 	cd web && npx playwright install $(PLAYWRIGHT_INSTALL_FLAGS) chromium
 	cd web && npm run e2e
 

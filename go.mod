@@ -9,5 +9,7 @@ require (
 	github.com/coder/websocket v1.8.15
 )
 
+require github.com/coder/acp-go-sdk v0.20.0 // indirect
+
 // web/node_modules holds a Go package (npm "flatted"); keep it out of ./...
 ignore ./web/node_modules

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/philipsahli/fullharness/internal/agent"
 )
 
 const configFileName = "config.toml"
@@ -20,6 +22,8 @@ type config struct {
 	// ScanFolder is where Add Project looks for repos to suggest, for
 	// example "~/work".
 	ScanFolder string `toml:"scan_folder"`
+	// Agents overrides or adds Agent definitions ([agents.<id>]).
+	Agents map[string]agent.Override `toml:"agents"`
 }
 
 // loadConfig reads config.toml from dir. A missing file is an empty config.

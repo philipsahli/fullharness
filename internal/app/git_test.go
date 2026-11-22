@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,7 +24,30 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 	}
-	os.Exit(m.Run())
+	bin, cleanup, err := buildFakeAgent()
+	if err != nil {
+		panic(err)
+	}
+	fakeAgentBin = bin
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
+}
+
+// fakeAgentBin is internal/acp/fakeagent, built once for all tests.
+var fakeAgentBin string
+
+func buildFakeAgent() (string, func(), error) {
+	dir, err := os.MkdirTemp("", "fh-fakeagent-")
+	if err != nil {
+		return "", nil, err
+	}
+	bin := filepath.Join(dir, "fakeagent")
+	out, err := exec.Command("go", "build", "-o", bin, "github.com/philipsahli/fullharness/internal/acp/fakeagent").CombinedOutput()
+	if err != nil {
+		return "", nil, fmt.Errorf("build fake agent: %v\n%s", err, out)
+	}
+	return bin, func() { _ = os.RemoveAll(dir) }, nil // a leftover temp dir is harmless
 }
 
 // git runs git in dir and returns its trimmed output.

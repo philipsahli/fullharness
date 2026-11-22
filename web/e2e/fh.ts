@@ -1,11 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-// The binary `make e2e` builds, with the UI embedded.
+// The binaries `make e2e` builds: fh with the UI embedded, and the fake ACP
+// agent (internal/acp/fakeagent) that stands in for Claude Code.
 const binary = path.resolve(import.meta.dirname, "../../bin/fh");
+const fakeAgent = path.resolve(import.meta.dirname, "../../bin/fakeagent");
 
 // Fh runs the real fh binary on a free port with its own temp state folder,
 // the way a user runs it, minus opening the browser.
@@ -19,9 +21,19 @@ export class Fh {
     readonly dev: boolean,
   ) {}
 
-  // start launches fh; dev adds --dev (the token survives restarts).
-  static async start({ dev = false } = {}): Promise<Fh> {
+  // start launches fh; dev adds --dev (the token survives restarts), and
+  // agentScript makes the "claude" Agent the fake agent running that script.
+  static async start({
+    dev = false,
+    agentScript = undefined as object | undefined,
+  } = {}): Promise<Fh> {
     const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev);
+    if (agentScript) {
+      writeFileSync(
+        path.join(fh.dir, "config.toml"),
+        `[agents.claude]\ncommand = [${JSON.stringify(fakeAgent)}]\nenv = { FH_FAKE_SCRIPT = ${JSON.stringify(JSON.stringify(agentScript))} }\n`,
+      );
+    }
     await fh.launch();
     return fh;
   }

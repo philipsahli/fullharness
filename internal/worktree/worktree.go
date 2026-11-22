@@ -20,9 +20,8 @@ type Worktree struct {
 	Branch string `json:"branch"` // empty when HEAD is detached
 	// Main is the Project's own tree, the first entry git reports.
 	Main bool `json:"main"`
-	// Agent marks a Worktree fh didn't create; fh never starts a Session in
-	// one or removes it. Until fh creates Worktrees (#4), that is every
-	// Worktree except the main tree.
+	// Agent marks a Worktree fh didn't create (and isn't the main tree); fh
+	// never starts a Session in one or removes it.
 	Agent bool `json:"agent"`
 	// Missing means git still lists the Worktree but its folder is gone
 	// (`git worktree prune` would drop it). Its counts stay zero.
@@ -40,7 +39,8 @@ type Worktree struct {
 }
 
 // List returns every Worktree of the repo at repo, main tree first.
-func List(repo string) ([]Worktree, error) {
+// created reports whether fh created the Worktree at a path.
+func List(repo string, created func(path string) bool) ([]Worktree, error) {
 	out, err := run(repo, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func List(repo string) ([]Worktree, error) {
 	for i := range wts {
 		w := &wts[i]
 		w.Main = i == 0
-		w.Agent = i != 0
+		w.Agent = i != 0 && !created(w.Path)
 		w.Base = base
 		w.FetchedAt = fetchedAt
 		if _, err := os.Stat(w.Path); err != nil {
@@ -162,27 +162,28 @@ func run(dir string, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-// InvalidPathError explains why a path can't become a Project. Its message is
-// shown to the user as is.
-type InvalidPathError struct{ Reason string }
+// RefusedError explains why fh refused what the user typed: a path that
+// can't become a Project, or a branch name a new Worktree can't use. Its
+// message is shown to the user as is.
+type RefusedError struct{ Reason string }
 
-func (e *InvalidPathError) Error() string { return e.Reason }
+func (e *RefusedError) Error() string { return e.Reason }
 
 // TopLevel returns the top folder of the git repo containing path, so a
 // subfolder adds its repo. A linked worktree is refused: it belongs to its
 // main repo, which lists it anyway.
 func TopLevel(path string) (string, error) {
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
-		return "", &InvalidPathError{Reason: path + " is not a folder"}
+		return "", &RefusedError{Reason: path + " is not a folder"}
 	}
 	out, err := run(path, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir")
 	if err != nil {
 		// --show-toplevel fails in a bare repository, which has no working
 		// folder for a Session to run in.
 		if bare, err := run(path, "rev-parse", "--is-bare-repository"); err == nil && strings.TrimSpace(string(bare)) == "true" {
-			return "", &InvalidPathError{Reason: path + " is a bare git repository; add a clone with a working folder"}
+			return "", &RefusedError{Reason: path + " is a bare git repository; add a clone with a working folder"}
 		}
-		return "", &InvalidPathError{Reason: path + " is not a git repository"}
+		return "", &RefusedError{Reason: path + " is not a git repository"}
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) != 3 {
@@ -192,7 +193,40 @@ func TopLevel(path string) (string, error) {
 	if gitDir != commonDir {
 		// The common dir of a linked worktree is the main repo's .git folder.
 		main := filepath.Dir(commonDir)
-		return "", &InvalidPathError{Reason: fmt.Sprintf("%s is a worktree of %s; add that instead", top, main)}
+		return "", &RefusedError{Reason: fmt.Sprintf("%s is a worktree of %s; add that instead", top, main)}
 	}
 	return top, nil
+}
+
+// NewPath is where Create puts the Worktree for branch: next to the
+// Project's folder, in <project>.worktrees/<branch>, so the Project's own
+// tree stays clean (#1, story 19).
+func NewPath(repo, branch string) string {
+	return filepath.Join(filepath.Dir(repo), filepath.Base(repo)+".worktrees", filepath.FromSlash(branch))
+}
+
+// Create adds a Worktree on a new branch at NewPath. The branch starts from
+// the same base ahead/behind uses, so a new Worktree starts from what is
+// shipped, not from whatever the main tree has checked out. It doesn't track
+// that base: a plain `git push` should create the branch upstream, not push
+// to main. It returns the Worktree's path.
+func Create(repo, branch string) (string, error) {
+	if _, err := run(repo, "check-ref-format", "--branch", branch); err != nil {
+		return "", &RefusedError{Reason: fmt.Sprintf("%q is not a valid branch name", branch)}
+	}
+	if _, err := run(repo, "rev-parse", "--verify", "-q", "refs/heads/"+branch); err == nil {
+		return "", &RefusedError{Reason: fmt.Sprintf("branch %q already exists; pick its Worktree instead, or another name", branch)}
+	}
+	path := NewPath(repo, branch)
+	if _, err := os.Stat(path); err == nil {
+		return "", &RefusedError{Reason: path + " already exists"}
+	}
+	args := []string{"worktree", "add", "-q", "--no-track", "-b", branch, path}
+	if base := defaultBase(repo); base != "" {
+		args = append(args, base)
+	}
+	if _, err := run(repo, args...); err != nil {
+		return "", err
+	}
+	return path, nil
 }
