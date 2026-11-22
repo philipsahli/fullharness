@@ -109,8 +109,8 @@ func Detect(repo string) (kind, name string) {
 // It is the one place these rules live (#11), for every tracker:
 //   - Ticket: closed → Shipped; an open linked PR → Review; a branch ahead
 //     → Implementing; else Tickets.
-//   - Startable: open, labelled ready-for-agent, no open (or unknown)
-//     blocker. "Part of a Spec" is the adapter's job: it passes only
+//   - Startable: at the Tickets Stage (open, not started), labelled
+//     ready-for-agent, no open (or unknown) blocker. "Part of a Spec" is the adapter's job: it passes only
 //     Tickets that belong to a Spec.
 //   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
@@ -153,7 +153,9 @@ func Derive(features []Feature) {
 				}
 				blocked = blocked || b.Open
 			}
-			t.Startable = !t.Closed && t.Label == ReadyLabel && !blocked
+			// Only a Ticket nobody has started: a branch ahead or an open PR
+			// means it is already in progress.
+			t.Startable = t.Stage == StageTickets && t.Label == ReadyLabel && !blocked
 			f.Breakdown[t.Stage]++
 			if !t.Closed {
 				if pos := slices.Index(stageOrder, t.Stage); earliest < 0 || pos < earliest {

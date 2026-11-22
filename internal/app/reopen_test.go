@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -264,5 +265,22 @@ func TestAnAgentRemovedFromConfigKeepsItsReopenAfterItComesBack(t *testing.T) {
 
 	if s := objects(t, back.state(back.authorisedClient()), "sessions")[0]; s["id"] != id || s["canReopen"] != true {
 		t.Errorf("Agent configured again: session %v, want canReopen true", s)
+	}
+}
+
+func TestASessionsOwnPageSaysItCanBeReopened(t *testing.T) {
+	f, c, id, _ := sessionAfterRestart(t, script{}, nil)
+
+	resp, err := c.Get(f.origin() + "/api/sessions/" + id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d map[string]any
+	if err := json.Unmarshal([]byte(readBody(t, resp)), &d); err != nil {
+		t.Fatal(err)
+	}
+
+	if d["canReopen"] != true {
+		t.Errorf("GET /api/sessions/%s canReopen = %v, want true, as the list says", id, d["canReopen"])
 	}
 }
