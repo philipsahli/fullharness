@@ -59,6 +59,10 @@ export function useEventChannel(): Connection {
     const checkAfterClose = async () => {
       try {
         const resp = await fetch("/api/state", { credentials: "same-origin", cache: "no-store" });
+        // The tab may have stopped (unmounted, or found fh restarted) while
+        // the fetch was in flight; reconnecting now would leave a socket open
+        // that nothing closes.
+        if (stopped) return;
         if (resp.status === 401) {
           restarted();
           return;
@@ -70,6 +74,7 @@ export function useEventChannel(): Connection {
       } catch {
         // fh is not running (yet); keep trying.
       }
+      if (stopped) return;
       setConn({ status: "lost" });
       timer = window.setTimeout(checkAfterClose, retryMs);
     };
