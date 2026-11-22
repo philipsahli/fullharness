@@ -51,7 +51,12 @@ export function App() {
   );
 }
 
-function Tab(props: { view: View; current: View; onSelect: (v: View) => void; children: React.ReactNode }) {
+function Tab(props: {
+  view: View;
+  current: View;
+  onSelect: (v: View) => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       className="tab"

@@ -32,7 +32,7 @@ func TestSecondLaunchDoesNotOutliveTheFirst(t *testing.T) {
 	second := startFh(t, dir)
 	c := second.authorisedClient()
 
-	first.inst.Close()
+	first.stop()
 	// The second launch only opened a tab, so nothing serves fh now.
 	if _, err := c.Get(first.origin() + "/api/state"); err == nil {
 		t.Fatal("something still serves fh after the running instance closed")
@@ -44,7 +44,7 @@ func TestLaunchFilesAreReadableOnlyByTheUser(t *testing.T) {
 	startFh(t, dir)
 
 	n := 0
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -55,6 +55,9 @@ func TestLaunchFilesAreReadableOnlyByTheUser(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if n == 0 {
 		t.Fatal("fh wrote no launch file")
 	}
@@ -63,7 +66,7 @@ func TestLaunchFilesAreReadableOnlyByTheUser(t *testing.T) {
 func TestLaunchAfterStaleInstanceStartsFreshServer(t *testing.T) {
 	dir := t.TempDir()
 	first := startFh(t, dir)
-	first.inst.Close()
+	first.stop()
 
 	second := startFh(t, dir)
 
@@ -77,7 +80,7 @@ func TestCookieFromBeforeRestartIsRejected(t *testing.T) {
 	first := startFh(t, dir)
 	oldTab := first.authorisedClient()
 	port, _ := strconv.Atoi(first.launchURL().Port())
-	first.inst.Close()
+	first.stop()
 
 	restarted := startFhOnPort(t, dir, port)
 
@@ -118,7 +121,7 @@ func TestSimultaneousLaunchesEndWithOneServer(t *testing.T) {
 		if r.err != nil {
 			t.Fatalf("a launch failed: %v", r.err)
 		}
-		t.Cleanup(func() { r.inst.Close() })
+		t.Cleanup(func() { stopFh(t, r.inst) })
 		urls = append(urls, r.opened)
 	}
 

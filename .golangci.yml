@@ -1,0 +1,9 @@
+# ADR 0007: golangci-lint's default linters (errcheck, govet, ineffassign,
+# staticcheck, unused) plus a gofmt check. The version is pinned in
+# tools/go.mod; run it through `make lint`.
+version: "2"
+linters:
+  default: standard
+formatters:
+  enable:
+    - gofmt

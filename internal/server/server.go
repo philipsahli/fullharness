@@ -67,7 +67,7 @@ func (s *Server) Close() error {
 	// would stall Ctrl+C. Tabs treat any close the same way.
 	s.mu.Lock()
 	for c := range s.conns {
-		c.CloseNow()
+		_ = c.CloseNow() // fails only if the tab already went away
 	}
 	s.mu.Unlock()
 	return err
@@ -88,7 +88,8 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.snapshot())
+	// An error here means the client went away; there is no one to tell.
+	_ = json.NewEncoder(w).Encode(s.snapshot())
 }
 
 // snapshot is the full state a tab needs to render. Later tickets fill in
@@ -126,7 +127,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		delete(s.conns, conn)
 		s.mu.Unlock()
-		conn.CloseNow()
+		_ = conn.CloseNow() // fails only if already closed
 	}()
 
 	ctx := conn.CloseRead(r.Context()) // the client sends nothing; commands are HTTP POSTs
