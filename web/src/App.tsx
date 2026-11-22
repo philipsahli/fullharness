@@ -10,7 +10,7 @@ export function App() {
   const inboxCount = snapshot?.inbox.length ?? 0;
 
   return (
-    <div className="app">
+    <div className="app" data-connection={conn.status}>
       <header className="top">
         <div className="brand">
           <b>fh</b>

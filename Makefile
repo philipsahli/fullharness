@@ -4,13 +4,17 @@
 # make lint:  Go and UI linters, including the UI typecheck (ADR 0007). Versions
 #             are pinned in tools/go.mod (Go) and web/package.json (UI).
 # make test:  Go tests with the race detector (the API tests in internal/app).
+# make e2e:   Playwright smoke tests in Chromium against a fresh bin/fh. The
+#             first run downloads Chromium; CI sets PLAYWRIGHT_INSTALL_FLAGS=--with-deps
+#             to also install its system libraries on Linux.
 # make check: everything CI runs. Run it before opening a PR.
 
 DEV_PORT ?= 4816
 DEV_DIR  ?= $(CURDIR)/.dev
 GOTOOL   := go tool -modfile=tools/go.mod
+PLAYWRIGHT_INSTALL_FLAGS ?=
 
-.PHONY: build dev lint test check web-deps
+.PHONY: build dev lint test e2e check web-deps
 
 web/node_modules: web/package-lock.json
 	cd web && npm ci
@@ -37,4 +41,8 @@ lint: web-deps
 test:
 	go test -race ./...
 
-check: lint test
+e2e: build
+	cd web && npx playwright install $(PLAYWRIGHT_INSTALL_FLAGS) chromium
+	cd web && npm run e2e
+
+check: lint test e2e
