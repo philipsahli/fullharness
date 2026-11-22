@@ -1,6 +1,8 @@
 # make build: build the UI into web/dist, then a binary at bin/fh that embeds it.
 # make dev:   Vite dev server on 127.0.0.1:5173 proxied to a Go server on
 #             DEV_PORT, with its own state folder so it never touches a running fh.
+#             scripts/devwatch rebuilds and restarts fh (--dev) on Go changes;
+#             open tabs reload by themselves.
 # make lint:  Go and UI linters, including the UI typecheck (ADR 0007). Versions
 #             are pinned in tools/go.mod (Go) and web/package.json (UI).
 # make test:  Go tests with the race detector (the API tests in internal/app).
@@ -36,7 +38,7 @@ build: web-deps
 dev: web-deps
 	@trap 'kill 0' EXIT; \
 	(cd web && FH_PORT=$(DEV_PORT) npm run dev) & \
-	go run ./cmd/fh --port $(DEV_PORT) --dir $(DEV_DIR) --ui-url http://127.0.0.1:5173
+	go run ./scripts/devwatch --port $(DEV_PORT) --dir $(DEV_DIR) --ui-url http://127.0.0.1:5173
 
 $(TOOLS)/golangci-lint $(TOOLS)/govulncheck:
 	go build -modfile=tools/go.mod -o $(TOOLS)/ \
