@@ -1,0 +1,750 @@
+<title>fullharness UI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: three-pane app shell — rail (switch), main (Session / Factory / Inbox), detail (Worktree). Stacks to one column on phones. */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --sunken: #e8ecea;
+  --line: #d5dcd9;
+  --fg: #16201d;
+  --muted: #5b6863;
+  --accent: #0d6b5f;
+  --accent-soft: #d5ece7;
+  --on-accent: #ffffff;
+  --waiting: #b45309;
+  --waiting-soft: #fdecd3;
+  --working: #2563eb;
+  --working-soft: #dde7fd;
+  --idle: #7a8580;
+  --exited: #a3aca8;
+  --good: #15803d;
+  --bad: #b91c1c;
+  --term-bg: #1b2421;
+  --term-fg: #d7e2dd;
+  --shadow: 0 1px 2px rgba(20,40,34,.06), 0 8px 24px rgba(20,40,34,.08);
+  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111816; --surface: #18211e; --sunken: #0d1311; --line: #2a3632; --fg: #e3ebe8; --muted: #93a19c;
+  --accent: #3fb8a5; --accent-soft: #163a34; --on-accent: #0b1513;
+  --waiting: #f2a541; --waiting-soft: #3a2a12; --working: #6c9cff; --working-soft: #1b2847;
+  --idle: #7f8c87; --exited: #56625e; --good: #4ade80; --bad: #f87171;
+  --term-bg: #0a0f0e; --term-fg: #cfdcd6; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111816; --surface: #18211e; --sunken: #0d1311; --line: #2a3632; --fg: #e3ebe8; --muted: #93a19c;
+  --accent: #3fb8a5; --accent-soft: #163a34; --on-accent: #0b1513;
+  --waiting: #f2a541; --waiting-soft: #3a2a12; --working: #6c9cff; --working-soft: #1b2847;
+  --idle: #7f8c87; --exited: #56625e; --good: #4ade80; --bad: #f87171;
+  --term-bg: #0a0f0e; --term-fg: #cfdcd6; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--f-mono); font-size: 12.5px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+
+.mock-note { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 0 auto 12px; max-width: 1400px; color: var(--muted); font-size: 12.5px; }
+.mock-note strong { color: var(--fg); font-weight: 600; }
+
+.app { max-width: 1400px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-height: 760px; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand b { font-family: var(--f-display); font-size: 20px; letter-spacing: -.02em; }
+.brand span { color: var(--muted); font-size: 12px; }
+.tabs { display: flex; gap: 2px; background: var(--sunken); padding: 3px; border-radius: 8px; }
+.tab { border: 0; background: transparent; padding: 5px 12px; border-radius: 6px; font-weight: 500; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.count { font-size: 11px; font-weight: 600; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--waiting); color: var(--surface); text-align: center; line-height: 18px; font-variant-numeric: tabular-nums; }
+.count[data-zero] { background: var(--sunken); color: var(--muted); }
+.jump { margin-left: auto; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 5px 8px 5px 10px; color: var(--muted); min-width: 220px; }
+.jump kbd { margin-left: auto; font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; background: var(--surface); }
+
+/* shell */
+.shell { display: grid; grid-template-columns: 270px minmax(0,1fr) 290px; min-height: 0; }
+.shell:not([data-view="sessions"]) { grid-template-columns: 270px minmax(0,1fr); }
+.shell:not([data-view="sessions"]) .detail { display: none; }
+.rail { border-right: 1px solid var(--line); background: var(--bg); padding: 12px 8px; display: flex; flex-direction: column; gap: 18px; overflow: auto; }
+.rail h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 0 8px 6px; display: flex; justify-content: space-between; }
+.slist { display: flex; flex-direction: column; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.srow { width: 100%; display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 2px 10px; align-items: center; text-align: left; background: transparent; border: 0; border-radius: 7px; padding: 7px 8px; }
+.srow:hover { background: var(--sunken); }
+.srow[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.srow .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow .s { grid-column: 2 / 4; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); }
+.dot.waiting { background: var(--waiting); box-shadow: 0 0 0 3px var(--waiting-soft); }
+.dot.working { background: var(--working); animation: pulse 1.6s ease-in-out infinite; }
+.dot.exited { background: transparent; border: 2px solid var(--exited); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px var(--working-soft); } }
+@media (prefers-reduced-motion: reduce) { .dot.working { animation: none; box-shadow: 0 0 0 3px var(--working-soft); } }
+.state { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.state.waiting { background: var(--waiting-soft); color: var(--waiting); }
+.state.working { background: var(--working-soft); color: var(--working); }
+.state.idle { background: var(--sunken); color: var(--muted); }
+.state.exited { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+
+.ptree { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.proj > div { display: flex; justify-content: space-between; align-items: baseline; padding: 0 8px; font-weight: 600; }
+.proj > div small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.wts { list-style: none; margin: 4px 0 0; padding: 0 0 0 8px; }
+.wt { display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 3px 8px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.wt span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { font-family: var(--f-body); font-size: 10.5px; padding: 0 6px; border-radius: 4px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
+.addp { margin: 0 8px; border: 1px dashed var(--line); background: transparent; border-radius: 7px; padding: 6px; color: var(--muted); }
+
+/* main */
+.main { min-width: 0; display: flex; flex-direction: column; }
+.mhead { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.mhead h2 { font-family: var(--f-display); font-size: 19px; letter-spacing: -.01em; }
+.crumb { color: var(--muted); font-size: 12.5px; }
+.agent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+.agent i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.seg { margin-left: auto; display: flex; background: var(--sunken); border-radius: 7px; padding: 2px; }
+.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 5px; font-size: 12.5px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); }
+
+.chat { flex: 1; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; max-height: 620px; }
+.msg { max-width: 72ch; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); padding: 8px 12px; border-radius: 10px 10px 2px 10px; }
+.msg.agent p { margin: 0 0 6px; }
+.who { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 3px; font-weight: 600; }
+.tool { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); max-width: 72ch; }
+.tool summary { list-style: none; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; cursor: pointer; }
+.tool summary::-webkit-details-marker { display: none; }
+.tool summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool .k { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.ok { color: var(--good); font-size: 12px; } .run { color: var(--working); font-size: 12px; }
+.tool pre { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line); font-family: var(--f-mono); font-size: 12px; overflow-x: auto; color: var(--muted); }
+.perm { border: 1px solid var(--waiting); background: var(--waiting-soft); border-radius: 10px; padding: 12px 14px; max-width: 72ch; display: grid; gap: 8px; }
+.perm .q { font-weight: 600; color: var(--waiting); }
+.perm code { display: block; background: var(--surface); padding: 6px 10px; border-radius: 6px; color: var(--fg); overflow-x: auto; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 5px 12px; font-weight: 500; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.small { padding: 2px 9px; font-size: 12.5px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.resolved { font-size: 12.5px; color: var(--muted); }
+.composer { border-top: 1px solid var(--line); padding: 12px 18px; display: flex; gap: 10px; align-items: center; }
+.composer input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 8px 12px; font: inherit; }
+.term { flex: 1; margin: 0; background: var(--term-bg); color: var(--term-fg); font-family: var(--f-mono); font-size: 12.5px; padding: 16px 18px; overflow: auto; max-height: 680px; white-space: pre; line-height: 1.5; }
+.fallback-note { padding: 6px 18px; font-size: 12px; color: var(--muted); background: var(--sunken); border-bottom: 1px solid var(--line); }
+
+/* detail */
+.detail { border-left: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 18px; background: var(--bg); overflow: auto; }
+.detail h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+dl.kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.files { list-style: none; margin: 0; padding: 0; font-family: var(--f-mono); font-size: 12px; display: grid; gap: 3px; }
+.files b { display: inline-block; width: 16px; font-weight: 500; }
+.m { color: var(--waiting); } .a { color: var(--good); }
+.hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+.ticketcard { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+
+/* factory */
+.fhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.pchip { border: 1px solid var(--line); background: var(--surface); border-radius: 20px; padding: 4px 12px; font-size: 13px; display: inline-flex; gap: 6px; align-items: baseline; }
+.pchip small { color: var(--muted); font-size: 11.5px; }
+.pchip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.fhead .btn.primary { margin-left: auto; }
+.board-wrap { overflow-x: auto; padding: 16px 18px 8px; }
+.board { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 10px; min-width: 1100px; }
+.col h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.col .skill { text-transform: none; letter-spacing: 0; font-family: var(--f-mono); font-weight: 400; font-size: 11px; }
+.col-body { background: var(--sunken); border-radius: 9px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+.fcard { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 10px; display: grid; gap: 6px; }
+.fcard[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.fcard .n { font-weight: 600; }
+.fcard .ref { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--sunken); }
+.bar span { display: block; }
+.bd { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.next { font-size: 12px; color: var(--accent); font-weight: 600; }
+.fdetail { margin: 8px 18px 18px; border: 1px solid var(--line); border-radius: 10px; }
+.fdetail header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.fdetail header h3 { font-family: var(--f-display); font-size: 17px; }
+.fdetail header .acts { margin-left: auto; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
+th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+.lbl { font-family: var(--f-mono); font-size: 11.5px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.stage { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
+.stage.shipped { color: var(--good); } .stage.review { color: var(--accent); } .stage.implementing { color: var(--working); background: var(--working-soft); }
+.stage.startable { color: var(--on-accent); background: var(--accent); }
+.empty-note { padding: 14px 18px; color: var(--muted); }
+.setup { margin: 24px 18px; border: 1px dashed var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 10px; max-width: 60ch; }
+
+/* inbox */
+.inbox { padding: 18px; display: grid; gap: 12px; max-width: 900px; }
+.ibox { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 16px; align-items: center; }
+.ibox .meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ibox code { display: block; margin-top: 6px; background: var(--bg); padding: 6px 10px; border-radius: 6px; overflow-x: auto; }
+
+/* overlays */
+.scrim { position: fixed; inset: 0; background: rgba(10,20,17,.35); display: grid; place-items: start center; padding: 12vh 16px 16px; z-index: 50; }
+.palette, .modal { width: min(560px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.palette input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; font: inherit; font-size: 15px; background: transparent; color: var(--fg); outline: none; }
+.palette ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow: auto; }
+.palette li button { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 7px; padding: 8px 10px; display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 10px; align-items: center; }
+.palette li button:hover, .palette li button.hl { background: var(--sunken); }
+.modal form { padding: 18px; display: grid; gap: 14px; }
+.modal h3 { font-family: var(--f-display); font-size: 18px; }
+.field { display: grid; gap: 6px; }
+.field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.field input[type=text] { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; background: var(--bg); color: var(--fg); }
+.radios { display: flex; flex-wrap: wrap; gap: 6px; }
+.radios label { border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.radios label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.toggle { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.toggle small { display: block; color: var(--muted); }
+.toast { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 60; }
+
+/* readiness + roadmap */
+.rdy { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.rdy.ready { color: var(--good); background: var(--sunken); }
+.rdy.notready { color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad); }
+.rdy.stale, .warn { color: var(--waiting); background: var(--waiting-soft); font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.checks { list-style: none; margin: 0; padding: 12px 14px; display: grid; gap: 5px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.checks li { display: grid; grid-template-columns: 18px minmax(0,1fr); gap: 6px; }
+.checks small { color: var(--muted); }
+.c-ok { color: var(--good); } .c-bad { color: var(--bad); font-weight: 600; } .c-warn { color: var(--waiting); font-weight: 600; }
+.assess { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.assess .btn { margin-left: auto; }
+.roadmap { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; padding: 16px 18px; }
+.rcol h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.rlist { list-style: none; margin: 0; padding: 6px; background: var(--sunken); border-radius: 9px; min-height: 180px; display: flex; flex-direction: column; gap: 6px; }
+.rcol.over .rlist { box-shadow: inset 0 0 0 2px var(--accent); }
+.rcard { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; display: grid; gap: 6px; cursor: grab; }
+.rcard.dragging { opacity: .5; }
+.rcard .n { font-weight: 600; }
+.rcard .ref { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.rtop { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.rmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rmove { display: flex; gap: 6px; justify-content: flex-end; }
+.modal ul.fails { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+@media (max-width: 1080px) {
+  .shell, .shell[data-view] { grid-template-columns: 230px minmax(0,1fr); }
+  .detail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+@media (max-width: 720px) {
+  .shell, .shell[data-view] { grid-template-columns: minmax(0,1fr); }
+  .rail { border-right: 0; border-bottom: 1px solid var(--line); max-height: 300px; }
+  .jump { min-width: 0; flex: 1 1 100%; order: 3; }
+  .chat { max-height: none; }
+  .ibox { grid-template-columns: minmax(0,1fr); }
+  .roadmap { grid-template-columns: minmax(0,1fr); }
+}
+</style>
+
+<p class="mock-note"><strong>fullharness (fh) — design mockup.</strong> <span>All Projects, Sessions and issues below are example data. Click Sessions, answer the permission requests, open the Software factory and Roadmap tabs (drag cards between Now, Next and Later), or press ⌘K / Ctrl+K.</span></p>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><b>fh</b><span>fullharness</span></div>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" id="tab-sessions" data-view="sessions" aria-selected="true">Sessions</button>
+      <button class="tab" role="tab" id="tab-factory" data-view="factory" aria-selected="false">Software factory</button>
+      <button class="tab" role="tab" id="tab-roadmap" data-view="roadmap" aria-selected="false">Roadmap</button>
+      <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count" id="inbox-count">2</span></button>
+    </div>
+    <button class="jump" id="jump-btn" type="button">Jump to a Session… <kbd>⌘K</kbd></button>
+  </header>
+
+  <div class="shell" id="shell" data-view="sessions">
+    <nav class="rail" aria-label="Sessions and Projects">
+      <section>
+        <h3><span>Sessions</span><span id="sess-sum"></span></h3>
+        <ul class="slist" id="slist"></ul>
+      </section>
+      <section>
+        <h3><span>Projects</span></h3>
+        <ul class="ptree" id="ptree"></ul>
+        <button class="addp" type="button" style="margin-top:10px;width:calc(100% - 16px)">+ Add Project</button>
+      </section>
+    </nav>
+    <main class="main" id="main"></main>
+    <aside class="detail" id="detail" aria-label="Worktree details"></aside>
+  </div>
+</div>
+
+<div id="overlay"></div>
+
+<script>
+const AGENTS = {
+  claude:   { name: "Claude Code", color: "#c96442" },
+  copilot:  { name: "Copilot CLI", color: "#6e56cf" },
+  opencode: { name: "OpenCode",   color: "#0e8a7a" },
+};
+const STATE_ORDER = { waiting: 0, working: 1, idle: 2, exited: 3 };
+const STATE_LABEL = { waiting: "Waiting", working: "Working", idle: "Idle", exited: "Exited" };
+
+const projects = [
+  { id: "fh", name: "fullharness", tracker: "GitHub", worktrees: [
+    { path: "fullharness", branch: "main" },
+    { path: "idea/acp-inbox", branch: "idea/acp-inbox" },
+    { path: "fh-12-pty-fallback", branch: "fh-12-pty-fallback" },
+    { path: "fh-14-worktree-list", branch: "fh-14-worktree-list" },
+    { path: "impl-spec-7-t13", branch: "impl-spec-7-t13", agentWt: true },
+  ]},
+  { id: "io", name: "inventory-operator", tracker: "GitHub", worktrees: [
+    { path: "inventory-operator", branch: "main" },
+    { path: "fix-reconcile-loop", branch: "fix-reconcile-loop" },
+  ]},
+  { id: "hf", name: "heroflow", tracker: "Local markdown", worktrees: [
+    { path: "heroflow", branch: "main" },
+    { path: "idea/onboarding", branch: "idea/onboarding" },
+  ]},
+  { id: "bt", name: "backstage-templates", tracker: null, worktrees: [ { path: "backstage-templates", branch: "main" } ] },
+];
+
+let sessions = [
+  { id: "s1", title: "Inbox for permission requests", project: "fh", wt: "idea/acp-inbox", agent: "claude", state: "waiting",
+    feature: "Inbox", stage: "Idea", acp: "sess_7f3a…c21", started: "41 min ago",
+    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0005-inbox-batching.md"],["M","internal/acp/client.go"]], pr: "none" },
+    perm: { id: "p1", kind: "Run command", cmd: "go test ./internal/acp/...", why: "Run the ACP client tests after the change to permission handling." },
+    msgs: [
+      { r: "user", t: "/grill-with-docs The Inbox should batch permission requests across Sessions." },
+      { r: "agent", t: ["Read GLOSSARY.md and ADRs 0001–0004 first. 'Inbox' is already defined as the list of pending permission requests across all Sessions.", "Q1 — Should Allow in the Inbox also offer \"Allow for this Session\" (remember the rule), or only one-shot answers? ➡️ One-shot only for v1."] },
+      { r: "user", t: "yes. also write the ADR and add a quick test for the request queue." },
+      { r: "tool", k: "Edit", d: "GLOSSARY.md", s: "ok", out: "+ **Inbox**: …one-shot answers only; no remembered rules in v1." },
+      { r: "tool", k: "Write", d: "docs/adr/0005-inbox-batching.md", s: "ok", out: "# Inbox answers are one-shot in v1\n…" },
+      { r: "tool", k: "Edit", d: "internal/acp/client.go", s: "ok", out: "@@ func (c *Client) onRequestPermission\n+ c.inbox.Push(req)" },
+      { r: "perm" },
+    ] },
+  { id: "s3", title: "#14 List all git worktrees", project: "fh", wt: "fh-14-worktree-list", agent: "opencode", state: "waiting",
+    feature: "Worktree view", stage: "Implementing", ticket: { n: 14, title: "List every git worktree, mark Agent worktrees" }, acp: "ses_02be…91d", started: "12 min ago",
+    git: { ahead: 1, behind: 2, files: [["M","internal/worktree/list.go"],["A","internal/worktree/list_test.go"]], pr: "none" },
+    perm: { id: "p2", kind: "Edit file", cmd: "internal/worktree/list.go  (+38 −4)", why: "Parse `git worktree list --porcelain` and mark worktrees not created by fullharness." },
+    msgs: [
+      { r: "user", t: "/implement #14" },
+      { r: "agent", t: ["Ticket #14: list every git worktree of a Project; worktrees fullharness didn't create are Agent worktrees (read-only). Starting with a failing test."] },
+      { r: "tool", k: "Write", d: "internal/worktree/list_test.go", s: "ok", out: "func TestListMarksAgentWorktrees(t *testing.T) { … }" },
+      { r: "tool", k: "Run", d: "go test ./internal/worktree/", s: "ok", out: "--- FAIL: TestListMarksAgentWorktrees (0.01s)\n    list_test.go:31: got 0 worktrees, want 3" },
+      { r: "perm" },
+    ] },
+  { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "fh-12-pty-fallback", agent: "copilot", state: "working", view: "terminal",
+    feature: "ACP session view", stage: "Implementing", ticket: { n: 12, title: "Terminal fallback when an Agent can't speak ACP" }, acp: "— (terminal fallback)", started: "26 min ago",
+    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: "none" },
+    msgs: [] },
+  { id: "s4", title: "Reconcile loop retries forever", project: "io", wt: "fix-reconcile-loop", agent: "claude", state: "idle",
+    feature: null, stage: null, acp: "sess_c019…e4a", started: "2 h ago",
+    git: { ahead: 2, behind: 0, files: [], pr: "#88 open" },
+    msgs: [
+      { r: "user", t: "/diagnosing-bugs reconcile loop never backs off when the CRD is missing" },
+      { r: "tool", k: "Run", d: "go test ./controllers/ -run TestReconcileMissingCRD", s: "ok", out: "ok  	inventory-operator/controllers	0.42s" },
+      { r: "agent", t: ["Fixed: the controller now returns RequeueAfter with exponential backoff (5s → 5m) instead of an immediate requeue. Regression test added; PR #88 opened."] },
+    ] },
+  { id: "s5", title: "Onboarding flow idea", project: "hf", wt: "idea/onboarding", agent: "opencode", state: "exited",
+    feature: "Onboarding", stage: "Idea", acp: "ses_9d41…07b", started: "yesterday",
+    git: { ahead: 1, behind: 5, files: [["M","GLOSSARY.md"]], pr: "none" },
+    msgs: [
+      { r: "user", t: "/grill-with-docs first-run onboarding for heroflow" },
+      { r: "agent", t: ["Recorded 'Hero' and 'Flow' in GLOSSARY.md. Next round: does onboarding create a sample Flow, or start empty?"] },
+    ] },
+];
+
+const factory = {
+  fh: [
+    { id: "f-inbox", name: "Inbox", stage: "Idea", ref: "Session · idea/acp-inbox", next: "Write spec", skill: "/to-spec" },
+    { id: "f-board", name: "Software factory board", stage: "Spec", ref: "Spec #15", next: "Make tickets", skill: "/to-tickets" },
+    { id: "f-acp", name: "ACP session view", stage: "Tickets", ref: "Spec #7 · 6 Tickets", next: "Implement spec", skill: "/implement-spec",
+      bd: { shipped: 2, review: 1, implementing: 1, todo: 2 },
+      tickets: [
+        { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", note: "PR #16 merged" },
+        { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", note: "PR #18 merged" },
+        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", note: "PR #21 open" },
+        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", note: "Session · Copilot CLI", sid: "s2" },
+        { n: 11, t: "Reopen a Session via session/load", stage: "Startable", note: "no open blockers" },
+        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Blocked", note: "blocked by #11", label: "needs-info" },
+      ] },
+    { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3 · 3 Tickets", next: "Open Session", skill: "",
+      bd: { shipped: 2, implementing: 1 } },
+    { id: "f-clean", name: "Worktree removal offer", stage: "Review", ref: "Spec #4 · PR #20", next: "Open PR", skill: "" ,
+      bd: { review: 2 } },
+    { id: "f-rel", name: "Release pipeline", stage: "Shipped", ref: "Spec #1 · closed", next: "Retro", skill: "/retro", bd: { shipped: 4 } },
+  ],
+  io: [
+    { id: "f-io1", name: "Backoff for missing CRDs", stage: "Review", ref: "Spec #87 · PR #88", next: "Open PR", skill: "", bd: { review: 1 } },
+    { id: "f-io2", name: "Multi-cluster inventory", stage: "Spec", ref: "Spec #90", next: "Make tickets", skill: "/to-tickets" },
+  ],
+  hf: [
+    { id: "f-hf1", name: "Onboarding", stage: "Idea", ref: "Session · idea/onboarding", next: "Write spec", skill: "/to-spec" },
+    { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/ · 4 issues", next: "Implement spec", skill: "/implement-spec", bd: { shipped: 1, todo: 3 } },
+  ],
+};
+const CHECKS = [
+  "Spec has all six sections, none empty",
+  "Spec has at least one Ticket",
+  "Every Ticket has “What to build” and an acceptance criterion",
+  "Blocking links have no cycle; blockers are in this Spec or closed",
+  "No Ticket labelled needs-info or needs-triage",
+  "At least one Startable ticket",
+  "No file paths or code blocks (warning only)",
+];
+const RD = {
+  "f-acp":   { checks: [1,1,1,1,0,1,"warn"], notes: { 4: "#13 is labelled needs-info", 6: "#12 has a code block (from prototype/acp-agents)" }, assess: "Stale", assessNote: "Assessment said Ready on Nov 19. Ticket #13 changed after that." },
+  "f-board": { checks: [1,0,1,1,1,0,1], notes: { 1: "no Tickets yet: run /to-tickets" }, assess: null },
+  "f-wt":    { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 12)." },
+  "f-clean": { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 15)." },
+  "f-rel":   { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 2)." },
+  "f-io1":   { checks: [1,1,1,1,1,1,1], assess: null },
+  "f-io2":   { checks: [0,0,1,1,1,0,1], notes: { 0: "Testing Decisions is empty" }, assess: null },
+  "f-hf2":   { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 20), appended to spec.md." },
+};
+const verdict = id => RD[id] ? (RD[id].checks.some(c => c === 0) ? "Not ready" : "Ready") : null;
+const failing = id => RD[id].checks.map((c, i) => c === 0 ? i : -1).filter(i => i >= 0);
+function rdBadge(id) {
+  const r = RD[id]; if (!r) return "";
+  const v = verdict(id), n = failing(id).length;
+  return `<span class="badges"><span class="rdy ${v === "Ready" ? "ready" : "notready"}">${v}${n ? ` · ${n} failing` : ""}</span>${r.assess === "Stale" ? '<span class="rdy stale">Assessment stale</span>' : ""}</span>`;
+}
+/* Roadmap group lives on the Spec (roadmap:* label / Roadmap: line); order inside a group is fh-local. Shipped Features drop off. */
+const roadmap = {
+  now:   [["fh","f-acp"],["fh","f-wt"],["fh","f-clean"],["io","f-io1"]],
+  next:  [["fh","f-board"],["hf","f-hf2"]],
+  later: [["io","f-io2"],["fh","f-inbox"],["hf","f-hf1"]],
+};
+const STAGES = [["Idea","/grill-with-docs"],["Spec","/to-spec"],["Tickets","/to-tickets"],["Implementing","/implement"],["Review","/code-review"],["Shipped","/retro"]];
+const BD_COLORS = { shipped: "var(--good)", review: "var(--accent)", implementing: "var(--working)", todo: "var(--idle)" };
+
+const ui = { view: "sessions", current: "s1", factoryProject: "fh", feature: "f-acp", rmProject: "" };
+const $ = (s, r = document) => r.querySelector(s);
+const proj = id => projects.find(p => p.id === id);
+const sess = id => sessions.find(s => s.id === id);
+const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
+
+function sorted() { return [...sessions].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]); }
+
+function renderRail() {
+  const waiting = sessions.filter(s => s.state === "waiting").length;
+  $("#sess-sum").textContent = `${sessions.length} · ${waiting} waiting`;
+  $("#slist").innerHTML = sorted().map(s => `
+    <li><button class="srow" data-sid="${s.id}" aria-current="${ui.view === "sessions" && ui.current === s.id}">
+      <span class="dot ${s.state}"></span><span class="t">${s.title}</span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
+      <span class="s">${proj(s.project).name} · ${AGENTS[s.agent].name}</span>
+    </button></li>`).join("");
+  $("#ptree").innerHTML = projects.map(p => `
+    <li class="proj"><div>${p.name}<small>${p.tracker ?? "no tracker"}</small></div>
+      <ul class="wts">${p.worktrees.map(w => {
+        const s = sessions.find(x => x.project === p.id && x.wt === w.path);
+        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span>${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
+      }).join("")}</ul></li>`).join("");
+  const c = $("#inbox-count");
+  const pending = sessions.filter(s => s.perm && !s.perm.answer).length;
+  c.textContent = pending; pending ? c.removeAttribute("data-zero") : c.setAttribute("data-zero", "");
+}
+
+function permCard(s) {
+  const p = s.perm;
+  if (p.answer) return `<div class="resolved">${p.kind}: <code>${p.cmd}</code> — ${p.answer}</div>`;
+  return `<div class="perm" role="group" aria-label="Permission request">
+    <div class="q">${AGENTS[s.agent].name} asks to ${p.kind.toLowerCase()}</div>
+    <code>${p.cmd}</code><div>${p.why}</div>
+    <div class="acts"><button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button></div>
+  </div>`;
+}
+
+function renderMsgs(s) {
+  if (!s.msgs.length) return `<p class="empty-note">No messages yet.</p>`;
+  return s.msgs.map(m => {
+    if (m.r === "user") return `<div class="msg user">${m.t}</div>`;
+    if (m.r === "agent") return `<div class="msg agent"><div class="who">${AGENTS[s.agent].name}</div>${m.t.map(p => `<p>${p}</p>`).join("")}</div>`;
+    if (m.r === "tool") return `<details class="tool"><summary><span class="k">${m.k}</span><code>${m.d}</code><span class="${m.s === "ok" ? "ok" : "run"}">${m.s === "ok" ? "done" : "running…"}</span></summary><pre>${m.out}</pre></details>`;
+    if (m.r === "perm") return permCard(s);
+    return "";
+  }).join("");
+}
+
+const TERM = `╭──────────────────────────────────────────────────────────╮
+│ GitHub Copilot CLI 1.0.109                               │
+│ ~/work/fullharness.worktrees/fh-12-pty-fallback          │
+╰──────────────────────────────────────────────────────────╯
+
+> /implement #12
+
+● Reading issue #12: Terminal fallback when an Agent can't speak ACP
+● Edit internal/pty/pty.go (+64 -3)
+● Edit web/src/terminal.ts (+41 -0)
+● Run go test ./internal/pty/
+  ok  	fullharness/internal/pty	0.31s
+
+● Wiring resize events from xterm.js to the PTY (TIOCSWINSZ)…
+  ⠼ Thinking`;
+
+function renderMain() {
+  const main = $("#main"), detail = $("#detail");
+  if (ui.view === "sessions") {
+    const s = sess(ui.current), p = proj(s.project);
+    const v = s.view || "chat";
+    main.innerHTML = `
+      <div class="mhead">
+        <div style="display:grid;gap:2px;min-width:0">
+          <span class="crumb">${p.name} / ${s.wt}</span>
+          <h2>${s.title}</h2>
+        </div>
+        ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
+        <div class="seg" role="group" aria-label="Session view">
+          <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
+          <button type="button" data-viewmode="terminal" aria-pressed="${v === "terminal"}">Terminal</button>
+        </div>
+      </div>
+      ${v === "terminal"
+        ? `${s.id === "s2" ? `<div class="fallback-note">Terminal fallback: this Session was started in the Agent's own TUI. Waiting is detected from output silence.</div>` : ""}<pre class="term" aria-label="Terminal">${s.id === "s2" ? TERM : "$ " + AGENTS[s.agent].name.toLowerCase().split(" ")[0] + "\n(terminal view of the same Session)"}</pre>`
+        : `<div class="chat" id="chat">${renderMsgs(s)}</div>`}
+      ${s.state === "exited"
+        ? `<div class="composer"><span class="crumb" style="flex:1">This Session ended when fullharness quit. ${AGENTS[s.agent].name} supports session/load.</span><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`
+        : `<form class="composer" data-send="${s.id}"><input id="composer-input" type="text" placeholder="Message ${AGENTS[s.agent].name}… (/ for skills)" aria-label="Message"><button class="btn primary" type="submit">Send</button></form>`}`;
+    const files = s.git.files.length
+      ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</li>`).join("")}</ul>`
+      : `<p class="hint">No uncommitted changes.</p>`;
+    detail.innerHTML = `
+      <section><h3>Worktree</h3>
+        <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
+        <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
+        <dt>PR</dt><dd>${s.git.pr}</dd></dl></section>
+      <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
+      ${s.ticket ? `<section><h3>Ticket</h3><div class="ticketcard"><span class="mono">#${s.ticket.n}</span><strong>${s.ticket.title}</strong><span class="crumb">Feature: ${s.feature} · Stage: ${s.stage}</span></div></section>`
+        : s.feature ? `<section><h3>Feature</h3><div class="ticketcard"><strong>${s.feature}</strong><span class="crumb">Stage: ${s.stage}. Run /to-spec here and fh offers to link the new Spec.</span></div></section>` : ""}
+      <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
+        <p class="hint" style="margin-top:10px"><button class="btn small" disabled>Remove Worktree</button></p>
+        <p class="hint">Offered once the branch is merged, has no uncommitted changes and no live Session.</p></section>`;
+    const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
+  } else if (ui.view === "factory") {
+    const p = proj(ui.factoryProject);
+    const chips = projects.map(x => `<button class="pchip" data-fproj="${x.id}" aria-pressed="${x.id === p.id}">${x.name}<small>${x.tracker ?? "set up tracker"}</small></button>`).join("");
+    if (!p.tracker) {
+      main.innerHTML = `<div class="fhead">${chips}</div>
+        <div class="setup"><h3 style="font-family:var(--f-display)">${p.name} has no Issue tracker yet</h3>
+        <p style="margin:0">fh reads <code>docs/agents/issue-tracker.md</code> to find this Project's Specs and Tickets. It isn't there.</p>
+        <div class="acts"><button class="btn primary" data-toast="Session started: /setup-matt-pocock-skills in ${p.name}">Set up tracker</button></div>
+        <p class="hint" style="margin:0">Starts a Session that runs <code>/setup-matt-pocock-skills</code>.</p></div>`;
+    } else {
+      const feats = factory[p.id] || [];
+      const cols = STAGES.map(([st, skill]) => {
+        const fs = feats.filter(f => f.stage === st);
+        return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${fs.map(f => featCard(f)).join("") || ""}</div></div>`;
+      }).join("");
+      const f = feats.find(x => x.id === ui.feature);
+      main.innerHTML = `<div class="fhead">${chips}<button class="btn primary" data-grill="1">Grill new idea</button></div>
+        <div class="board-wrap"><div class="board">${cols}</div></div>
+        ${f ? featDetail(f) : `<p class="empty-note">Select a Feature to see its Tickets.</p>`}`;
+    }
+  } else if (ui.view === "roadmap") {
+    main.innerHTML = renderRoadmap();
+  } else {
+    const pend = sessions.filter(s => s.perm);
+    main.innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request across all Sessions, oldest first.</span></div>
+      <div class="inbox">${pend.map(s => `
+        <div class="ibox"><div>
+          <div class="meta">${agentTag(s.agent)}<span>${proj(s.project).name} / ${s.wt}</span><button class="btn small" data-open="${s.id}">Open Session</button></div>
+          <div style="margin-top:6px"><strong>${s.perm.kind}</strong> — ${s.perm.why}</div><code>${s.perm.cmd}</code></div>
+          <div class="acts">${s.perm.answer ? `<span class="resolved">${s.perm.answer}</span>` : `<button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button>`}</div>
+        </div>`).join("")}
+        ${pend.every(s => s.perm.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a macOS notification.</p>` : ""}</div>`;
+  }
+  $("#shell").dataset.view = ui.view;
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === ui.view));
+  renderRail();
+}
+
+function bar(bd) {
+  if (!bd) return "";
+  const total = Object.values(bd).reduce((a, b) => a + b, 0);
+  const parts = Object.entries(bd).map(([k, v]) => `<span style="width:${v / total * 100}%;background:${BD_COLORS[k]}"></span>`).join("");
+  const txt = Object.entries(bd).map(([k, v]) => `${v} ${k}`).join(" · ");
+  return `<div class="bar" aria-hidden="true">${parts}</div><div class="bd">${txt}</div>`;
+}
+function featCard(f) {
+  return `<button class="fcard" data-feat="${f.id}" aria-pressed="${ui.feature === f.id}">
+    <span class="n">${f.name}</span><span class="ref">${f.ref}</span>${rdBadge(f.id)}${bar(f.bd)}
+    <span class="next">${f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>`;
+}
+function featDetail(f) {
+  const rows = (f.tickets || []).map(t => {
+    const cls = t.stage.toLowerCase();
+    const act = t.stage === "Startable" ? `<button class="btn primary small" data-start="${t.n}">Start Session</button>`
+      : t.sid ? `<button class="btn small" data-open="${t.sid}">Open Session</button>` : "";
+    return `<tr><td class="mono">#${t.n}</td><td>${t.t}</td><td><span class="lbl">${t.label || "ready-for-agent"}</span></td><td><span class="stage ${cls}">${t.stage === "Startable" ? "Startable" : t.stage}</span></td><td class="crumb">${t.note}</td><td>${act}</td></tr>`;
+  }).join("");
+  const r = RD[f.id], v = verdict(f.id);
+  const gate = f.skill === "/implement-spec" && v === "Not ready";
+  const mainBtn = f.skill
+    ? (gate ? `<button class="btn primary" data-confirm="${f.id}">${f.next} · Not ready</button>` : `<button class="btn primary" data-toast="Session started: ${f.skill} for ${f.name}">${f.next}</button>`)
+    : `<button class="btn">${f.next}</button>`;
+  const checks = r ? `<ul class="checks" aria-label="Readiness checks">${CHECKS.map((c, i) => {
+      const st = r.checks[i], cls = st === 1 ? "c-ok" : st === 0 ? "c-bad" : "c-warn", g = st === 1 ? "✓" : st === 0 ? "✗" : "!";
+      const note = r.notes && r.notes[i] ? ` <small>· ${r.notes[i]}</small>` : "";
+      return `<li><span class="${cls}" aria-label="${st === 1 ? "passes" : st === 0 ? "fails" : "warning"}">${g}</span><span>${c}${note}</span></li>`; }).join("")}</ul>
+    <div class="assess"><strong>Readiness: ${v}</strong><span class="crumb">${r.assessNote || "No Assessment yet."}</span><button class="btn small" data-toast="Session started: /plan-readiness for ${f.name}">${r.assess ? "Assess again" : "Assess plan"}</button></div>` : "";
+  return `<section class="fdetail"><header><h3>${f.name}</h3><span class="crumb">${f.ref} · Stage: ${f.stage}${f.tickets ? " (earliest open Ticket)" : ""}</span>${rdBadge(f.id)}
+    <div class="acts">${mainBtn}</div></header>${checks}
+    ${rows ? `<div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Label</th><th>Stage</th><th>Notes</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<p class="empty-note">Ticket list loads from the Issue tracker for this Feature.</p>`}</section>`;
+}
+
+function renderRoadmap() {
+  const groups = [["now","Now"],["next","Next"],["later","Later"]], filt = ui.rmProject;
+  const chips = `<button class="pchip" data-rmproj="" aria-pressed="${!filt}">All Projects</button>` +
+    projects.filter(p => p.tracker).map(p => `<button class="pchip" data-rmproj="${p.id}" aria-pressed="${filt === p.id}">${p.name}<small>${p.tracker}</small></button>`).join("");
+  return `<div class="mhead"><h2>Roadmap</h2><span class="crumb">Drag Features between groups. The group is saved on the Spec as a roadmap:* label; Ideas stay in fh until they have a Spec. Shipped Features drop off.</span></div>
+    <div class="fhead">${chips}</div>
+    <div class="roadmap">${groups.map(([g, label], gi) => {
+      const items = roadmap[g].filter(([p]) => !filt || p === filt);
+      return `<section class="rcol" data-group="${g}"><h4><span>${label}</span><span class="bd">${items.length}</span></h4><ol class="rlist">${items.map(([p, f]) => rCard(p, f, g, gi)).join("")}</ol></section>`;
+    }).join("")}</div>`;
+}
+function rCard(pid, fid, g, gi) {
+  const f = factory[pid].find(x => x.id === fid);
+  const live = sessions.find(s => s.project === pid && s.feature === f.name && s.state !== "exited");
+  const warn = live && g !== "now" ? `<span class="warn">Session running outside Now</span>` : "";
+  return `<li class="rcard" draggable="true" data-rm="${pid}:${fid}">
+    <div class="rtop"><span class="n">${f.name}</span><span class="stage">${f.stage}</span></div>
+    <span class="ref">${proj(pid).name} · ${f.ref}</span>
+    <div class="rmeta">${rdBadge(fid) || '<span class="bd">Idea · no readiness yet</span>'}${warn}</div>
+    <div class="rmove"><button class="btn small" data-mv="${pid}:${fid}:-1" ${gi === 0 ? "disabled" : ""} aria-label="Move ${f.name} to the previous group">←</button><button class="btn small" data-mv="${pid}:${fid}:1" ${gi === 2 ? "disabled" : ""} aria-label="Move ${f.name} to the next group">→</button></div>
+  </li>`;
+}
+const GROUPS = ["now", "next", "later"], GROUP_LABEL = { now: "Now", next: "Next", later: "Later" };
+function moveFeature(key, toGroup, beforeKey) {
+  const [pid, fid] = key.split(":");
+  const from = GROUPS.find(g => roadmap[g].some(([p, f]) => p === pid && f === fid));
+  roadmap[from] = roadmap[from].filter(([p, f]) => !(p === pid && f === fid));
+  const list = roadmap[toGroup];
+  const idx = beforeKey ? list.findIndex(([p, f]) => `${p}:${f}` === beforeKey) : -1;
+  idx >= 0 ? list.splice(idx, 0, [pid, fid]) : list.push([pid, fid]);
+  const f = factory[pid].find(x => x.id === fid);
+  if (from !== toGroup) toast(f.stage === "Idea" ? `${f.name} moved to ${GROUP_LABEL[toGroup]} (kept in fh until it has a Spec)` : `${f.name} moved to ${GROUP_LABEL[toGroup]} · label roadmap:${toGroup} set on ${f.ref.split(" ·")[0]}`);
+  renderMain();
+}
+function openConfirm(fid) {
+  const f = factory.fh.concat(factory.io, factory.hf).find(x => x.id === fid);
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="Plan not ready">
+    <form id="confirm-form"><h3>${f.name} is not ready</h3>
+      <p style="margin:0">${failing(fid).length} readiness check${failing(fid).length > 1 ? "s fail" : " fails"}. /implement-spec works unattended, so gaps in the plan turn into guesses in the code.</p>
+      <ul class="fails">${failing(fid).map(i => `<li>${CHECKS[i]}${RD[fid].notes?.[i] ? ` <span class="crumb">· ${RD[fid].notes[i]}</span>` : ""}</li>`).join("")}</ul>
+      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start anyway</button></div>
+    </form></div></div>`;
+  $("#confirm-form").addEventListener("submit", e => { e.preventDefault(); closeOverlay(); toast(`Session started: /implement-spec for ${f.name}`); });
+}
+
+/* actions */
+function answer(id, ok) {
+  const s = sess(id);
+  s.perm.answer = ok ? "Allowed" : "Denied";
+  s.state = ok ? "working" : "idle";
+  toast(`${ok ? "Allowed" : "Denied"} for ${s.title}`);
+  renderMain();
+}
+let toastTimer;
+function toast(t) {
+  let el = $(".toast"); if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.append(el); }
+  el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 2600);
+}
+
+function openPalette() {
+  const ov = $("#overlay");
+  ov.innerHTML = `<div class="scrim" data-close="1"><div class="palette" role="dialog" aria-label="Jump to a Session">
+    <input id="pal-q" type="text" placeholder="Jump to a Session, Project or Ticket…" autocomplete="off"><ul id="pal-list"></ul></div></div>`;
+  let hl = 0;
+  const draw = () => {
+    const q = $("#pal-q").value.toLowerCase();
+    const list = sorted().filter(s => (s.title + proj(s.project).name + s.wt + AGENTS[s.agent].name).toLowerCase().includes(q));
+    hl = Math.min(hl, Math.max(0, list.length - 1));
+    $("#pal-list").innerHTML = list.map((s, i) => `<li><button class="${i === hl ? "hl" : ""}" data-open="${s.id}"><span class="dot ${s.state}"></span><span>${s.title} <span class="crumb">· ${proj(s.project).name}</span></span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span></button></li>`).join("") || `<li class="empty-note">No Session matches.</li>`;
+    return list;
+  };
+  draw();
+  const q = $("#pal-q"); q.focus();
+  q.addEventListener("input", () => { hl = 0; draw(); });
+  q.addEventListener("keydown", e => {
+    const list = draw();
+    if (e.key === "ArrowDown") { hl = Math.min(hl + 1, list.length - 1); draw(); e.preventDefault(); }
+    if (e.key === "ArrowUp") { hl = Math.max(hl - 1, 0); draw(); e.preventDefault(); }
+    if (e.key === "Enter" && list[hl]) { go(list[hl].id); }
+  });
+}
+function closeOverlay() { $("#overlay").innerHTML = ""; }
+function go(id) { ui.view = "sessions"; ui.current = id; closeOverlay(); renderMain(); }
+
+function openStart(n) {
+  const f = factory.fh.find(x => x.id === "f-acp"), t = f.tickets.find(x => x.n === n);
+  const branch = `fh-${n}-reopen-session`;
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="Start Session">
+    <form id="start-form"><h3>Start Session from #${n}</h3><p class="crumb" style="margin:-8px 0 0">${t.t}</p>
+      <div class="field"><span>Agent</span><div class="radios">
+        ${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" id="ag-${k}" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}
+      </div></div>
+      <div class="field"><span>New Worktree</span><input type="text" id="st-wt" value="fullharness.worktrees/${branch}"></div>
+      <div class="field"><span>Starting prompt</span><input type="text" id="st-prompt" value="/implement #${n}"></div>
+      <label class="toggle"><input type="checkbox" id="st-auto"><span>Auto-approve in this Session<small>Off by default. When on, the Agent's own auto-approve mode is used and nothing reaches the Inbox.</small></span></label>
+      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
+    </form></div></div>`;
+  $("#start-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const agent = new FormData(e.target).get("agent");
+    const id = "s" + (sessions.length + 10);
+    projects[0].worktrees.push({ path: branch, branch });
+    sessions.push({ id, title: `#${n} Reopen a Session via session/load`, project: "fh", wt: branch, agent, state: "working",
+      feature: "ACP session view", stage: "Implementing", ticket: { n, title: t.t }, acp: "sess_new…", started: "just now",
+      git: { ahead: 0, behind: 0, files: [], pr: "none" },
+      msgs: [{ r: "user", t: $("#st-prompt").value }, { r: "tool", k: "Read", d: `issue #${n}`, s: "run", out: "…" }] });
+    t.stage = "Implementing"; t.note = `Session · ${AGENTS[agent].name}`; t.sid = id;
+    f.bd = { shipped: 2, review: 1, implementing: 2, todo: 1 };
+    closeOverlay(); toast(`Session started in ${branch}`); go(id);
+  });
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button, .scrim");
+  if (!b) return;
+  if (b.classList.contains("scrim") && e.target !== b) return;
+  const d = b.dataset;
+  if (d.close) return closeOverlay();
+  if (d.sid) { ui.view = "sessions"; ui.current = d.sid; return renderMain(); }
+  if (d.open) return go(d.open);
+  if (b.classList.contains("tab")) { ui.view = d.view; return renderMain(); }
+  if (d.allow) return answer(d.allow, true);
+  if (d.deny) return answer(d.deny, false);
+  if (d.viewmode) { sess(ui.current).view = d.viewmode; return renderMain(); }
+  if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.msgs.push({ r: "agent", t: ["Session reopened via session/load. History restored."] }); toast("Session reopened"); return renderMain(); }
+  if (d.fproj) { ui.factoryProject = d.fproj; ui.feature = (factory[d.fproj] || [])[0]?.id; return renderMain(); }
+  if (d.feat) { ui.feature = d.feat; return renderMain(); }
+  if (d.start) return openStart(+d.start);
+  if (d.confirm) return openConfirm(d.confirm);
+  if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return renderMain(); }
+  if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
+  if (d.grill) return toast("New Worktree idea/… created; Session started with /grill-with-docs");
+  if (d.toast) return toast(d.toast);
+  if (b.id === "jump-btn") return openPalette();
+});
+document.addEventListener("submit", e => {
+  const f = e.target.closest("[data-send]"); if (!f) return;
+  e.preventDefault();
+  const inp = $("#composer-input"), v = inp.value.trim(); if (!v) return;
+  const s = sess(f.dataset.send); s.msgs.push({ r: "user", t: v.replace(/</g, "&lt;") }); s.state = "working"; renderMain();
+});
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); }
+  if (e.key === "Escape") closeOverlay();
+});
+let dragKey = null;
+document.addEventListener("dragstart", e => { const c = e.target.closest?.(".rcard"); if (!c) return; dragKey = c.dataset.rm; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragKey); } catch (_) {} });
+document.addEventListener("dragend", () => { dragKey = null; document.querySelectorAll(".dragging, .over").forEach(el => el.classList.remove("dragging", "over")); });
+document.addEventListener("dragover", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); document.querySelectorAll(".rcol.over").forEach(el => el !== col && el.classList.remove("over")); col.classList.add("over"); });
+document.addEventListener("drop", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); const before = e.target.closest(".rcard"); const k = dragKey; dragKey = null; moveFeature(k, col.dataset.group, before && before.dataset.rm !== k ? before.dataset.rm : null); });
+renderMain();
+</script>

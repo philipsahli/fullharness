@@ -5,7 +5,9 @@ fullharness is a local app for running several coding agents in parallel across 
 - **Sessions**: a chat view for each running agent (Claude Code, Copilot CLI, OpenCode). A list sorted by state shows which Sessions are waiting for you, and one Inbox collects every pending permission request.
 - **Software factory**: a board per repo that shows where each Feature is in the flow from idea to shipped (Idea → Spec → Tickets → Implementing → Review → Shipped). Buttons start a Session that runs the next skill, for example `/to-spec` or `/implement #42`.
 
-> **Status:** design phase. There is no code yet. The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/).
+> **Status:** design phase. There is no code yet. The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
+
+Planned after v1: a **Roadmap** (Features from all repos ordered into Now / Next / Later) and **Readiness** (fixed checks plus an optional Agent Assessment that tell you whether a Spec and its Tickets are ready for `/implement-spec`). See [ADR 0005](docs/adr/0005-fh-writes-roadmap-group-to-tracker.md).
 
 ## How it works (planned v1)
 

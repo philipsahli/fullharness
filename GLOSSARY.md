@@ -59,3 +59,21 @@ _Avoid_: task, story, card
 **Startable ticket**:
 A Ticket of a Spec, labelled `ready-for-agent`, with no open blockers; the only kind of Ticket a Session can be started from.
 _Avoid_: ready ticket ("ready" means the `ready-for-agent` label alone), unblocked, available
+
+## Planning
+
+**Roadmap**:
+The user's ordering of Features across all Projects into the Roadmap groups Now, Next and Later, without dates.
+_Avoid_: timeline, backlog, plan
+
+**Roadmap group**:
+One of Now, Next or Later. For a Feature with a Spec it is recorded on the Spec in the Issue tracker; an Idea's group exists only in fullharness.
+_Avoid_: bucket, column, priority, lane
+
+**Readiness**:
+Whether a Spec and its Tickets can be handed to `/implement-spec` and left to run: either Ready or Not ready, decided by fixed checks.
+_Avoid_: score, quality, health, "plan" (say Spec and its Tickets)
+
+**Assessment**:
+An Agent's written verdict on a Spec's Readiness, posted to the Issue tracker by the `plan-readiness` skill. It is Stale once the Spec or one of its Tickets changes after it was posted.
+_Avoid_: review (that is `/code-review`), audit, evaluation
