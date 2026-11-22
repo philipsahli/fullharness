@@ -9,6 +9,7 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | Command | What it does |
 | --- | --- |
 | `make build` | Builds the UI into `web/dist` and a binary at `bin/fh` that embeds it. |
+| `make install` | Runs `make build` and copies `bin/fh` to `~/.local/bin` (set `PREFIX` for another folder), so `fh` runs from any terminal. |
 | `make dev` | Starts the Vite dev server on `127.0.0.1:5173`, proxied to a Go server on port 4816 with its own state folder `.dev/`, and opens the UI. The UI reloads on web changes; fh rebuilds and restarts on Go changes, and the open tab reloads by itself. A failed build is printed, and the last good build keeps running. |
 | `make lint` | Runs golangci-lint, a gofmt check and govulncheck on the Go code, and `tsc`, ESLint and a Prettier check on the UI. |
 | `make test` | Runs the Go tests with the race detector. |
