@@ -68,4 +68,4 @@ The ACP spike passed: all three agents work over ACP from Go (see `FINDINGS.md` 
 
 ## License
 
-MIT
+MIT. See [`LICENSE`](LICENSE).
