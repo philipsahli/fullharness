@@ -159,6 +159,7 @@ type session struct {
 	tools      map[string]int // tool call ID → transcript index
 	pending    map[string]*pending
 	settled    []int // transcript indexes of cards settled since the last afterSettle
+	inTurn     bool  // a prompt is running; decides Working vs Idle once no request is open
 	proc       *acp.Process
 	acpID      sdk.SessionId
 	stopping   bool
@@ -168,7 +169,7 @@ type session struct {
 // pending is an open permission request: where its card is, which option
 // each choice maps to, and where the answer goes.
 type pending struct {
-	index   int
+	index   int // into the transcript, which is only ever appended to
 	options map[string]sdk.PermissionOptionId
 	answer  chan sdk.PermissionOptionId // "" means cancelled
 }
@@ -251,6 +252,7 @@ func (s *session) beginTurn(from string) error {
 	switch s.sum.State {
 	case from:
 		s.sum.State = Working
+		s.inTurn = true
 		s.mu.Unlock()
 		s.publish()
 		return nil
@@ -283,11 +285,8 @@ func (m *Manager) Cancel(id string) error {
 
 // Inbox returns every open permission request, oldest first, never nil.
 func (m *Manager) Inbox() []Request {
-	m.mu.Lock()
-	all := slices.Clone(m.sessions)
-	m.mu.Unlock()
 	out := []Request{}
-	for _, s := range all {
+	for _, s := range m.all() {
 		s.mu.Lock()
 		for _, p := range s.pending {
 			out = append(out, *s.transcript[p.index].Permission)
@@ -302,15 +301,19 @@ func (m *Manager) Inbox() []Request {
 // or ChoiceAlways). The Inbox and the Session card are the same request, so
 // answering in either place settles both; only the first answer counts.
 func (m *Manager) Answer(requestID, choice string) error {
-	m.mu.Lock()
-	all := slices.Clone(m.sessions)
-	m.mu.Unlock()
-	for _, s := range all {
+	for _, s := range m.all() {
 		if err := s.answer(requestID, choice); !errors.Is(err, ErrNoRequest) {
 			return err
 		}
 	}
 	return ErrNoRequest
+}
+
+// all returns the Sessions, safe to range over without m.mu.
+func (m *Manager) all() []*session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sessions)
 }
 
 func (m *Manager) publishInbox() {
@@ -427,7 +430,11 @@ func (s *session) setAskingMode(ctx context.Context, proc *acp.Process, sid sdk.
 	}
 	if err != nil {
 		s.m.cfg.Log.Info("agent set_mode failed", "session", s.sum.ID, "err", err)
-		s.addItem(Item{Type: "notice", Text: "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."})
+		text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
+		if s.summary().AutoApprove {
+			text = "fh couldn't switch the Agent to auto-approve, so it asks before it acts as usual."
+		}
+		s.addItem(Item{Type: "notice", Text: text})
 	}
 }
 
@@ -461,13 +468,13 @@ func (s *session) prompt(text string) {
 		// The Agent is alive but refused the turn (an auth error, for
 		// example); show it and let the user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.setState(Idle)
+		s.endTurn()
 		return
 	}
 	if reason == sdk.StopReasonCancelled {
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
 	}
-	s.setState(Idle)
+	s.endTurn()
 	if s.m.cfg.TurnEnded != nil {
 		s.m.cfg.TurnEnded()
 	}
@@ -512,11 +519,34 @@ func (s *session) Update(n sdk.SessionNotification) {
 		})
 	case u.SessionInfoUpdate != nil:
 		if title, ok := u.SessionInfoUpdate.Title.Value(); ok && title != "" {
-			s.mu.Lock()
-			s.sum.Title = title
-			s.mu.Unlock()
-			s.publish()
+			s.retitle(title)
 		}
+	}
+}
+
+// retitle renames the Session, including its open requests, so the Inbox
+// shows the current title.
+func (s *session) retitle(title string) {
+	s.mu.Lock()
+	s.sum.Title = title
+	var changed []int
+	for _, p := range s.pending {
+		req := *s.transcript[p.index].Permission
+		req.SessionTitle = title
+		s.transcript[p.index].Permission = &req
+		changed = append(changed, p.index)
+	}
+	items := make([]Item, len(changed))
+	for i, idx := range changed {
+		items[i] = s.transcript[idx]
+	}
+	s.mu.Unlock()
+	for i, idx := range changed {
+		s.emit("item", idx, "item", items[i])
+	}
+	s.publish()
+	if len(changed) > 0 {
+		s.m.publishInbox()
 	}
 }
 
@@ -585,7 +615,13 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 			Selected: &sdk.RequestPermissionOutcomeSelected{OptionId: opt},
 		}}
 	case <-ctx.Done():
-		s.settleAll(StatusExited) // the Agent went away without waiting
+		// The SDK ends this context when the Agent withdraws this one
+		// request ($/cancel_request) or goes away; settle only this one.
+		status := StatusCancelled
+		if s.agentGone() {
+			status = StatusExited
+		}
+		s.settleOne(req.ID, status)
 		return cancelled()
 	}
 }
@@ -619,6 +655,34 @@ func (s *session) answer(requestID, choice string) error {
 	return nil
 }
 
+// agentGone reports whether the Agent process has exited.
+func (s *session) agentGone() bool {
+	s.mu.Lock()
+	proc := s.proc
+	s.mu.Unlock()
+	if proc == nil {
+		return false
+	}
+	select {
+	case <-proc.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// settleOne settles request id with status, if it's still open.
+func (s *session) settleOne(id, status string) {
+	s.mu.Lock()
+	if _, open := s.pending[id]; !open {
+		s.mu.Unlock()
+		return
+	}
+	s.settleLocked(id, status, "")
+	s.mu.Unlock()
+	s.afterSettle()
+}
+
 // settleAll settles every open request with status (cancelled or exited);
 // the Agent gets the cancelled outcome.
 func (s *session) settleAll(status string) {
@@ -644,7 +708,11 @@ func (s *session) settleLocked(id, status string, opt sdk.PermissionOptionId) {
 	s.transcript[p.index].Permission = &req
 	s.settled = append(s.settled, p.index)
 	if len(s.pending) == 0 && s.sum.State == Waiting {
-		s.sum.State = Working
+		// Back to the turn, or to Idle if the request came between turns.
+		s.sum.State = Idle
+		if s.inTurn {
+			s.sum.State = Working
+		}
 	}
 	p.answer <- opt // buffered and written once: never blocks
 }
@@ -703,6 +771,23 @@ func (s *session) addItem(it Item) {
 	s.emit("item", i, "item", it)
 }
 
+// endTurn marks the turn over: Idle, or still Waiting if the Agent left a
+// permission request open.
+func (s *session) endTurn() {
+	s.mu.Lock()
+	s.inTurn = false
+	if s.sum.State == Exited {
+		s.mu.Unlock()
+		return
+	}
+	s.sum.State = Idle
+	if len(s.pending) > 0 {
+		s.sum.State = Waiting
+	}
+	s.mu.Unlock()
+	s.publish()
+}
+
 func (s *session) setState(state string) {
 	s.mu.Lock()
 	if s.sum.State == Exited {
@@ -715,10 +800,11 @@ func (s *session) setState(state string) {
 }
 
 func (s *session) exit(reason string, stderr []string) {
-	s.settleAll(StatusExited)
 	s.mu.Lock()
 	s.sum.State, s.sum.Reason, s.sum.Stderr = Exited, reason, stderr
 	s.mu.Unlock()
+	// After Exited is set, so settling doesn't flash Working first.
+	s.settleAll(StatusExited)
 	s.m.cfg.Log.Info("session exited", "session", s.sum.ID, "reason", reason)
 	s.publish()
 }
@@ -739,14 +825,32 @@ func (s *session) publish() {
 	s.m.cfg.Broadcast(map[string]any{"type": "session", "session": s.summary()})
 }
 
+// contentText shows a tool call's content as plain text: text as is, a diff
+// as its path and every old line with "-", every new line with "+". It is
+// not a minimal diff; nicer diffs may come with #45.
 func contentText(cs []sdk.ToolCallContent) string {
 	var parts []string
 	for _, c := range cs {
-		if c.Content != nil && c.Content.Content.Text != nil {
+		switch {
+		case c.Content != nil && c.Content.Content.Text != nil:
 			parts = append(parts, c.Content.Content.Text.Text)
+		case c.Diff != nil:
+			var b strings.Builder
+			b.WriteString(c.Diff.Path + "\n")
+			if c.Diff.OldText != nil {
+				prefixLines(&b, "-", *c.Diff.OldText)
+			}
+			prefixLines(&b, "+", c.Diff.NewText)
+			parts = append(parts, strings.TrimRight(b.String(), "\n"))
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func prefixLines(b *strings.Builder, prefix, text string) {
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		b.WriteString(prefix + line + "\n")
+	}
 }
 
 // rawText shows raw output as plain text: a JSON string unquoted, anything

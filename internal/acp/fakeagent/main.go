@@ -51,6 +51,7 @@ type toolAction struct {
 	Command   string `json:"command,omitempty"`   // permission: rawInput.command
 	Path      string `json:"path,omitempty"`      // permission: a location
 	Always    bool   `json:"always,omitempty"`    // permission: also offer allow_always
+	DiffNew   string `json:"diffNew,omitempty"`   // permission: a diff of Path to this text
 }
 
 type script struct {
@@ -187,8 +188,15 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			if t.Path != "" {
 				tc.Locations = acp.PatchSet([]acp.ToolCallLocation{{Path: t.Path}})
 			}
+			var content []acp.ToolCallContent
 			if t.Text != "" {
-				tc.Content = acp.PatchSet([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Text))})
+				content = append(content, acp.ToolContent(acp.TextBlock(t.Text)))
+			}
+			if t.DiffNew != "" {
+				content = append(content, acp.ToolDiffContent(t.Path, t.DiffNew, "old line\n"))
+			}
+			if len(content) > 0 {
+				tc.Content = acp.PatchSet(content)
 			}
 			resp, perr := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 				SessionId: sid,

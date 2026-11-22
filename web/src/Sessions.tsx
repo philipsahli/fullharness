@@ -328,7 +328,7 @@ const settledLabels: Record<PermissionRequest["status"], string> = {
   allowed: "Allowed",
   denied: "Denied",
   always: "Always allowed",
-  cancelled: "Cancelled with the turn",
+  cancelled: "Cancelled", // with the turn, or withdrawn by the Agent
   exited: "Agent exited before you answered",
 };
 

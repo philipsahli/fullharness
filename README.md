@@ -147,9 +147,11 @@ The conversation shows your messages, the Agent's reply as it streams in, and ea
 When the Agent wants to edit a file or run a command, it asks first:
 
 - The request shows as a card in its Session, with **Allow**, **Deny** and, when the Agent offers it, **Always allow**.
-- The **Inbox** lists every open request across Sessions, oldest first. Its count stays visible in the tab bar.
+- The **Inbox** lists every open request across Sessions, oldest first.
+- The Inbox count stays visible in the tab bar.
 - Answering in the Inbox or in the Session is the same answer; the request leaves both.
-- A Session with an open request is **Waiting**. **Cancel** ends the turn and answers the request as cancelled.
+- A Session with an open request is **Waiting**.
+- **Cancel** ends the turn and answers its open requests as cancelled.
 
 fh starts Claude Code in its asking mode (`default`), even if your own Claude Code setting is `auto`. With **Auto-approve** on, fh starts it in `auto` instead: Claude Code decides by itself what's safe and asks less. Anything it still asks goes to the Inbox. fh never uses the mode that skips asking altogether.
 

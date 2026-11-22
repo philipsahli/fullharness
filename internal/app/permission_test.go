@@ -130,7 +130,9 @@ func TestDenyPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
 	f := startFhWithAgent(t, s)
 	c, tab, id, req := askAndWait(t, f)
 
-	f.answer(c, req["id"].(string), "deny")
+	if status, _ := f.answer(c, req["id"].(string), "deny"); status != http.StatusNoContent {
+		t.Fatalf("deny: status %d, want 204", status)
+	}
 	waitState(t, tab, id, "idle")
 
 	if got := lastAgentText(t, f, c, id); got != "permission=reject" {
@@ -150,7 +152,9 @@ func TestAlwaysAllowIsRefusedWhenTheAgentDidNotOfferIt(t *testing.T) {
 func TestOnlyTheFirstAnswerCounts(t *testing.T) {
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, _, req := askAndWait(t, f)
-	f.answer(c, req["id"].(string), "allow")
+	if status, _ := f.answer(c, req["id"].(string), "allow"); status != http.StatusNoContent {
+		t.Fatalf("first answer: status %d, want 204", status)
+	}
 
 	status, body := f.answer(c, req["id"].(string), "deny")
 
@@ -231,5 +235,19 @@ func TestAutoApproveStartsTheAgentInAutoMode(t *testing.T) {
 	}
 	if got := lastAgentText(t, f, c, id); got != "mode=auto" {
 		t.Errorf("agent saw %q, want mode=auto", got)
+	}
+}
+
+func TestAPermissionCardShowsTheDiffAsPlainText(t *testing.T) {
+	f := startFhWithAgent(t, script{"default": []any{map[string]any{"permission": map[string]any{
+		"id": "t1", "title": "Edit main.go", "kind": "edit", "path": "main.go", "diffNew": "new line\n",
+	}}}})
+	_, _, _, req := askAndWait(t, f)
+
+	content, _ := req["content"].(string)
+	for _, want := range []string{"main.go", "-old line", "+new line"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("content = %q, want it to contain %q", content, want)
+		}
 	}
 }
