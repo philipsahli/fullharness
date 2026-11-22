@@ -108,16 +108,21 @@ func Detect(repo string) (kind, name string) {
 // It is the one place these rules live (#11), for every tracker:
 //   - Ticket: closed → Shipped; an open linked PR → Review; a branch ahead
 //     → Implementing; else Tickets.
-//   - Startable: open, labelled ready-for-agent, part of a Spec, no open
-//     (or unknown) blocker.
+//   - Startable: open, labelled ready-for-agent, no open (or unknown)
+//     blocker. "Part of a Spec" is the adapter's job: it passes only
+//     Tickets that belong to a Spec.
 //   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
 func Derive(features []Feature) {
 	for i := range features {
 		f := &features[i]
-		closed := map[string]bool{}
+		// Blockers match Tickets by numeric value: "5" and "05" are the same
+		// Ticket, whatever width a folder uses.
+		byValue := map[int]Ticket{}
 		for _, t := range f.Tickets {
-			closed[t.Number] = t.Closed
+			if n, err := strconv.Atoi(t.Number); err == nil {
+				byValue[n] = t
+			}
 		}
 		f.Breakdown = map[string]int{}
 		earliest := -1
@@ -136,9 +141,13 @@ func Derive(features []Feature) {
 			blocked := false
 			for k := range t.Blockers {
 				b := &t.Blockers[k]
-				isClosed, known := closed[b.Number]
-				b.Known = b.Known || known
-				b.Open = !b.Known || !isClosed
+				n, err := strconv.Atoi(b.Number)
+				other, known := byValue[n]
+				if err == nil && known {
+					b.Number = other.Number // show it as the Ticket names itself
+				}
+				b.Known = err == nil && known
+				b.Open = !b.Known || !other.Closed
 				blocked = blocked || b.Open
 			}
 			t.Startable = !t.Closed && t.Label == ReadyLabel && !blocked

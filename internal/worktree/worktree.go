@@ -236,21 +236,29 @@ func Create(repo, branch string) (string, error) {
 }
 
 // BranchesAhead lists the repo's local branches that have commits the
-// Project's base doesn't, for the board's Implementing Stage.
+// Project's base doesn't, for the board's Implementing Stage. One
+// for-each-ref call counts them all (git 2.41+); older git falls back to
+// one rev-list per branch.
 func BranchesAhead(repo string) []string {
 	base := defaultBase(repo)
 	if base == "" {
 		return nil
 	}
+	var ahead []string
+	if out, err := run(repo, "for-each-ref", "--format=%(refname:short) %(ahead-behind:"+base+")", "refs/heads/"); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			// "<branch> <ahead> <behind>"
+			if f := strings.Fields(line); len(f) == 3 && f[1] != "0" {
+				ahead = append(ahead, f[0])
+			}
+		}
+		return ahead
+	}
 	out, err := run(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
 	if err != nil {
 		return nil
 	}
-	var ahead []string
 	for _, b := range strings.Fields(string(out)) {
-		if b == base || b == strings.TrimPrefix(base, "origin/") {
-			continue
-		}
 		if n, err := run(repo, "rev-list", "--count", base+".."+b); err == nil && strings.TrimSpace(string(n)) != "0" {
 			ahead = append(ahead, b)
 		}

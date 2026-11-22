@@ -47,10 +47,12 @@ func ReadLocal(repo string, aheadBranches []string) []Feature {
 }
 
 var (
-	fileNumber   = regexp.MustCompile(`^(\d+)-`)
-	fileSlug     = regexp.MustCompile(`^(\d+)-(.+)\.md$`)
-	blockerNumbs = regexp.MustCompile(`\b\d{1,3}\b`)
-	titleNumber  = regexp.MustCompile(`^\d+:\s*`)
+	fileNumber    = regexp.MustCompile(`^(\d+)-`)
+	fileSlug      = regexp.MustCompile(`^(\d+)-(.+)\.md$`)
+	titleNumber   = regexp.MustCompile(`^\d+:\s*`)
+	parenthesised = regexp.MustCompile(`\([^)]*\)`)
+	itemSeparator = regexp.MustCompile(`[,;]|\band\b`)
+	leadingNumber = regexp.MustCompile(`^#?(\d{1,3})(?:\D|$)`)
 )
 
 func readLocalTicket(file, text string) Ticket {
@@ -61,10 +63,8 @@ func readLocalTicket(file, text string) Ticket {
 	t.Title = titleNumber.ReplaceAllString(heading(text, file), "")
 	t.Label = status(text)
 	t.Closed = isClosed(t.Label)
-	for _, n := range blockerNumbs.FindAllString(field(text, "Blocked by"), -1) {
-		// Keep the width of the Ticket's own numbers ("01"), so they match.
-		num, _ := strconv.Atoi(n)
-		t.Blockers = append(t.Blockers, Blocker{Number: pad(num, len(t.Number))})
+	for _, n := range blockerNumbers(field(text, "Blocked by")) {
+		t.Blockers = append(t.Blockers, Blocker{Number: n})
 	}
 	return t
 }
@@ -78,10 +78,26 @@ func localBranchFor(branch, file string) bool {
 	if m == nil {
 		return false
 	}
-	want, _ := strconv.Atoi(m[1])
+	want, _ := strconv.Atoi(m[1]) // the regex matched digits only
 	n, ok := numberOf(branch)
 	_, rest, _ := strings.Cut(branch, "-")
 	return ok && n == want && strings.HasPrefix(rest, m[2])
+}
+
+// blockerNumbers reads a "Blocked by" line as /to-tickets writes it,
+// "numbers/titles": the number starting each comma-, semicolon- or
+// "and"-separated item, so "01 (OAuth 2 flow), 03" gives 01 and 03 and a
+// date or a title gives nothing. Each number appears once.
+func blockerNumbers(line string) []string {
+	line = parenthesised.ReplaceAllString(line, "")
+	var out []string
+	for _, item := range itemSeparator.Split(line, -1) {
+		m := leadingNumber.FindStringSubmatch(strings.TrimSpace(item))
+		if m != nil && !slices.Contains(out, m[1]) {
+			out = append(out, m[1])
+		}
+	}
+	return out
 }
 
 // field returns the value of a `**Name:** value` or `Name: value` line.
@@ -110,12 +126,4 @@ func heading(text, fallback string) string {
 		}
 	}
 	return fallback
-}
-
-func pad(n, width int) string {
-	s := strconv.Itoa(n)
-	for len(s) < width {
-		s = "0" + s
-	}
-	return s
 }

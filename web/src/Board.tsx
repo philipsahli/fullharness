@@ -58,16 +58,20 @@ export function Board({ projects }: { projects: Project[] }) {
 
   const [reloads, setReloads] = useState(0); // Refresh bumps this to read again
 
+  // Keyed on the path, not the Project object: every projects event
+  // brings new objects, and the board shouldn't be read again for those.
+  const chosenPath = chosen?.path;
   useEffect(() => {
-    if (!chosen) return;
-    const url = `/api/board?project=${encodeURIComponent(chosen.path)}`;
+    if (!chosenPath) return;
+    const url = `/api/board?project=${encodeURIComponent(chosenPath)}`;
+    // get never rejects: a failed read resolves to undefined, shown as no board.
     const read = () => void get<BoardData>(url).then(setBoard);
     read();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") read();
     }, refreshEvery);
     return () => window.clearInterval(timer);
-  }, [chosen, reloads]);
+  }, [chosenPath, reloads]);
 
   if (!chosen) {
     return (

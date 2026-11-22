@@ -210,3 +210,46 @@ func asJSON(v any) string {
 	b, _ := json.Marshal(v) // test helper: values come from decoded JSON, which always re-encodes
 	return string(b)
 }
+
+func TestBlockedByReadsOnlyLeadingNumbersAndMatchesByValue(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "auth/spec.md", "# Auth\n")
+	scratch(t, repo, "auth/issues/01-base.md", ticket("01", "Base", "done", "None"))
+	scratch(t, repo, "auth/issues/02-oauth.md", ticket("02", "OAuth", "ready-for-agent", "01 (OAuth 2 flow), since 2026-11-22"))
+	scratch(t, repo, "auth/issues/100-late.md", ticket("100", "Late", "ready-for-agent", "5"))
+	scratch(t, repo, "auth/issues/05-mid.md", ticket("05", "Mid", "needs-triage", "None"))
+	f.addProject(c, repo)
+
+	auth := featureByID(t, f.board(c, repo), "auth")
+
+	oauth := ticketByNumber(t, auth, "02")
+	if got := asJSON(oauth["blockers"]); got != `[{"known":true,"number":"01","open":false}]` {
+		t.Errorf("02 blockers = %s, want only 01, closed", got)
+	}
+	if oauth["startable"] != true {
+		t.Errorf("02 = %v, want Startable: its only blocker is done", oauth)
+	}
+	if got := asJSON(ticketByNumber(t, auth, "100")["blockers"]); got != `[{"known":true,"number":"05","open":true}]` {
+		t.Errorf("100 blockers = %s, want 05 (known, open)", got)
+	}
+}
+
+func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "old/spec.md", "# Old\n\nStatus: done\n")
+	scratch(t, repo, "old/issues/01-left.md", "# 01: Left over\n\nStatus: ready-for-agent\n")
+	f.addProject(c, repo)
+
+	old := featureByID(t, f.board(c, repo), "old")
+
+	if old["stage"] != "shipped" {
+		t.Errorf("stage = %v, want shipped (Spec closed)", old["stage"])
+	}
+	if l := ticketByNumber(t, old, "01")["label"]; l != "ready-for-agent" {
+		t.Errorf("label from a plain Status: line = %v, want ready-for-agent", l)
+	}
+}
