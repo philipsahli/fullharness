@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useEventChannel, type Connection } from "./events";
+import { Projects } from "./Projects";
 
 type View = "sessions" | "factory" | "inbox";
 
@@ -33,11 +34,12 @@ export function App() {
       </header>
       <ConnectionBanner conn={conn} />
       <div className="shell" data-view={view}>
-        <nav className="rail" aria-label="Sessions">
+        <nav className="rail" aria-label="Sessions and Projects">
           <section>
             <h3>Sessions</h3>
             <p className="empty">No Sessions yet.</p>
           </section>
+          {snapshot && <Projects projects={snapshot.projects} />}
         </nav>
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
           {view === "sessions" && <Empty title="Sessions" text="Sessions you start appear here." />}

@@ -203,3 +203,166 @@ h3 {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* Projects (rail), after .ptree/.wt/.tag in docs/design/fh-mockup.html */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.rail h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ptree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proj > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 8px;
+  font-weight: 600;
+}
+.wts {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 8px;
+}
+.wt {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  padding: 3px 8px;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.wt > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.wt .counts {
+  grid-column: 2 / 4;
+  font-family: var(--f-body);
+  font-size: 11.5px;
+}
+.wt .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.tag {
+  font-family: var(--f-body);
+  font-size: 10.5px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--sunken);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.warn {
+  margin: 4px 8px;
+  color: var(--waiting);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.error {
+  margin: 4px 8px;
+  color: var(--bad);
+  font-size: 12px;
+}
+.hint {
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.addp {
+  margin: 10px 8px 0;
+  width: calc(100% - 16px);
+  border: 1px dashed var(--line);
+  background: transparent;
+  border-radius: 7px;
+  padding: 6px;
+  color: var(--muted);
+}
+.addform {
+  margin: 10px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.addform label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+.addform input {
+  font: inherit;
+  font-family: var(--f-mono);
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.addform .row {
+  display: flex;
+  gap: 6px;
+}
+.addform .row button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 3px 10px;
+}
+.addform .row button[type="submit"] {
+  background: var(--accent);
+  color: var(--surface);
+  border-color: var(--accent);
+}
+.suggest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.suggest button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 1px 9px;
+  font-size: 12px;
+}
+
+/* The banner is only rendered while not connected; fixed rows keep the shell
+   in the row that fills the window either way. */
+.banner {
+  grid-row: 2;
+}
+.shell {
+  grid-row: 3;
+}

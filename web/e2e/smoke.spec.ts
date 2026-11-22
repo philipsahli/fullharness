@@ -1,5 +1,6 @@
 import { test as base, expect } from "@playwright/test";
 import { Fh } from "./fh";
+import { tempFolder, tempRepo } from "./repo";
 
 // Browser smoke tests (ADR 0007): the UI logic no Go test can reach.
 const test = base.extend<{ fh: Fh }>({
@@ -32,4 +33,23 @@ test("a tab left open across a restart tells the user to run fh", async ({ page,
   await expect(page.getByRole("alert")).toHaveText("fh restarted. Run fh to open it again.", {
     timeout: 10_000,
   });
+});
+
+test("adding a Project shows its main tree, and a non-repo shows why not", async ({ page, fh }) => {
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  const path = projects.getByLabel("Path to a git repo");
+  await path.fill(tempFolder());
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects.getByRole("alert")).toContainText("is not a git repository");
+
+  await path.fill(tempRepo("shop"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+
+  const shop = projects.getByRole("listitem").filter({ hasText: "shop" }).first();
+  await expect(shop).toContainText("main");
+  await expect(shop).toContainText("main tree");
 });
