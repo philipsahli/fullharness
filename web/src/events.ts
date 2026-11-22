@@ -29,10 +29,14 @@ export type SessionSummary = {
   id: string;
   project: string;
   worktree: string;
-  agent: string;
+  agent: string; // Agent ID, e.g. "claude"
+  agentName: string; // e.g. "Claude Code"
   state: SessionState;
   title: string;
   autoApprove: boolean; // started in the Agent's auto mode
+  waiting?: "permission" | "turn"; // why a Waiting Session waits
+  since: string; // when the state last changed; orders the list
+  login?: string; // the command to run when the reason is "login needed"
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
 };
@@ -210,3 +214,34 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
   }
   return snap;
 }
+
+const listGroup: Record<SessionState, number> = {
+  waiting: 0,
+  working: 1,
+  starting: 1,
+  idle: 2,
+  exited: 3,
+};
+
+// byListOrder sorts Sessions like the server's list (internal/session):
+// Waiting (longest waiting first), Working and Starting, Idle, Exited (most
+// recent change first within each).
+export function byListOrder(a: SessionSummary, b: SessionSummary): number {
+  const g = listGroup[a.state] - listGroup[b.state];
+  if (g !== 0) return g;
+  const t = Date.parse(a.since) - Date.parse(b.since);
+  return a.state === "waiting" ? t : -t;
+}
+
+// projectName is the Project's name for path, or the folder name.
+export function projectName(projects: Project[], path: string): string {
+  return (
+    projects.find((p) => p.path === path)?.name ?? path.split("/").filter(Boolean).pop() ?? path
+  );
+}
+
+// tabID names this tab when it tells fh which Session it's looking at.
+export const tabID = Math.random().toString(36).slice(2);
+
+// shortcutLabel is how the switcher's shortcut is written on this computer.
+export const shortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K";

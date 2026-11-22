@@ -94,6 +94,25 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
 
+	// A tab says every 15 s that it's looking at a Session (its conversation
+	// is open and the tab visible), and when it stops. Looking clears a
+	// finished turn's wait; a turn that ends while someone looks never waits.
+	srv.Handle("POST /api/sessions/{id}/viewing", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Tab     string `json:"tab"`
+			Viewing bool   `json:"viewing"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Tab == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"tab": "…", "viewing": true | false}`)
+			return
+		}
+		if err := d.sessions.Viewing(r.PathValue("id"), req.Tab, req.Viewing); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Answering from the Inbox and from a Session card is the same request.
 	srv.Handle("POST /api/inbox/{id}/answer", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

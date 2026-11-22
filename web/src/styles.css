@@ -687,3 +687,94 @@ button:disabled {
   background: var(--waiting-soft);
   color: var(--waiting);
 }
+
+/* Global Session list and the ⌘K switcher */
+.srow {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+}
+.srow .s {
+  grid-column: 2 / 4;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.srow.exited {
+  opacity: 0.6;
+}
+.jump {
+  order: 3;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 5px 8px 5px 10px;
+  color: var(--muted);
+}
+.jump kbd,
+.switcher kbd {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  background: var(--surface);
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 10;
+}
+.switcher {
+  width: min(560px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.switcher input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 15px;
+  background: var(--surface);
+  color: var(--fg);
+  outline: none;
+}
+.switcher ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.switcher li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.switcher li[aria-selected="true"] {
+  background: var(--sunken);
+}
+.switcher li .s {
+  color: var(--muted);
+  font-size: 12px;
+}
+.switcher li:not(:has(.dot)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}

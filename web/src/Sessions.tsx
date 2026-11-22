@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
+import { byListOrder, projectName, tabID } from "./events";
 import type {
   Item,
   PermissionRequest,
@@ -15,10 +16,12 @@ import type {
 // SessionList is the rail's Sessions section.
 export function SessionList(props: {
   sessions: SessionSummary[];
+  projects: Project[];
   current?: string;
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
+  const sorted = [...props.sessions].sort(byListOrder);
   return (
     <section aria-label="Sessions">
       <h3>Sessions</h3>
@@ -27,18 +30,22 @@ export function SessionList(props: {
       </button>
       {props.sessions.length === 0 && <p className="empty">No Sessions yet.</p>}
       <ul className="slist">
-        {props.sessions.map((s) => (
+        {sorted.map((s) => (
           <li key={s.id}>
             <button
               type="button"
-              className="srow"
+              className={`srow ${s.state}`}
               aria-current={s.id === props.current}
               onClick={() => props.onOpen(s.id)}
             >
               <span className={`dot ${s.state}`} aria-hidden="true" />
               <span className="t">{s.title}</span>
-              {s.autoApprove && <span className="tag">auto-approve</span>}
               <StateBadge state={s.state} />
+              <span className="s">
+                {projectName(props.projects, s.project)} · {s.agentName}
+                {s.autoApprove && " · auto-approve"}
+                {s.state === "exited" && s.reason && ` · ${s.reason}`}
+              </span>
             </button>
           </li>
         ))}
@@ -236,6 +243,27 @@ export function Conversation(props: {
     });
   }, [session.id, items, update]);
 
+  // You're looking at this Session while its conversation is open in a
+  // visible tab. Tell fh now, every 15 s (fh forgets a tab after 30 s, so a
+  // closed tab stops counting), and when that stops; a turn that ends while
+  // you look then never waits for you.
+  useEffect(() => {
+    const say = (viewing: boolean) =>
+      // A lost update only means a turn waits until the next one.
+      void command(`/api/sessions/${session.id}/viewing`, { tab: tabID, viewing });
+    const update = () => say(document.visibilityState === "visible");
+    update();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") say(true);
+    }, 15_000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+      say(false);
+    };
+  }, [session.id]);
+
   // A statement body on purpose: scrollIntoView returns a Promise in current
   // Chromium, and an effect must return nothing or a cleanup function.
   useEffect(() => {
@@ -256,7 +284,7 @@ export function Conversation(props: {
         <StateBadge state={session.state} />
         {session.autoApprove && <span className="tag">auto-approve</span>}
         <span className="crumb" title={session.worktree}>
-          {session.agent} · {session.worktree}
+          {session.agentName} · {session.worktree}
         </span>
       </header>
       <div className="items">
@@ -266,6 +294,11 @@ export function Conversation(props: {
         {session.state === "exited" && (
           <div className="notice bad" role="status">
             Exited: {session.reason}
+            {session.login && (
+              <p>
+                Log in from a terminal, then start a new Session: <code>{session.login}</code>
+              </p>
+            )}
             {session.stderr && session.stderr.length > 0 && <pre>{session.stderr.join("\n")}</pre>}
           </div>
         )}

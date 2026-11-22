@@ -52,6 +52,20 @@ func (f *fh) startSession(c *http.Client, req map[string]any) string {
 // returns that Session summary.
 func waitState(t *testing.T, tab *websocket.Conn, id, state string) map[string]any {
 	t.Helper()
+	return waitFor(t, tab, id, state, func(s map[string]any) bool { return s["state"] == state })
+}
+
+// waitEnded waits until Session id's turn has ended: Waiting for you to look.
+func waitEnded(t *testing.T, tab *websocket.Conn, id string) map[string]any {
+	t.Helper()
+	return waitFor(t, tab, id, "turn ended", func(s map[string]any) bool {
+		return s["state"] == "waiting" && s["waiting"] == "turn"
+	})
+}
+
+// waitFor reads events from tab until a summary of Session id matches ok.
+func waitFor(t *testing.T, tab *websocket.Conn, id, what string, ok func(map[string]any) bool) map[string]any {
+	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
@@ -62,19 +76,19 @@ func waitState(t *testing.T, tab *websocket.Conn, id, state string) map[string]a
 			continue
 		}
 		s, _ := ev["session"].(map[string]any)
-		if s["id"] == id && s["state"] == state {
+		if s["id"] == id && ok(s) {
 			return s
 		}
 	}
-	t.Fatalf("session %s never reached %s", id, state)
+	t.Fatalf("session %s never reached %s", id, what)
 	return nil
 }
 
-// waitTurn waits until Session id has worked on a turn and is Idle again.
+// waitTurn waits until Session id has worked on a turn and the turn ended.
 func waitTurn(t *testing.T, tab *websocket.Conn, id string) map[string]any {
 	t.Helper()
 	waitState(t, tab, id, "working")
-	return waitState(t, tab, id, "idle")
+	return waitEnded(t, tab, id)
 }
 
 // sessionDetail returns GET /api/sessions/{id}.
@@ -109,7 +123,7 @@ func TestStartSessionRunsTheStartingPromptAndShowsTheReply(t *testing.T) {
 	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude", "prompt": "hello"})
 
 	waitState(t, tab, id, "working")
-	s := waitState(t, tab, id, "idle")
+	s := waitEnded(t, tab, id)
 	if s["project"] != repo || s["worktree"] != repo || s["agent"] != "claude" || s["title"] != "main" {
 		t.Errorf("summary = %v, want project/worktree %s, agent claude, title main", s, repo)
 	}

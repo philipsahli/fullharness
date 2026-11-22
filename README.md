@@ -155,6 +155,27 @@ When the Agent wants to edit a file or run a command, it asks first:
 
 fh starts Claude Code in its asking mode (`default`), even if your own Claude Code setting is `auto`. With **Auto-approve** on, fh starts it in `auto` instead: Claude Code decides by itself what's safe and asks less. Anything it still asks goes to the Inbox. fh never uses the mode that skips asking altogether.
 
+Each Session shows its state:
+
+| State | Meaning |
+| --- | --- |
+| Starting | The Agent is launching. |
+| Working | The Agent is on a turn. |
+| Waiting | The Agent wants you: a permission request is open, or a turn ended and you haven't looked yet. |
+| Idle | Nothing to do: you've seen the last turn, or cancelled it. |
+| Exited | The Agent is gone: Agent crashed, login needed, or fh quit. (Closed by you comes with Close, #9.) |
+
+A turn counts as seen once its conversation is open in a visible tab. If a Session exits with **login needed**, it shows the command to run in your terminal (`claude auth login`, `copilot login` or `opencode auth login`).
+
+The Sessions list covers all Projects and puts what needs you first:
+
+1. Waiting, longest waiting first;
+2. Working and Starting;
+3. Idle;
+4. Exited, faded.
+
+Press **⌘K** (Ctrl+K off macOS) to jump to a Session by words from its title, Project or Agent, or to start a New Session.
+
 Not there yet:
 
 - Sessions don't survive an fh restart yet (#9). Quitting fh stops their Agents.

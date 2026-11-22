@@ -28,6 +28,9 @@ type Definition struct {
 	// auto-approve changes. Without it the user's own Agent settings decide,
 	// which can bypass the Inbox (ADR 0003).
 	Asking Asking
+	// Login is the terminal command that logs the user in, shown when the
+	// Agent reports it needs one.
+	Login string
 	// claude marks Claude Code, whose environment fh adjusts (see Environ).
 	claude bool
 }
@@ -87,6 +90,7 @@ func Defaults() []Definition {
 			{"npx", "install Node: brew install node"},
 		},
 		Asking: Asking{Mode: Pair[string]{Ask: "default", Auto: "auto"}},
+		Login:  "claude auth login",
 		claude: true,
 	}, {
 		ID:       "copilot",
@@ -94,11 +98,13 @@ func Defaults() []Definition {
 		Command:  []string{"copilot", "--acp", "--stdio"},
 		requires: []requirement{{"copilot", "install Copilot CLI: brew install --cask copilot-cli"}},
 		Asking:   Asking{Option: "allow_all", Value: Pair[string]{Ask: "off", Auto: "on"}},
+		Login:    "copilot login",
 	}, {
 		ID:       "opencode",
 		Name:     "OpenCode",
 		Command:  []string{"opencode", "acp"},
 		requires: []requirement{{"opencode", "install OpenCode: brew install opencode"}},
+		Login:    "opencode auth login",
 		Asking: Asking{Env: Pair[map[string]string]{
 			Ask:  map[string]string{"OPENCODE_PERMISSION": `{"bash":"ask","edit":"ask"}`},
 			Auto: map[string]string{"OPENCODE_PERMISSION": `{"bash":"allow","edit":"allow"}`},

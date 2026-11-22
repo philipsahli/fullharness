@@ -46,7 +46,7 @@ func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
 		case "chunk":
 			streamed = append(streamed, ev["text"].(string))
 		case "session":
-			if s := ev["session"].(map[string]any); s["id"] == id && s["state"] == "idle" && len(streamed) > 0 {
+			if s := ev["session"].(map[string]any); s["id"] == id && s["state"] == "waiting" && len(streamed) > 0 {
 				if got := strings.Join(streamed, ""); got != "one two" {
 					t.Errorf("streamed %q, want %q", got, "one two")
 				}
