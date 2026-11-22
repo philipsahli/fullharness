@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -29,4 +29,17 @@ export function tempRepo(name: string): string {
 // tempFolder creates an empty folder that is not a git repo.
 export function tempFolder(): string {
   return realpathSync(mkdtempSync(path.join(tmpdir(), "fh-e2e-plain-")));
+}
+
+// tempRepoWith creates a repo like tempRepo, with extra files committed,
+// e.g. a .scratch tracker.
+export function tempRepoWith(name: string, files: Record<string, string>): string {
+  const dir = tempRepo(name);
+  for (const [rel, content] of Object.entries(files)) {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    writeFileSync(path.join(dir, rel), content);
+  }
+  execFileSync("git", ["add", "."], { cwd: dir, env: gitEnv });
+  execFileSync("git", ["commit", "-q", "-m", "tracker"], { cwd: dir, env: gitEnv });
+  return dir;
 }

@@ -1,6 +1,6 @@
 import { test as base, expect } from "@playwright/test";
 import { Fh, runFh } from "./fh";
-import { tempFolder, tempRepo } from "./repo";
+import { tempFolder, tempRepo, tempRepoWith } from "./repo";
 
 // Browser smoke tests (ADR 0007): the UI logic no Go test can reach.
 const test = base.extend<{ fh: Fh }>({
@@ -295,4 +295,37 @@ test("after a restart a Session can be reopened with its history, then closed", 
   } finally {
     await fh.dispose();
   }
+});
+
+test("the Software factory shows a local markdown Feature at its Stage, with its Tickets", async ({
+  page,
+  fh,
+}) => {
+  const ticket = (n: string, title: string, blockedBy: string) =>
+    `# ${n}: ${title}\n\n**Blocked by:** ${blockedBy}\n\n**Status:** ready-for-agent\n`;
+  const repo = tempRepoWith("shop", {
+    ".scratch/login/spec.md": "# Login\n",
+    ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
+    ".scratch/login/issues/02-cookie.md": ticket("02", "Session cookie", "01"),
+  });
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(repo);
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+
+  await page.getByRole("tab", { name: "Software factory" }).click();
+  const tickets = page.locator('.column[aria-label="Tickets"]');
+  await expect(tickets.getByRole("button", { name: /Login/ })).toContainText("2 tickets");
+  await tickets.getByRole("button", { name: /Login/ }).click();
+
+  const detail = page.getByRole("region", { name: "Feature Login" });
+  await expect(detail.getByRole("listitem").filter({ hasText: "Login form" })).toContainText(
+    "Startable",
+  );
+  await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
+    "blocked by 01",
+  );
 });

@@ -797,3 +797,108 @@ button:disabled {
   margin-left: auto;
   font-size: 12.5px;
 }
+
+/* Software factory board */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.board-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.board-head select {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.columns {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+}
+.column {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+}
+.column h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.fcard {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fcard[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.fcard .t {
+  font-weight: 500;
+}
+.fcard .s,
+.tickets .s {
+  color: var(--muted);
+  font-size: 12px;
+}
+.fcard .note {
+  color: var(--waiting);
+}
+.fdetail {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.tickets {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tickets li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.tickets li.closed .t {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.tickets .num {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.tag.startable {
+  background: var(--accent);
+  color: var(--surface);
+}
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: repeat(6, 200px);
+  }
+}

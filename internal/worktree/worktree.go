@@ -234,3 +234,26 @@ func Create(repo, branch string) (string, error) {
 	}
 	return path, nil
 }
+
+// BranchesAhead lists the repo's local branches that have commits the
+// Project's base doesn't, for the board's Implementing Stage.
+func BranchesAhead(repo string) []string {
+	base := defaultBase(repo)
+	if base == "" {
+		return nil
+	}
+	out, err := run(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil
+	}
+	var ahead []string
+	for _, b := range strings.Fields(string(out)) {
+		if b == base || b == strings.TrimPrefix(base, "origin/") {
+			continue
+		}
+		if n, err := run(repo, "rev-list", "--count", base+".."+b); err == nil && strings.TrimSpace(string(n)) != "0" {
+			ahead = append(ahead, b)
+		}
+	}
+	return ahead
+}
