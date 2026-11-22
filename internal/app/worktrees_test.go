@@ -165,9 +165,10 @@ func TestARemoteWithoutOriginHeadStillComparesWithOrigin(t *testing.T) {
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
 	upstream := newRepo(t, parent, "upstream")
-	repo := newRepo(t, parent, "shop") // not a clone: no origin/HEAD
-	git(t, repo, "remote", "add", "origin", upstream)
-	git(t, repo, "fetch", "-q", "origin")
+	repo := filepath.Join(parent, "shop")
+	// A clone shares upstream's history; two separately created repos only
+	// do when their first commits happen to land in the same second.
+	git(t, parent, "clone", "-q", upstream, repo)
 	commitFile(t, upstream, "u.txt", "1\n")
 	git(t, repo, "fetch", "-q", "origin")
 	// git 2.48+ creates origin/HEAD on fetch; older git and some setups don't.

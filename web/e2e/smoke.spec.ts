@@ -124,3 +124,52 @@ test("a New Session in a Project's main tree streams the Agent's reply and its t
     await fh.dispose();
   }
 });
+
+test("a permission request answered in the Inbox is answered in its Session too", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        {
+          permission: { id: "t1", title: "rm -rf build", kind: "execute", command: "rm -rf build" },
+        },
+      ],
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("clean up");
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const conversation = page.getByRole("region", { name: /^Session / });
+    const card = conversation.getByRole("group", { name: "Permission: rm -rf build" });
+    await expect(card).toContainText("rm -rf build");
+    await expect(conversation.locator(".mhead .state")).toHaveText("Waiting");
+    const inboxTab = page.getByRole("tab", { name: /Inbox/ });
+    await expect(inboxTab).toContainText("1");
+
+    await inboxTab.click();
+    await page
+      .getByRole("region", { name: "Inbox" })
+      .getByRole("button", { name: "Allow", exact: true })
+      .click();
+    await expect(inboxTab).toContainText("0");
+
+    await page.getByRole("tab", { name: "Sessions" }).click();
+    await page.getByRole("button", { name: /main/ }).first().click();
+    await expect(card).toContainText("Allowed");
+    await expect(conversation.getByText("permission=allow-once")).toBeVisible();
+  } finally {
+    await fh.dispose();
+  }
+});

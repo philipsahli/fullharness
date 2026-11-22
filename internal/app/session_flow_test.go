@@ -181,32 +181,6 @@ func TestNewWorktreeRejectsBadAndExistingBranches(t *testing.T) {
 	}
 }
 
-func TestPermissionRequestsAreDeniedWithANoticeUntilTheInboxExists(t *testing.T) {
-	f := startFhWithAgent(t, script{"default": []any{map[string]any{"permission": map[string]any{"id": "t1", "title": "rm -rf build"}}}})
-	c := f.authorisedClient()
-	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
-	f.addProject(c, repo)
-	tab := f.connectTab(c)
-	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude", "prompt": "clean"})
-	waitTurn(t, tab, id)
-
-	var notice, reply string
-	for _, it := range f.transcript(c, id) {
-		switch it["type"] {
-		case "notice":
-			notice = it["text"].(string)
-		case "agent":
-			reply = it["text"].(string)
-		}
-	}
-	if !strings.Contains(notice, "rm -rf build") || !strings.Contains(notice, "denied") {
-		t.Errorf("notice = %q, want it to name the request and say it was denied", notice)
-	}
-	if reply != "permission=reject" {
-		t.Errorf("agent saw %q, want the reject option chosen", reply)
-	}
-}
-
 func TestACrashedAgentShowsItsLastStderrLines(t *testing.T) {
 	var steps []any
 	for i := 1; i <= 25; i++ {
@@ -344,22 +318,6 @@ func TestAnAgentWithoutTheAskingModeSaysSoInTheConversation(t *testing.T) {
 	items := f.transcript(c, id)
 	if len(items) == 0 || items[0]["type"] != "notice" || !strings.Contains(items[0]["text"].(string), "without asking") {
 		t.Errorf("transcript = %v, want a notice that the Agent may act without asking", items)
-	}
-}
-
-func TestTheDenialPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
-	f := startFhWithAgent(t, script{
-		"rejectAlwaysFirst": true,
-		"default":           []any{map[string]any{"permission": map[string]any{"id": "t1", "title": "rm x"}}},
-	})
-	c, _, id, _ := newSessionIn(t, f, "")
-	tab := f.connectTab(c)
-	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "go"})
-	waitTurn(t, tab, id)
-
-	items := f.transcript(c, id)
-	if got := items[len(items)-1]["text"]; got != "permission=reject" {
-		t.Errorf("agent saw %q, want the reject_once option", got)
 	}
 }
 

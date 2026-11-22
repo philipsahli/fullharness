@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useEventChannel, type Connection } from "./events";
 import { Projects } from "./Projects";
-import { Conversation, NewSession, SessionList } from "./Sessions";
+import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
 
 type View = "sessions" | "factory" | "inbox";
 
@@ -59,7 +59,15 @@ export function App() {
           {view === "factory" && (
             <Empty title="Software factory" text="Each Project's Features appear here by Stage." />
           )}
-          {view === "inbox" && <Empty title="Inbox" text="Nothing is waiting for your answer." />}
+          {view === "inbox" && snapshot && (
+            <Inbox
+              inbox={snapshot.inbox}
+              onOpen={(id) => {
+                setView("sessions");
+                setOpened(id);
+              }}
+            />
+          )}
         </main>
       </div>
     </div>

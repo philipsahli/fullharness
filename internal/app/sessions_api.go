@@ -38,6 +38,8 @@ type newSession struct {
 	Branch   string `json:"branch"`
 	Agent    string `json:"agent"`
 	Prompt   string `json:"prompt"`
+	// AutoApprove starts the Agent in its auto mode instead of asking.
+	AutoApprove bool `json:"autoApprove"`
 }
 
 // badRequest is a New Session request fh refuses, with the reason.
@@ -91,6 +93,22 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 	srv.Handle("POST /api/sessions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
+
+	// Answering from the Inbox and from a Session card is the same request.
+	srv.Handle("POST /api/inbox/{id}/answer", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Choice string `json:"choice"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			server.WriteError(w, http.StatusBadRequest, `send {"choice": "allow" | "deny" | "always"}`)
+			return
+		}
+		if err := d.sessions.Answer(r.PathValue("id"), req.Choice); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 func accepted(w http.ResponseWriter, err error) {
@@ -106,11 +124,12 @@ func writeSessionError(w http.ResponseWriter, err error) {
 	var bad badRequest
 	var refused *worktree.RefusedError
 	switch {
-	case errors.As(err, &bad), errors.As(err, &refused):
+	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice):
 		server.WriteError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, session.ErrNotFound):
+	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest):
 		server.WriteError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse):
+	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
+		errors.Is(err, session.ErrAnswered):
 		server.WriteError(w, http.StatusConflict, err.Error())
 	default:
 		server.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -155,7 +174,7 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 			branch = wt.Branch
 		}
 	}
-	return d.sessions.Start(def, p.Path, wtPath, branch, req.Prompt)
+	return d.sessions.Start(def, p.Path, wtPath, branch, req.Prompt, req.AutoApprove)
 }
 
 // createWorktree records the new Worktree in state.json before git creates

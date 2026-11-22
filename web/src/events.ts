@@ -23,7 +23,7 @@ export type Project = {
 };
 
 // SessionSummary, Tool and Item match internal/session.
-export type SessionState = "starting" | "working" | "idle" | "exited";
+export type SessionState = "starting" | "working" | "waiting" | "idle" | "exited";
 
 export type SessionSummary = {
   id: string;
@@ -32,6 +32,7 @@ export type SessionSummary = {
   agent: string;
   state: SessionState;
   title: string;
+  autoApprove: boolean; // started in the Agent's auto mode
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
 };
@@ -45,8 +46,27 @@ export type Tool = {
   rawOutput?: string;
 };
 
+// PermissionRequest matches internal/session.Request: one permission
+// request, as its card and its Inbox entry show it.
+export type PermissionRequest = {
+  id: string;
+  session: string;
+  sessionTitle: string;
+  project: string;
+  title: string;
+  kind: string;
+  command?: string;
+  paths?: string[];
+  content?: string;
+  always: boolean; // the Agent offers "always allow"
+  status: "pending" | "allowed" | "denied" | "always" | "cancelled" | "exited";
+  createdAt: string;
+};
+
 export type Item =
-  { type: "user" | "agent" | "notice"; text: string } | { type: "tool"; tool: Tool };
+  | { type: "user" | "agent" | "notice"; text: string }
+  | { type: "tool"; tool: Tool }
+  | { type: "permission"; permission: PermissionRequest };
 
 // Snapshot is the full state the server sends when the event channel opens.
 // transcripts holds only the conversations this tab opened; events keep
@@ -56,7 +76,7 @@ export type Snapshot = {
   launch: string; // random ID of the fh launch; changes on restart
   dev: boolean; // fh --dev: the token survives restarts, so a tab reloads
   sessions: SessionSummary[];
-  inbox: unknown[];
+  inbox: PermissionRequest[]; // open requests, oldest first
   projects: Project[];
   transcripts: Record<string, Item[]>;
 };
@@ -162,6 +182,8 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
   switch (ev.type) {
     case "projects":
       return { ...snap, projects: ev.projects as Project[] };
+    case "inbox":
+      return { ...snap, inbox: ev.inbox as PermissionRequest[] };
     case "session": {
       const s = ev.session as SessionSummary;
       const known = snap.sessions.some((x) => x.id === s.id);

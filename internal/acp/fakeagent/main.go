@@ -37,7 +37,8 @@ type action struct {
 	Stderr     string      `json:"stderr,omitempty"` // write a line to stderr
 	Exit       *int        `json:"exit,omitempty"`   // exit the process with this code
 	WriteFile  string      `json:"writeFile,omitempty"`
-	PIDFile    string      `json:"pidFile,omitempty"` // write the process ID to this path
+	PIDFile    string      `json:"pidFile,omitempty"`   // write the process ID to this path
+	ExitAfter  int         `json:"exitAfter,omitempty"` // exit with code 3 this many ms later, without blocking
 }
 
 type toolAction struct {
@@ -47,6 +48,9 @@ type toolAction struct {
 	Status    string `json:"status,omitempty"`
 	Text      string `json:"text,omitempty"`      // text content
 	RawOutput string `json:"rawOutput,omitempty"` // raw output, as a JSON string
+	Command   string `json:"command,omitempty"`   // permission: rawInput.command
+	Path      string `json:"path,omitempty"`      // permission: a location
+	Always    bool   `json:"always,omitempty"`    // permission: also offer allow_always
 }
 
 type script struct {
@@ -175,10 +179,21 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			err = update(acp.UpdateToolCall(acp.ToolCallId(t.ID), opts...))
 		case s.Permission != nil:
 			t := s.Permission
+			tc := acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(t.ID), Title: acp.PatchSet(t.Title), Kind: acp.PatchSet(acp.ToolKind(t.Kind))}
+			if t.Command != "" {
+				raw, _ := json.Marshal(map[string]string{"command": t.Command}) // a map of strings always encodes
+				tc.RawInput = acp.PatchSet(json.RawMessage(raw))
+			}
+			if t.Path != "" {
+				tc.Locations = acp.PatchSet([]acp.ToolCallLocation{{Path: t.Path}})
+			}
+			if t.Text != "" {
+				tc.Content = acp.PatchSet([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Text))})
+			}
 			resp, perr := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
 				SessionId: sid,
-				ToolCall:  acp.ToolCallUpdate{ToolCallId: acp.ToolCallId(t.ID), Title: acp.PatchSet(t.Title)},
-				Options:   a.permissionOptions(),
+				ToolCall:  tc,
+				Options:   a.permissionOptions(t.Always),
 			})
 			if perr != nil {
 				return false, perr
@@ -188,6 +203,9 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 				chosen = string(resp.Outcome.Selected.OptionId)
 			}
 			err = update(acp.UpdateAgentMessageText("permission=" + chosen))
+			if ctx.Err() != nil {
+				return true, nil // the turn was cancelled while asking
+			}
 		case s.WaitCancel:
 			<-ctx.Done()
 			return true, nil
@@ -201,6 +219,11 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			fmt.Fprintln(os.Stderr, s.Stderr)
 		case s.Exit != nil:
 			os.Exit(*s.Exit)
+		case s.ExitAfter > 0:
+			go func(ms int) {
+				time.Sleep(time.Duration(ms) * time.Millisecond)
+				os.Exit(3)
+			}(s.ExitAfter)
 		case s.PIDFile != "":
 			err = os.WriteFile(s.PIDFile, []byte(fmt.Sprint(os.Getpid())), 0o644)
 		case s.WriteFile != "":
@@ -213,10 +236,13 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 	return false, nil
 }
 
-func (a *agent) permissionOptions() []acp.PermissionOption {
+func (a *agent) permissionOptions(always bool) []acp.PermissionOption {
 	opts := []acp.PermissionOption{
 		{OptionId: "allow-once", Name: "Yes", Kind: acp.PermissionOptionKindAllowOnce},
 		{OptionId: "reject", Name: "No", Kind: acp.PermissionOptionKindRejectOnce},
+	}
+	if always {
+		opts = append(opts, acp.PermissionOption{OptionId: "allow-always", Name: "Always", Kind: acp.PermissionOptionKindAllowAlways})
 	}
 	if a.script.RejectAlwaysFirst {
 		always := acp.PermissionOption{OptionId: "reject-always", Name: "Never", Kind: acp.PermissionOptionKindRejectAlways}
