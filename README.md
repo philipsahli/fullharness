@@ -10,7 +10,7 @@ fullharness (fh) is a local app for developers who run several coding agents in 
   - A board per repo shows where each Feature is in the flow from idea to shipped (Idea → Spec → Tickets → Implementing → Review → Shipped).
   - Buttons start a Session that runs the next skill, for example `/to-spec` or `/implement #42`.
 
-> **Status:** design phase. There is no code yet. The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
+> **Status:** early build. `fh` starts and opens an empty UI; Sessions and the Software factory come next (see [v1 scope and build order](#v1-scope-and-build-order)). The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
 
 Planned after v1:
 
@@ -84,11 +84,36 @@ Target: 10 Sessions at once without lag. v1 is done when it has been the only wa
 
 ## Quickstart
 
-Not runnable yet. See [v1 scope and build order](#v1-scope-and-build-order) for what comes first.
+There is no release yet, so you build fh from source. You need Go 1.27.2 or later, and Node 22.12 or later with npm.
+
+```bash
+git clone https://github.com/philipsahli/fullharness.git
+cd fullharness
+make build
+./bin/fh
+```
+
+`fh` starts the server on `127.0.0.1:4815` and opens the UI in your browser. The UI shows empty Sessions, Software factory and Inbox areas for now. Stop fh with Ctrl+C.
+
+Running `fh` again while it runs opens another tab on the running instance instead of starting a second server.
 
 ## Configuration / Usage
 
-Nothing to configure yet. The planned config file is `~/.config/fullharness/config.toml` (see **Stack** under [v1 scope and build order](#v1-scope-and-build-order)).
+fh reads `~/.config/fullharness/config.toml`. The only setting so far is the port:
+
+```toml
+port = 4815
+```
+
+Flags override the config file:
+
+| Flag | Effect |
+| --- | --- |
+| `--port N` | Listen on port `N` instead. |
+| `--no-open` | Print the URL instead of opening the browser. |
+| `--dir PATH` | Use another config and state folder. |
+
+Each launch creates a new token, so a tab left open across a restart stops working and tells you to run `fh` again.
 
 ## Contributing
 

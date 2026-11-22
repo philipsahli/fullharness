@@ -1,10 +1,18 @@
 # Contributing to fullharness
 
-Thanks for taking a look. fh is in the design phase, so most contributions right now are issues, ADR discussions and doc fixes.
+Thanks for taking a look. fh is in an early build: it starts and opens an empty UI, and the v1 features are tracked as issues.
 
 ## Building and running
 
-There is no code yet, so there is nothing to build or run. The [README](README.md#v1-scope-and-build-order) lists the planned build order.
+You need Go 1.27.2 or later, and Node 22.12 or later with npm.
+
+| Command | What it does |
+| --- | --- |
+| `make build` | Builds the UI into `web/dist` and a binary at `bin/fh` that embeds it. |
+| `make dev` | Starts the Vite dev server on `127.0.0.1:5173`, proxied to a Go server on port 4816 with its own state folder `.dev/`, and opens the UI. |
+| `make test` | Runs the Go tests and the UI typecheck. |
+
+The Go tests in `internal/app` start fh in-process against a temp folder and drive it over HTTP and WebSocket, the same way the UI does. New tests go through that API, not against unexported code.
 
 ## Filing an issue
 
