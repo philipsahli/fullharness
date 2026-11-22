@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useEventChannel, type Connection } from "./events";
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
+import { Switcher } from "./Switcher";
 
 type View = "sessions" | "factory" | "inbox";
 
@@ -10,6 +11,19 @@ export function App() {
   const [view, setView] = useState<View>("sessions");
   // What the Sessions view shows: the New Session dialog, or a Session.
   const [opened, setOpened] = useState<"new" | string | undefined>();
+  const [switcher, setSwitcher] = useState(false);
+
+  // ⌘K on macOS, Ctrl+K elsewhere, from anywhere in the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSwitcher((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const snapshot = conn.status === "open" ? conn.snapshot : undefined;
   const inboxCount = snapshot?.inbox.length ?? 0;
 
@@ -20,6 +34,9 @@ export function App() {
           <b>fh</b>
           <span>fullharness</span>
         </div>
+        <button className="jump" type="button" onClick={() => setSwitcher(true)}>
+          Jump to a Session… <kbd>⌘K</kbd>
+        </button>
         <div className="tabs" role="tablist" aria-label="Views">
           <Tab view="sessions" current={view} onSelect={setView}>
             Sessions
@@ -36,11 +53,27 @@ export function App() {
         </div>
       </header>
       <ConnectionBanner conn={conn} />
+      {switcher && snapshot && (
+        <Switcher
+          sessions={snapshot.sessions}
+          projects={snapshot.projects}
+          onOpen={(id) => {
+            setView("sessions");
+            setOpened(id);
+          }}
+          onNew={() => {
+            setView("sessions");
+            setOpened("new");
+          }}
+          onClose={() => setSwitcher(false)}
+        />
+      )}
       <div className="shell" data-view={view}>
         <nav className="rail" aria-label="Sessions and Projects">
           {snapshot && (
             <SessionList
               sessions={snapshot.sessions}
+              projects={snapshot.projects}
               current={opened}
               onOpen={(id) => {
                 setView("sessions");

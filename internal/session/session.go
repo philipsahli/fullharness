@@ -52,6 +52,7 @@ const (
 // Exited reasons covered in #4; #7 adds the rest.
 const (
 	ReasonCrashed = "Agent crashed"
+	ReasonLogin   = "login needed"
 	ReasonFhQuit  = "fh quit"
 )
 
@@ -68,6 +69,15 @@ type Summary struct {
 	State    string `json:"state"`
 	// AutoApprove is set when the Session started in the Agent's auto mode.
 	AutoApprove bool `json:"autoApprove"`
+	// Waiting says why a Waiting Session waits: "permission" (a request is
+	// open) or "turn" (a turn ended that nobody has looked at yet).
+	Waiting string `json:"waiting,omitempty"`
+	// Since is when the state (or why it waits) last changed; the Session
+	// list orders by it.
+	Since time.Time `json:"since"`
+	// Login is the command to run in a terminal when the reason is "login
+	// needed".
+	Login string `json:"login,omitempty"`
 	// Title is the Worktree's branch until the Agent names the Session.
 	Title string `json:"title"`
 	// Reason and Stderr explain an Exited Session.
@@ -153,17 +163,20 @@ type session struct {
 	m   *Manager
 	def agent.Definition
 
-	mu         sync.Mutex
-	sum        Summary
-	transcript []Item
-	tools      map[string]int // tool call ID → transcript index
-	pending    map[string]*pending
-	settled    []int // transcript indexes of cards settled since the last afterSettle
-	inTurn     bool  // a prompt is running; decides Working vs Idle once no request is open
-	proc       *acp.Process
-	acpID      sdk.SessionId
-	stopping   bool
-	logPath    string
+	mu          sync.Mutex
+	sum         Summary
+	transcript  []Item
+	tools       map[string]int // tool call ID → transcript index
+	pending     map[string]*pending
+	settled     []int // transcript indexes of cards settled since the last afterSettle
+	inTurn      bool  // a prompt is running
+	ready       bool  // the ACP session exists; before that the Session is Starting
+	unseen      bool  // a turn ended that nobody has looked at yet
+	loginNeeded bool  // the Agent asked for a login; watch reports that, not a crash
+	proc        *acp.Process
+	acpID       sdk.SessionId
+	stopping    bool
+	logPath     string
 }
 
 // pending is an open permission request: where its card is, which option
@@ -195,7 +208,7 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 	s := &session{
 		m:       m,
 		def:     def,
-		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove},
+		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove, Since: time.Now()},
 		tools:   map[string]int{},
 		pending: map[string]*pending{},
 	}
@@ -209,15 +222,38 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 	return s.summary(), nil
 }
 
-// List returns every Session's summary, never nil.
+// List returns every Session's summary, never nil, in the global list's
+// order: Waiting (longest waiting first), Working and Starting, Idle,
+// Exited (most recent change first within each).
 func (m *Manager) List() []Summary {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	out := []Summary{}
-	for _, s := range m.sessions {
+	for _, s := range m.all() {
 		out = append(out, s.summary())
 	}
+	slices.SortStableFunc(out, compareForList)
 	return out
+}
+
+var listGroup = map[string]int{Waiting: 0, Working: 1, Starting: 1, Idle: 2, Exited: 3}
+
+func compareForList(a, b Summary) int {
+	if ga, gb := listGroup[a.State], listGroup[b.State]; ga != gb {
+		return ga - gb
+	}
+	if a.State == Waiting {
+		return a.Since.Compare(b.Since) // the one waiting longest first
+	}
+	return b.Since.Compare(a.Since) // most recent change first
+}
+
+// Seen records that you looked at Session id.
+func (m *Manager) Seen(id string) error {
+	s, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	s.seen()
+	return nil
 }
 
 // Get returns a Session with its conversation.
@@ -249,10 +285,14 @@ func (m *Manager) Prompt(id, text string) error {
 // under one lock, so two sends at once can't both start a turn.
 func (s *session) beginTurn(from string) error {
 	s.mu.Lock()
-	switch s.sum.State {
+	state := s.sum.State
+	if from == Idle && state == Waiting && s.sum.Waiting == "turn" {
+		state = Idle // writing the next message means you've looked
+	}
+	switch state {
 	case from:
-		s.sum.State = Working
-		s.inTurn = true
+		s.inTurn, s.unseen = true, false
+		s.deriveLocked()
 		s.mu.Unlock()
 		s.publish()
 		return nil
@@ -360,7 +400,8 @@ func (s *session) run(prompt string) {
 	}
 	defer func() { _ = logFile.Close() }() // the process holds its own copy of the descriptor
 
-	proc, err := acp.Start(s.def.Command, s.def.Environ(s.summary().AutoApprove), s.summary().Worktree, logFile, s)
+	proc, err := acp.Start(s.def.Command, s.def.Environ(s.summary().AutoApprove), s.summary().Worktree, logFile,
+		s.m.cfg.Log.With("session", s.sum.ID), s)
 	if err != nil {
 		s.exit(ReasonCrashed, []string{err.Error()})
 		return
@@ -383,6 +424,11 @@ func (s *session) run(prompt string) {
 	fail := func(step string, err error) {
 		_, _ = fmt.Fprintf(logFile, "fh: %s failed: %v\n", step, err) // best effort; the log is the only place to say it
 		s.m.cfg.Log.Info("agent start failed", "session", s.sum.ID, "step", step, "err", err)
+		if authRequired(err) {
+			s.mu.Lock()
+			s.loginNeeded = true
+			s.mu.Unlock()
+		}
 		proc.Stop()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.m.cfg.StartTimeout)
@@ -400,12 +446,19 @@ func (s *session) run(prompt string) {
 	s.setAsking(ctx, proc, acpSess)
 	s.mu.Lock()
 	s.acpID = sid
+	if prompt == "" {
+		s.ready = true
+		s.deriveLocked()
+	}
 	s.mu.Unlock()
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
 	if prompt == "" {
-		s.setState(Idle)
+		s.publish()
 		return
 	}
+	s.mu.Lock()
+	s.ready = true // Starting moves straight to Working in beginTurn
+	s.mu.Unlock()
 	// Straight from Starting to Working: an Idle in between would let a
 	// second message in before the starting prompt.
 	if s.beginTurn(Starting) == nil {
@@ -454,10 +507,14 @@ func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.
 func (s *session) watch(proc *acp.Process) {
 	<-proc.Done()
 	s.mu.Lock()
-	stopping := s.stopping
+	stopping, login := s.stopping, s.loginNeeded
 	s.mu.Unlock()
-	if stopping {
+	switch {
+	case stopping:
 		s.exit(ReasonFhQuit, nil)
+		return
+	case login:
+		s.exit(ReasonLogin, nil)
 		return
 	}
 	s.m.cfg.Log.Info("agent exited", "session", s.sum.ID, "err", proc.ExitErr())
@@ -477,16 +534,26 @@ func (s *session) prompt(text string) {
 			return // watch reports the exit
 		default:
 		}
-		// The Agent is alive but refused the turn (an auth error, for
-		// example); show it and let the user try again.
+		if authRequired(err) {
+			s.mu.Lock()
+			s.loginNeeded = true
+			s.mu.Unlock()
+			proc.Stop() // watch reports "login needed"
+			return
+		}
+		// The Agent is alive but refused the turn; show it and let the
+		// user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.endTurn()
+		s.endTurn(false)
 		return
 	}
-	if reason == sdk.StopReasonCancelled {
+	cancelledTurn := reason == sdk.StopReasonCancelled
+	if cancelledTurn {
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
 	}
-	s.endTurn()
+	// A turn you cancelled needs no second look; any other ending (end_turn,
+	// max_tokens, refusal) waits for you.
+	s.endTurn(cancelledTurn)
 	if s.m.cfg.TurnEnded != nil {
 		s.m.cfg.TurnEnded()
 	}
@@ -612,7 +679,7 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 	s.transcript = append(s.transcript, Item{Type: "permission", Permission: &req})
 	p.index = len(s.transcript) - 1
 	s.pending[req.ID] = p
-	s.sum.State = Waiting
+	s.deriveLocked()
 	s.mu.Unlock()
 	s.emit("item", p.index, "item", Item{Type: "permission", Permission: &req})
 	s.publish()
@@ -667,7 +734,10 @@ func (s *session) answer(requestID, choice string) error {
 	return nil
 }
 
-// agentGone reports whether the Agent process has exited.
+// agentGone reports whether the Agent process has exited. A request's
+// context ends as the connection drops, a moment before the process is
+// reaped, so it waits up to a second for the exit; an Agent that withdrew
+// one request keeps running and is told apart that way.
 func (s *session) agentGone() bool {
 	s.mu.Lock()
 	proc := s.proc
@@ -678,7 +748,7 @@ func (s *session) agentGone() bool {
 	select {
 	case <-proc.Done():
 		return true
-	default:
+	case <-time.After(time.Second):
 		return false
 	}
 }
@@ -719,13 +789,7 @@ func (s *session) settleLocked(id, status string, opt sdk.PermissionOptionId) {
 	req.Status = status
 	s.transcript[p.index].Permission = &req
 	s.settled = append(s.settled, p.index)
-	if len(s.pending) == 0 && s.sum.State == Waiting {
-		// Back to the turn, or to Idle if the request came between turns.
-		s.sum.State = Idle
-		if s.inTurn {
-			s.sum.State = Working
-		}
-	}
+	s.deriveLocked()
 	p.answer <- opt // buffered and written once: never blocks
 }
 
@@ -783,37 +847,62 @@ func (s *session) addItem(it Item) {
 	s.emit("item", i, "item", it)
 }
 
-// endTurn marks the turn over: Idle, or still Waiting if the Agent left a
-// permission request open.
-func (s *session) endTurn() {
+// endTurn marks the turn over. Unless you cancelled it, the Session waits
+// for you to look.
+func (s *session) endTurn(cancelled bool) {
 	s.mu.Lock()
 	s.inTurn = false
-	if s.sum.State == Exited {
-		s.mu.Unlock()
-		return
-	}
-	s.sum.State = Idle
-	if len(s.pending) > 0 {
-		s.sum.State = Waiting
-	}
+	s.unseen = !cancelled
+	s.deriveLocked()
 	s.mu.Unlock()
 	s.publish()
 }
 
-func (s *session) setState(state string) {
+// seen records that you looked at the Session (its conversation is open in
+// a visible tab): a finished turn no longer waits.
+func (s *session) seen() {
 	s.mu.Lock()
-	if s.sum.State == Exited {
+	if !s.unseen {
 		s.mu.Unlock()
 		return
 	}
-	s.sum.State = state
+	s.unseen = false
+	s.deriveLocked()
 	s.mu.Unlock()
 	s.publish()
+}
+
+// deriveLocked sets the Session state from the facts, in priority order
+// (GLOSSARY.md): Exited stays; not ready is Starting; an open permission
+// request is Waiting; a running turn is Working; a finished turn nobody has
+// seen is Waiting; else Idle. The caller holds s.mu.
+func (s *session) deriveLocked() {
+	if s.sum.State == Exited {
+		return
+	}
+	state, waiting := Idle, ""
+	switch {
+	case !s.ready && !s.inTurn:
+		state = Starting
+	case len(s.pending) > 0:
+		state, waiting = Waiting, "permission"
+	case s.inTurn:
+		state = Working
+	case s.unseen:
+		state, waiting = Waiting, "turn"
+	}
+	if state != s.sum.State || waiting != s.sum.Waiting {
+		s.sum.State, s.sum.Waiting, s.sum.Since = state, waiting, time.Now()
+	}
 }
 
 func (s *session) exit(reason string, stderr []string) {
 	s.mu.Lock()
-	s.sum.State, s.sum.Reason, s.sum.Stderr = Exited, reason, stderr
+	s.sum.State, s.sum.Waiting, s.sum.Since = Exited, "", time.Now()
+	s.sum.Reason, s.sum.Stderr = reason, stderr
+	if reason == ReasonLogin {
+		s.sum.Login = s.def.Login
+	}
 	s.mu.Unlock()
 	// After Exited is set, so settling doesn't flash Working first.
 	s.settleAll(StatusExited)
@@ -897,3 +986,10 @@ func lastLines(path string, n int) []string {
 }
 
 func newID() string { return strings.ToLower(rand.Text()[:10]) }
+
+// authRequired reports whether err is ACP's "authentication required"
+// (-32000): the Agent needs a login in a terminal before it can work.
+func authRequired(err error) bool {
+	var re *sdk.RequestError
+	return errors.As(err, &re) && re.Code == -32000
+}

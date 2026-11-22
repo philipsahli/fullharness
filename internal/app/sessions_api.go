@@ -94,6 +94,16 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
 
+	// A tab calls this while the Session's conversation is open and the tab
+	// is visible: a finished turn stops waiting for you.
+	srv.Handle("POST /api/sessions/{id}/seen", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.sessions.Seen(r.PathValue("id")); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Answering from the Inbox and from a Session card is the same request.
 	srv.Handle("POST /api/inbox/{id}/answer", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

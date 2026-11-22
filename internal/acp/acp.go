@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"syscall"
 	"time"
@@ -32,8 +33,9 @@ type Process struct {
 	err  error // the process's exit error, set before done closes
 }
 
-// Start launches command in dir. The Agent's stderr goes to stderr.
-func Start(command, env []string, dir string, stderr io.Writer, h Handler) (*Process, error) {
+// Start launches command in dir. The Agent's stderr goes to stderr; the
+// SDK's own log lines (for example "connection closed") go to log.
+func Start(command, env []string, dir string, stderr io.Writer, log *slog.Logger, h Handler) (*Process, error) {
 	if len(command) == 0 {
 		return nil, errors.New("empty Agent command")
 	}
@@ -57,6 +59,7 @@ func Start(command, env []string, dir string, stderr io.Writer, h Handler) (*Pro
 	}
 	p := &Process{cmd: cmd, done: make(chan struct{})}
 	p.conn = sdk.NewClientSideConnection(client{h}, stdin, stdout)
+	p.conn.SetLogger(log)
 	go func() {
 		p.err = cmd.Wait()
 		close(p.done)

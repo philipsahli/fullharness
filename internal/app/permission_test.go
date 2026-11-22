@@ -111,7 +111,7 @@ func TestAnsweringFromTheInboxReachesTheAgentAndClearsBothPlaces(t *testing.T) {
 				t.Fatalf("answer: status %d (%v), want 204", status, body)
 			}
 			waitInbox(t, tab, 0)
-			waitState(t, tab, id, "idle")
+			waitEnded(t, tab, id)
 
 			if got := lastAgentText(t, f, c, id); got != "permission="+want {
 				t.Errorf("agent saw %q, want permission=%s", got, want)
@@ -133,7 +133,7 @@ func TestDenyPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
 	if status, _ := f.answer(c, req["id"].(string), "deny"); status != http.StatusNoContent {
 		t.Fatalf("deny: status %d, want 204", status)
 	}
-	waitState(t, tab, id, "idle")
+	waitEnded(t, tab, id)
 
 	if got := lastAgentText(t, f, c, id); got != "permission=reject" {
 		t.Errorf("agent saw %q, want the reject_once option", got)

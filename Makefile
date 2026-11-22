@@ -5,7 +5,8 @@
 #             open tabs reload by themselves.
 # make lint:  Go and UI linters, including the UI typecheck (ADR 0007). Versions
 #             are pinned in tools/go.mod (Go) and web/package.json (UI).
-# make test:  Go tests with the race detector (the API tests in internal/app).
+# make test:  Go tests with the race detector (the API tests in internal/app),
+#             then the 10-Session load test without it.
 # make e2e:   Playwright smoke tests in Chromium against a fresh bin/fh. The
 #             first run downloads Chromium; CI sets PLAYWRIGHT_INSTALL_FLAGS=--with-deps
 #             to also install its system libraries on Linux.
@@ -53,6 +54,8 @@ lint: web-deps $(TOOLS)/golangci-lint $(TOOLS)/govulncheck
 
 test:
 	go test -race ./...
+	# The load test is built only without -race (see internal/app/load_test.go).
+	go test -count=1 -v -run TestTenStreamingSessions ./internal/app/
 
 e2e: build
 	go build -o bin/fakeagent ./internal/acp/fakeagent  # the Agent the e2e Sessions talk to

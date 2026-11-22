@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
+import { byListOrder } from "./events";
 import type {
   Item,
   PermissionRequest,
@@ -15,10 +16,12 @@ import type {
 // SessionList is the rail's Sessions section.
 export function SessionList(props: {
   sessions: SessionSummary[];
+  projects: Project[];
   current?: string;
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
+  const sorted = [...props.sessions].sort(byListOrder);
   return (
     <section aria-label="Sessions">
       <h3>Sessions</h3>
@@ -27,18 +30,22 @@ export function SessionList(props: {
       </button>
       {props.sessions.length === 0 && <p className="empty">No Sessions yet.</p>}
       <ul className="slist">
-        {props.sessions.map((s) => (
+        {sorted.map((s) => (
           <li key={s.id}>
             <button
               type="button"
-              className="srow"
+              className={`srow ${s.state}`}
               aria-current={s.id === props.current}
               onClick={() => props.onOpen(s.id)}
             >
               <span className={`dot ${s.state}`} aria-hidden="true" />
               <span className="t">{s.title}</span>
-              {s.autoApprove && <span className="tag">auto-approve</span>}
               <StateBadge state={s.state} />
+              <span className="s">
+                {projectName(props.projects, s.project)} · {s.agent}
+                {s.autoApprove && " · auto-approve"}
+                {s.state === "exited" && s.reason && ` · ${s.reason}`}
+              </span>
             </button>
           </li>
         ))}
@@ -236,6 +243,21 @@ export function Conversation(props: {
     });
   }, [session.id, items, update]);
 
+  // You're looking at this Session while its conversation is open in a
+  // visible tab: tell fh when that starts and whenever a turn ends meanwhile,
+  // so a finished turn doesn't wait for you.
+  const waitingForTurn = session.state === "waiting" && session.waiting === "turn";
+  useEffect(() => {
+    const look = () => {
+      if (document.visibilityState === "visible" && waitingForTurn) {
+        void command(`/api/sessions/${session.id}/seen`);
+      }
+    };
+    look();
+    document.addEventListener("visibilitychange", look);
+    return () => document.removeEventListener("visibilitychange", look);
+  }, [session.id, waitingForTurn]);
+
   // A statement body on purpose: scrollIntoView returns a Promise in current
   // Chromium, and an effect must return nothing or a cleanup function.
   useEffect(() => {
@@ -266,6 +288,11 @@ export function Conversation(props: {
         {session.state === "exited" && (
           <div className="notice bad" role="status">
             Exited: {session.reason}
+            {session.login && (
+              <p>
+                Log in from a terminal, then start a new Session: <code>{session.login}</code>
+              </p>
+            )}
             {session.stderr && session.stderr.length > 0 && <pre>{session.stderr.join("\n")}</pre>}
           </div>
         )}
@@ -423,4 +450,8 @@ function ToolCard({ tool }: { tool: Tool }) {
       {output ? <pre>{output}</pre> : <p className="empty">No output yet.</p>}
     </details>
   );
+}
+
+export function projectName(projects: Project[], path: string): string {
+  return projects.find((p) => p.path === path)?.name ?? basename(path);
 }

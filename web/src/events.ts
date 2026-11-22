@@ -33,6 +33,9 @@ export type SessionSummary = {
   state: SessionState;
   title: string;
   autoApprove: boolean; // started in the Agent's auto mode
+  waiting?: "permission" | "turn"; // why a Waiting Session waits
+  since: string; // when the state last changed; orders the list
+  login?: string; // the command to run when the reason is "login needed"
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
 };
@@ -209,4 +212,22 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
     }
   }
   return snap;
+}
+
+const listGroup: Record<SessionState, number> = {
+  waiting: 0,
+  working: 1,
+  starting: 1,
+  idle: 2,
+  exited: 3,
+};
+
+// byListOrder sorts Sessions like the server's list (internal/session):
+// Waiting (longest waiting first), Working and Starting, Idle, Exited (most
+// recent change first within each).
+export function byListOrder(a: SessionSummary, b: SessionSummary): number {
+  const g = listGroup[a.state] - listGroup[b.state];
+  if (g !== 0) return g;
+  const t = Date.parse(a.since) - Date.parse(b.since);
+  return a.state === "waiting" ? t : -t;
 }

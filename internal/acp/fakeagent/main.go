@@ -40,6 +40,15 @@ type action struct {
 	WriteFile  string      `json:"writeFile,omitempty"`
 	PIDFile    string      `json:"pidFile,omitempty"`   // write the process ID to this path
 	ExitAfter  int         `json:"exitAfter,omitempty"` // exit with code 3 this many ms later, without blocking
+	AuthError  bool        `json:"authError,omitempty"` // fail the request with ACP's "authentication required"
+	Fail       string      `json:"fail,omitempty"`      // fail the request with this message (an ordinary error)
+	Stop       string      `json:"stop,omitempty"`      // end the turn with this stop reason instead of end_turn
+	// Stream sends Count chunks, PerSecond a second, each "t=<unix nanos>;"
+	// so a test can measure how long fh takes to deliver them.
+	Stream *struct {
+		Count     int `json:"count"`
+		PerSecond int `json:"perSecond"`
+	} `json:"stream,omitempty"`
 }
 
 type toolAction struct {
@@ -144,7 +153,13 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if cancelled {
 		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 	}
-	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	reason := acp.StopReasonEndTurn
+	for _, st := range steps {
+		if st.Stop != "" {
+			reason = acp.StopReason(st.Stop)
+		}
+	}
+	return acp.PromptResponse{StopReason: reason}, nil
 }
 
 // run performs steps; it reports whether the turn was cancelled.
@@ -228,8 +243,15 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 				chosen = string(resp.Outcome.Selected.OptionId)
 			}
 			err = update(acp.UpdateAgentMessageText("permission=" + chosen))
-			if ctx.Err() != nil {
-				return true, nil // the turn was cancelled while asking
+			if chosen == "cancelled" {
+				// A client answers "cancelled" when it cancels the turn, and
+				// session/cancel follows; end the turn as cancelled, as ACP
+				// asks, rather than racing on.
+				select {
+				case <-ctx.Done():
+				case <-time.After(time.Second):
+				}
+				return true, nil
 			}
 		case s.WaitCancel:
 			<-ctx.Done()
@@ -244,6 +266,22 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			fmt.Fprintln(os.Stderr, s.Stderr)
 		case s.Exit != nil:
 			os.Exit(*s.Exit)
+		case s.AuthError:
+			return false, acp.NewAuthRequired(nil)
+		case s.Fail != "":
+			return false, acp.NewInternalError(map[string]any{"error": s.Fail})
+		case s.Stream != nil:
+			tick := time.NewTicker(time.Second / time.Duration(s.Stream.PerSecond))
+			for i := 0; i < s.Stream.Count && err == nil; i++ {
+				select {
+				case <-tick.C:
+				case <-ctx.Done():
+					tick.Stop()
+					return true, nil
+				}
+				err = update(acp.UpdateAgentMessageText(fmt.Sprintf("t=%d;", time.Now().UnixNano())))
+			}
+			tick.Stop()
 		case s.ExitAfter > 0:
 			go func(ms int) {
 				time.Sleep(time.Duration(ms) * time.Millisecond)

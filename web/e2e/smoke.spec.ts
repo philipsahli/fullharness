@@ -173,3 +173,33 @@ test("a permission request answered in the Inbox is answered in its Session too"
     await fh.dispose();
   }
 });
+
+test("⌘K finds a Session by Project and opens it", async ({ page }) => {
+  const fh = await Fh.start({ agentScript: { default: [{ say: "hello" }] } });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("billing"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByRole("button", { name: "Start Session" }).click();
+    await expect(page.getByRole("region", { name: /^Session / })).toBeVisible();
+    await page.getByRole("tab", { name: /Inbox/ }).click(); // leave the Session
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const dialog = page.getByRole("dialog", { name: "Jump to a Session" });
+    await dialog.getByLabel("Search Sessions").fill("billing claude");
+    await expect(dialog.getByRole("option")).toHaveCount(1);
+    await page.keyboard.press("Enter");
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("region", { name: /^Session / })).toBeVisible();
+  } finally {
+    await fh.dispose();
+  }
+});
