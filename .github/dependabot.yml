@@ -1,5 +1,6 @@
 # ADR 0007: weekly updates, minor and patch grouped into one PR per
 # ecosystem; major updates stay separate PRs so each gets its own look.
+# Exception: the npm "react" group below takes React majors too (#34).
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -15,6 +16,11 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # React and its types only install at matching versions (#34), so they
+      # move together, majors included. Listed first: a package joins the
+      # first group it matches.
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
       npm-minor-patch:
         update-types: [minor, patch]
 
