@@ -186,7 +186,9 @@ Press **⌘K** (Ctrl+K off macOS) to jump to a Session by words from its title, 
 
 Quitting fh stops every Agent. When fh starts again, your Sessions are listed as Exited ("fh quit"):
 
-- **Reopen** restarts the Agent in the same Worktree, with the same auto-approve setting, and the Agent replays the conversation (ACP `session/load`).
+- **Reopen** restarts the Agent in the same Worktree, with the same auto-approve setting.
+- The Agent then replays the conversation (ACP `session/load`).
+- Reopen isn't offered for an Agent that can't reload Sessions, or one no longer configured. Use the Agent's own resume command instead.
 - Reopen is refused while another Session uses that Worktree.
 - **Close** removes a Session from fh and frees its Worktree. For a Session whose Agent still runs, fh asks first and stops the Agent.
 - The Agent keeps its own history; fh deletes the Session's log.

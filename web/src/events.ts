@@ -211,6 +211,12 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
       return { ...snap, projects: ev.projects as Project[] };
     case "inbox":
       return { ...snap, inbox: ev.inbox as PermissionRequest[] };
+    case "reset": {
+      // A reopened Session: the Agent replays its conversation from the start.
+      const id = ev.session as string;
+      if (!snap.transcripts[id]) return snap;
+      return { ...snap, transcripts: { ...snap.transcripts, [id]: [] } };
+    }
     case "closed": {
       const id = ev.session as string;
       const transcripts = { ...snap.transcripts };

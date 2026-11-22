@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -168,5 +169,100 @@ func TestStartupRemovesLogsOfSessionsThatAreGone(t *testing.T) {
 
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
 		t.Errorf("orphan log still there: %v", err)
+	}
+}
+
+func TestTwoReopensAtOnceStartOneAgent(t *testing.T) {
+	f, c, id, _ := sessionAfterRestart(t, script{}, nil)
+
+	statuses := make(chan int, 2)
+	for range 2 {
+		go func() {
+			status, _ := f.post(c, "/api/sessions/"+id+"/reopen", nil)
+			statuses <- status
+		}()
+	}
+	got := []int{<-statuses, <-statuses}
+
+	slices.Sort(got) // 202 sorts before 409
+	if got[0] != http.StatusAccepted || got[1] != http.StatusConflict {
+		t.Fatalf("statuses %v, want one 202 and one 409", got)
+	}
+}
+
+func TestALoginNeededAtStartCanBeReopenedAsANewSession(t *testing.T) {
+	f := startFhWithAgent(t, script{"initAuthError": true})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})
+	if s := waitState(t, tab, id, "exited"); s["canReopen"] != true {
+		t.Fatalf("login needed at start: canReopen = %v, want true", s["canReopen"])
+	}
+	// The user logs in; the next start succeeds.
+	f.stop()
+	dir := f.opts.Dir
+	cfg, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
+	writeConfig(t, dir, strings.Replace(string(cfg), `\"initAuthError\":true`, `\"initAuthError\":false`, 1))
+	f = startFhWith(t, f.opts)
+	c = f.authorisedClient()
+	tab = f.connectTab(c)
+
+	if status, body := f.post(c, "/api/sessions/"+id+"/reopen", nil); status != http.StatusAccepted {
+		t.Fatalf("reopen: status %d (%v), want 202", status, body)
+	}
+	waitState(t, tab, id, "idle")
+}
+
+func TestReopenInTheSameRunTellsTabsToDropTheOldConversation(t *testing.T) {
+	f := startFhWithAgent(t, script{"history": history, "default": []any{map[string]any{"exit": 2}}})
+	c, _, id, _ := newSessionIn(t, f, "")
+	tab := f.connectTab(c)
+	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "crash"})
+	waitState(t, tab, id, "exited")
+
+	f.post(c, "/api/sessions/"+id+"/reopen", nil)
+
+	for {
+		ev := nextEvent(t, tab, 5_000_000_000)
+		if ev == nil {
+			t.Fatal("no reset event before the replay")
+		}
+		if ev["type"] == "item" && ev["session"] == id {
+			t.Fatal("replayed item arrived before any reset event")
+		}
+		if ev["type"] == "reset" && ev["session"] == id {
+			break
+		}
+	}
+}
+
+func TestAnAgentRemovedFromConfigKeepsItsReopenAfterItComesBack(t *testing.T) {
+	f := startFhWithAgents(t, map[string]script{"myagent": {}}, nil)
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "myagent"})
+	waitState(t, tab, id, "idle")
+	f.stop()
+	dir := f.opts.Dir
+	cfg, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, dir, "")
+	gone := startFhWith(t, f.opts)
+	if s := objects(t, gone.state(gone.authorisedClient()), "sessions")[0]; s["canReopen"] != false {
+		t.Errorf("Agent not configured: canReopen = %v, want false", s["canReopen"])
+	}
+	gone.stop()
+	writeConfig(t, dir, string(cfg))
+
+	back := startFhWith(t, f.opts)
+
+	if s := objects(t, back.state(back.authorisedClient()), "sessions")[0]; s["id"] != id || s["canReopen"] != true {
+		t.Errorf("Agent configured again: session %v, want canReopen true", s)
 	}
 }
