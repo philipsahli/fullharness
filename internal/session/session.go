@@ -391,13 +391,13 @@ func (s *session) run(prompt string) {
 		fail("initialize", err)
 		return
 	}
-	as, err := proc.NewSession(ctx, s.summary().Worktree)
+	acpSess, err := proc.NewSession(ctx, s.summary().Worktree)
 	if err != nil {
 		fail("session/new", err)
 		return
 	}
-	sid := as.ID
-	s.setAsking(ctx, proc, as)
+	sid := acpSess.ID
+	s.setAsking(ctx, proc, acpSess)
 	s.mu.Lock()
 	s.acpID = sid
 	s.mu.Unlock()
@@ -417,28 +417,25 @@ func (s *session) run(prompt string) {
 // mode and config option as its definition says (the environment part was
 // set at launch). If that fails, the conversation says so instead of the
 // user finding out from an unasked edit.
-func (s *session) setAsking(ctx context.Context, proc *acp.Process, as acp.Session) {
+func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) {
 	a, auto := s.def.Asking, s.summary().AutoApprove
+	if !a.Known() {
+		s.addItem(Item{Type: "notice", Text: "fh doesn't know how to make this Agent ask before it acts, so it follows its own settings; auto-approve has no effect."})
+		return
+	}
 	var problems []error
-	if a.Mode != "" {
-		mode := a.Mode
-		if auto {
-			mode = a.AutoMode
-		}
-		if !slices.Contains(as.Modes, mode) {
+	if mode := a.Mode.Pick(auto); mode != "" {
+		if !slices.Contains(acpSess.Modes, mode) {
 			problems = append(problems, fmt.Errorf("mode %q not offered", mode))
-		} else if err := proc.SetMode(ctx, as.ID, mode); err != nil {
+		} else if err := proc.SetMode(ctx, acpSess.ID, mode); err != nil {
 			problems = append(problems, err)
 		}
 	}
 	if a.Option != "" {
-		value := a.OptionAsk
-		if auto {
-			value = a.OptionAuto
-		}
-		if !slices.Contains(as.Options[a.Option], value) {
+		value := a.Value.Pick(auto)
+		if !slices.Contains(acpSess.Options[a.Option], value) {
 			problems = append(problems, fmt.Errorf("option %s=%s not offered", a.Option, value))
-		} else if err := proc.SetOption(ctx, as.ID, a.Option, value); err != nil {
+		} else if err := proc.SetOption(ctx, acpSess.ID, a.Option, value); err != nil {
 			problems = append(problems, err)
 		}
 	}
@@ -448,7 +445,7 @@ func (s *session) setAsking(ctx context.Context, proc *acp.Process, as acp.Sessi
 	s.m.cfg.Log.Info("agent asking setup failed", "session", s.sum.ID, "err", errors.Join(problems...))
 	text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
 	if auto {
-		text = "fh couldn't switch the Agent to auto-approve, so it asks before it acts as usual."
+		text = "fh couldn't switch the Agent to auto-approve, so it keeps its own setting."
 	}
 	s.addItem(Item{Type: "notice", Text: text})
 }

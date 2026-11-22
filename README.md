@@ -172,13 +172,18 @@ fh knows three Agents. Each needs its CLI installed and logged in:
 
 If a CLI is missing, New Session greys that Agent out and shows the install command.
 
-fh makes every Agent ask before it acts, whatever your own Agent settings say. With **Auto-approve**, it uses the Agent's own way of asking less:
+fh makes each built-in Agent ask before it acts, whatever your own Agent settings say. With **Auto-approve**, it uses the Agent's own way of asking less:
 
 | Agent | Asks before acting | Auto-approve |
 | --- | --- | --- |
 | Claude Code | mode `default` | mode `auto` |
 | Copilot CLI | `allow_all` off | `allow_all` on |
 | OpenCode | `OPENCODE_PERMISSION={"bash":"ask","edit":"ask"}` | `{"bash":"allow","edit":"allow"}` |
+
+Two exceptions:
+
+- An Agent you add in `config.toml` follows its own settings. fh says so in the conversation, and auto-approve has no effect on it.
+- `env` in `config.toml` comes last, so setting `OPENCODE_PERMISSION` there replaces fh's value, for asking and for auto-approve alike.
 
 fh removes `ANTHROPIC_API_KEY` from Claude Code's environment, so Claude Code uses your Claude login rather than billing an API key.
 

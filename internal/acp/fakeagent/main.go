@@ -85,7 +85,9 @@ func main() {
 			os.Exit(2)
 		}
 	}
-	a := &agent{script: s, mode: "auto", config: map[string]string{"allow_all": "on"}} // Claude Code starts in the user's mode; the spike saw auto
+	// Start like a user's own permissive settings, which fh must override:
+	// Claude Code's mode "auto" (the spike saw it), Copilot's allow_all on.
+	a := &agent{script: s, mode: "auto", config: map[string]string{"allow_all": "on"}}
 	a.conn = acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	<-a.conn.Done()
 }

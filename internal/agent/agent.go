@@ -36,16 +36,35 @@ type Definition struct {
 // Each is set on every Session, both ways, so the user's own setting (for
 // example Claude Code's auto mode, or Copilot's allow-all) never carries
 // over. fh never chooses a value that skips asking altogether, such as
-// Claude Code's bypassPermissions.
+// Claude Code's bypassPermissions. Only built-in Agents have one; for an
+// Agent added in config.toml, fh can't tell how it asks.
 type Asking struct {
-	// Mode and AutoMode are session/set_mode IDs (Claude Code).
-	Mode, AutoMode string
-	// Option, with OptionAsk and OptionAuto, is a session/set_config_option
-	// select (Copilot CLI's allow_all).
-	Option, OptionAsk, OptionAuto string
-	// Env and AutoEnv are added to the process environment (OpenCode's
-	// OPENCODE_PERMISSION, undocumented: the release smoke test checks it).
-	Env, AutoEnv map[string]string
+	// Mode is a session/set_mode ID (Claude Code).
+	Mode Pair[string]
+	// Option names a session/set_config_option select and Value its value
+	// (Copilot CLI's allow_all).
+	Option string
+	Value  Pair[string]
+	// Env is added to the process environment (OpenCode's
+	// OPENCODE_PERMISSION). It is undocumented; the release smoke test
+	// planned in #16 is to catch it changing.
+	Env Pair[map[string]string]
+}
+
+// Pair is a setting's value when asking first, and with auto-approve.
+type Pair[T any] struct{ Ask, Auto T }
+
+// Pick returns the value for autoApprove.
+func (p Pair[T]) Pick(autoApprove bool) T {
+	if autoApprove {
+		return p.Auto
+	}
+	return p.Ask
+}
+
+// Known reports whether fh knows how to make the Agent ask.
+func (a Asking) Known() bool {
+	return a.Mode.Ask != "" || a.Option != "" || len(a.Env.Ask) > 0
 }
 
 type requirement struct{ cli, install string }
@@ -67,29 +86,30 @@ func Defaults() []Definition {
 			{"node", "install Node: brew install node"},
 			{"npx", "install Node: brew install node"},
 		},
-		Asking: Asking{Mode: "default", AutoMode: "auto"},
+		Asking: Asking{Mode: Pair[string]{Ask: "default", Auto: "auto"}},
 		claude: true,
 	}, {
 		ID:       "copilot",
 		Name:     "Copilot CLI",
 		Command:  []string{"copilot", "--acp", "--stdio"},
 		requires: []requirement{{"copilot", "install Copilot CLI: brew install --cask copilot-cli"}},
-		Asking:   Asking{Option: "allow_all", OptionAsk: "off", OptionAuto: "on"},
+		Asking:   Asking{Option: "allow_all", Value: Pair[string]{Ask: "off", Auto: "on"}},
 	}, {
 		ID:       "opencode",
 		Name:     "OpenCode",
 		Command:  []string{"opencode", "acp"},
 		requires: []requirement{{"opencode", "install OpenCode: brew install opencode"}},
-		Asking: Asking{
-			Env:     map[string]string{"OPENCODE_PERMISSION": `{"bash":"ask","edit":"ask"}`},
-			AutoEnv: map[string]string{"OPENCODE_PERMISSION": `{"bash":"allow","edit":"allow"}`},
-		},
+		Asking: Asking{Env: Pair[map[string]string]{
+			Ask:  map[string]string{"OPENCODE_PERMISSION": `{"bash":"ask","edit":"ask"}`},
+			Auto: map[string]string{"OPENCODE_PERMISSION": `{"bash":"allow","edit":"allow"}`},
+		}},
 	}}
 }
 
 // Resolve applies config.toml overrides to the built-in definitions. An
 // override with a command replaces the built-in command and checks only
-// that command; an unknown id adds a new Agent.
+// that command (with the built-in install hint if it's the same CLI); an
+// unknown id adds a new Agent. An override keeps the built-in's Asking.
 func Resolve(overrides map[string]Override) []Definition {
 	defs := Defaults()
 	for id, o := range overrides {
@@ -101,7 +121,13 @@ func Resolve(overrides map[string]Override) []Definition {
 		d := &defs[i]
 		if len(o.Command) > 0 {
 			d.Command = o.Command
-			d.requires = []requirement{{o.Command[0], ""}}
+			req := requirement{cli: o.Command[0]}
+			for _, r := range d.requires {
+				if r.cli == req.cli {
+					req.install = r.install
+				}
+			}
+			d.requires = []requirement{req}
 		}
 		if len(o.Env) > 0 {
 			d.Env = o.Env
@@ -147,11 +173,7 @@ func (d Definition) Environ(autoApprove bool) []string {
 			env = append(env, "CLAUDE_CODE_EXECUTABLE="+p)
 		}
 	}
-	asking := d.Asking.Env
-	if autoApprove {
-		asking = d.Asking.AutoEnv
-	}
-	for k, v := range asking {
+	for k, v := range d.Asking.Env.Pick(autoApprove) {
 		env = append(env, k+"="+v)
 	}
 	for k, v := range d.Env {

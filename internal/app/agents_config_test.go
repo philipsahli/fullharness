@@ -111,3 +111,56 @@ func TestConfigCanAddAnAgentAndPassItsEnvironment(t *testing.T) {
 		t.Errorf("agent saw %q, want MY_SETTING=42", got)
 	}
 }
+
+func TestAnAgentFhCantMakeAskSaysSoInTheConversation(t *testing.T) {
+	f := startFhWithAgents(t, map[string]script{"myagent": {}}, nil)
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "myagent"})
+	waitState(t, tab, id, "idle")
+
+	items := f.transcript(c, id)
+	if len(items) == 0 || items[0]["type"] != "notice" || !strings.Contains(items[0]["text"].(string), "its own settings") {
+		t.Errorf("transcript = %v, want a notice that the Agent follows its own settings", items)
+	}
+}
+
+func TestAnEnvOnlyOverrideKeepsTheBuiltInCommandAndInstallHint(t *testing.T) {
+	bin := t.TempDir()
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	dir := t.TempDir()
+	writeConfig(t, dir, "[agents.copilot.env]\nCOPILOT_SETTING = \"x\"\n")
+	f := startFhWith(t, appOptions(dir))
+
+	if missing := f.agents(f.authorisedClient())["copilot"]; !strings.Contains(missing, "brew install --cask copilot-cli") {
+		t.Errorf("missing = %q, want the built-in install hint", missing)
+	}
+}
+
+func TestAnOverrideWithTheSameCLIKeepsItsInstallHint(t *testing.T) {
+	bin := t.TempDir()
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	dir := t.TempDir()
+	writeConfig(t, dir, "[agents.opencode]\ncommand = [\"opencode\", \"acp\", \"--print-logs\"]\n")
+	f := startFhWith(t, appOptions(dir))
+
+	if missing := f.agents(f.authorisedClient())["opencode"]; !strings.Contains(missing, "brew install opencode") {
+		t.Errorf("missing = %q, want the built-in install hint", missing)
+	}
+}

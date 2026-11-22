@@ -112,6 +112,8 @@ func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 		}
 	}
 	for _, o := range resp.ConfigOptions {
+		// Only plain selects: the options fh sets (Copilot's allow_all) are
+		// ungrouped; a grouped one would show up as "not offered".
 		if o.Select == nil || o.Select.Options.Ungrouped == nil {
 			continue
 		}
