@@ -203,3 +203,55 @@ test("⌘K finds a Session by Project and opens it", async ({ page }) => {
     await fh.dispose();
   }
 });
+
+test("a Session that starts Waiting while you look elsewhere notifies, and the click opens it", async ({
+  page,
+}) => {
+  // Record notifications instead of showing them; clicking one runs onclick.
+  await page.addInitScript(() => {
+    const shown: { title: string; tag?: string; click: () => void }[] = [];
+    (window as unknown as { shown: typeof shown }).shown = shown;
+    class FakeNotification {
+      static permission = "granted";
+      static requestPermission = async () => "granted";
+      onclick: (() => void) | null = null;
+      constructor(title: string, opts?: { tag?: string }) {
+        shown.push({ title, tag: opts?.tag, click: () => this.onclick?.() });
+      }
+      close() {}
+    }
+    (window as unknown as { Notification: unknown }).Notification = FakeNotification;
+  });
+  const fh = await Fh.start({
+    agentScript: { prompts: { slow: [{ sleepMs: 1500 }, { say: "done" }] } },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("slow");
+    await form.getByRole("button", { name: "Start Session" }).click();
+    await expect(page.getByRole("region", { name: /^Session / })).toBeVisible();
+    await page.getByRole("tab", { name: /Inbox/ }).click(); // look elsewhere
+
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { shown: unknown[] }).shown.length), {
+        timeout: 10_000,
+      })
+      .toBe(1);
+    await page.evaluate(() =>
+      (window as unknown as { shown: { click: () => void }[] }).shown[0].click(),
+    );
+
+    await expect(page.getByRole("region", { name: /^Session / })).toBeVisible();
+  } finally {
+    await fh.dispose();
+  }
+});

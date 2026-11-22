@@ -26,7 +26,8 @@ type fh struct {
 	t      *testing.T
 	inst   *app.Instance
 	opts   app.Options // as started, for a restart with the same settings
-	opened []string    // URLs fh asked the browser to open
+	opened []string
+	tabs   []*websocket.Conn // event channels this test opened    // URLs fh asked the browser to open
 }
 
 // startFh launches fh on any free port, so tests can run in parallel.
@@ -123,6 +124,7 @@ func (f *fh) dialWS(c *http.Client, origin string) (*websocket.Conn, int, error)
 		status = resp.StatusCode
 	}
 	if conn != nil {
+		f.tabs = append(f.tabs, conn)
 		f.t.Cleanup(func() { _ = conn.CloseNow() }) // already closed if fh stopped first
 	}
 	return conn, status, err
@@ -156,6 +158,17 @@ func startFhWith(t *testing.T, opts app.Options) *fh {
 	f.inst = inst
 	t.Cleanup(func() { stopFh(t, inst) })
 	return f
+}
+
+// closeTabs closes every event channel this test opened and waits until fh
+// has none, as when the user closes all fh tabs.
+func (f *fh) closeTabs() {
+	f.t.Helper()
+	for _, c := range f.tabs {
+		_ = c.Close(websocket.StatusNormalClosure, "tab closed") // already gone is fine
+	}
+	f.tabs = nil
+	time.Sleep(100 * time.Millisecond) // fh notices a closed channel on its next read
 }
 
 // stop stops this launch the way Ctrl+C does.

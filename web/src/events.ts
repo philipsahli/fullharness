@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Worktree and Project match the JSON from internal/worktree and
 // internal/project.
@@ -101,8 +101,16 @@ const retryMs = 2000;
 // the restarted fh's own new tab already replaced the cookie for 127.0.0.1)
 // the snapshot carries a different launch ID. Either way the tab stops and
 // says so instead of quietly continuing on a launch it was never opened for.
-export function useEventChannel(): [Connection, Update] {
+// Notify is a "notify" event: a Session started Waiting and nobody is
+// looking at it (#8).
+export type Notify = { session: string; title: string; body: string };
+
+export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Update] {
   const [conn, setConn] = useState<Connection>({ status: "connecting" });
+  const notify = useRef(onNotify);
+  useEffect(() => {
+    notify.current = onNotify;
+  }, [onNotify]);
   const update: Update = useCallback(
     (f) => setConn((c) => (c.status === "open" ? { ...c, snapshot: f(c.snapshot) } : c)),
     [],
@@ -125,6 +133,10 @@ export function useEventChannel(): [Connection, Update] {
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onmessage = (e) => {
         const ev = JSON.parse(e.data);
+        if (ev.type === "notify") {
+          notify.current?.(ev as Notify);
+          return;
+        }
         if (ev.type !== "snapshot") {
           update((snap) => apply(snap, ev));
           return;

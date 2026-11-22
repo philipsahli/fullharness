@@ -150,6 +150,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if err != nil {
 		return fail(err)
 	}
+	var notes *notifier // set once srv exists; nothing enters Waiting before that
 	startTimeout := opts.AgentStartTimeout
 	if startTimeout == 0 {
 		startTimeout = DefaultAgentStartTimeout
@@ -160,13 +161,17 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		Broadcast:    func(ev any) { srv.Broadcast(ev) },
 		// A turn usually changes files; show it without waiting for a tick.
 		TurnEnded: reg.Refresh,
-		Log:       log,
+		EnteredWaiting: func(sum session.Summary, what string, viewed bool) {
+			notes.enteredWaiting(sum, what, viewed)
+		},
+		Log: log,
 	})
 	inst.sessions = sessions
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
 		// dev tells the tab to reload on a restart instead of stopping.
 		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "dev": opts.Dev}
 	})
+	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
