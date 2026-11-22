@@ -23,7 +23,7 @@ TOOLS_HASH := $(shell cat tools/go.mod tools/go.sum | shasum -a 256 | cut -c1-12
 TOOLS      := bin/tools/$(TOOLS_HASH)
 PLAYWRIGHT_INSTALL_FLAGS ?=
 
-.PHONY: build dev lint test e2e check web-deps
+.PHONY: build dev lint test e2e check web-deps install
 
 web/node_modules: web/package-lock.json
 	cd web && npm ci
@@ -35,6 +35,13 @@ build: web-deps
 	cd web && npm run build
 	touch web/dist/.gitkeep  # vite empties dist/; keep the placeholder go:embed needs
 	go build -o bin/fh ./cmd/fh
+
+# install copies fh onto PATH, to run it from source until releases exist (#16).
+PREFIX ?= $(HOME)/.local/bin
+install: build
+	mkdir -p "$(PREFIX)"
+	install -m 0755 bin/fh "$(PREFIX)/fh"
+	@case ":$$PATH:" in *":$(PREFIX):"*) echo "installed $(PREFIX)/fh" ;; *) echo "installed $(PREFIX)/fh; $(PREFIX) is not on your PATH, add it to run fh" ;; esac
 
 dev: web-deps
 	@trap 'kill 0' EXIT; \

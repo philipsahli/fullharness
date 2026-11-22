@@ -89,11 +89,11 @@ There is no release yet, so you build fh from source. You need Go 1.27.2 or late
 ```bash
 git clone https://github.com/philipsahli/fullharness.git
 cd fullharness
-make build
-./bin/fh
+make install
+fh
 ```
 
-`fh` starts the server on `127.0.0.1:4815` and opens the UI in your browser. The UI shows empty Sessions, Software factory and Inbox areas for now. Stop fh with Ctrl+C.
+`make install` builds fh and copies it to `~/.local/bin` (set `PREFIX` for another folder). `fh` starts the server on `127.0.0.1:4815` and opens the UI in your browser: add a Project, start a Session with an Agent, and open the Software factory for its board. Stop fh with Ctrl+C.
 
 Running `fh` again while it runs opens another tab on the running instance instead of starting a second server.
 
