@@ -28,6 +28,7 @@ type action struct {
 	SayMode    bool        `json:"sayMode,omitempty"`    // say the current session mode id
 	SayEnv     string      `json:"sayEnv,omitempty"`     // say "NAME=value" for an environment variable
 	SayPID     bool        `json:"sayPid,omitempty"`     // say "pid=N"
+	SayConfig  string      `json:"sayConfig,omitempty"`  // say "<id>=<value>" for a config option
 	Title      string      `json:"title,omitempty"`      // a session_info_update with this title
 	Tool       *toolAction `json:"tool,omitempty"`       // a tool_call
 	ToolUpdate *toolAction `json:"toolUpdate,omitempty"` // a tool_call_update
@@ -64,6 +65,8 @@ type script struct {
 	// RejectAlwaysFirst lists "reject always" before "reject once" in
 	// permission requests.
 	RejectAlwaysFirst bool `json:"rejectAlwaysFirst"`
+	// AllowAll offers Copilot's "allow_all" select config option (on/off).
+	AllowAll bool `json:"allowAll"`
 }
 
 type agent struct {
@@ -71,6 +74,7 @@ type agent struct {
 	script script
 	mode   string
 	cwd    string
+	config map[string]string // config option values
 }
 
 func main() {
@@ -81,7 +85,7 @@ func main() {
 			os.Exit(2)
 		}
 	}
-	a := &agent{script: s, mode: "auto"} // Claude Code starts in the user's mode; the spike saw auto
+	a := &agent{script: s, mode: "auto", config: map[string]string{"allow_all": "on"}} // Claude Code starts in the user's mode; the spike saw auto
 	a.conn = acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	<-a.conn.Done()
 }
@@ -100,10 +104,19 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 	if a.script.NoDefaultMode {
 		modes = modes[1:]
 	}
-	return acp.NewSessionResponse{
+	resp := acp.NewSessionResponse{
 		SessionId: id,
 		Modes:     &acp.SessionModeState{CurrentModeId: acp.SessionModeId(a.mode), AvailableModes: modes},
-	}, nil
+	}
+	if a.script.AllowAll {
+		// Starts "on", like a user whose own Copilot setting allows all:
+		// fh has to switch it off explicitly.
+		resp.ConfigOptions = []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
+			Type: "select", Id: "allow_all", Name: "Allow All", CurrentValue: acp.SessionConfigValueId(a.config["allow_all"]),
+			Options: acp.SessionConfigSelectOptions{Ungrouped: &acp.SessionConfigSelectOptionsUngrouped{{Value: "on", Name: "On"}, {Value: "off", Name: "Off"}}},
+		}}}
+	}
+	return resp, nil
 }
 
 func (a *agent) SetSessionMode(ctx context.Context, p acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
@@ -146,6 +159,8 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			err = update(acp.UpdateAgentMessageText("mode=" + a.mode))
 		case s.SayEnv != "":
 			err = update(acp.UpdateAgentMessageText(s.SayEnv + "=" + os.Getenv(s.SayEnv)))
+		case s.SayConfig != "":
+			err = update(acp.UpdateAgentMessageText(s.SayConfig + "=" + a.config[s.SayConfig]))
 		case s.SayPID:
 			err = update(acp.UpdateAgentMessageText(fmt.Sprintf("pid=%d", os.Getpid())))
 		case s.Title != "":
@@ -280,7 +295,10 @@ func (a *agent) ListSessions(context.Context, acp.ListSessionsRequest) (acp.List
 func (a *agent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
 	return acp.ResumeSessionResponse{}, nil
 }
-func (a *agent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+func (a *agent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	if v := p.ValueId; v != nil {
+		a.config[string(v.ConfigId)] = string(v.Value)
+	}
 	return acp.SetSessionConfigOptionResponse{}, nil
 }
 func (a *agent) UnstableAuthStatus(context.Context, acp.UnstableAuthStatusRequest) (acp.UnstableAuthStatusResponse, error) {

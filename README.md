@@ -162,16 +162,41 @@ Not there yet:
 
 ### Agents
 
-Claude Code needs `claude` and Node (`node`, `npx`). If one is missing, New Session greys Claude Code out and shows the install command.
+fh knows three Agents. Each needs its CLI installed and logged in:
 
-fh starts Claude Code through its ACP adapter, `@agentclientprotocol/claude-agent-acp`, at a version fh has tested. It removes `ANTHROPIC_API_KEY` from Claude Code's environment, so Claude Code uses your Claude login rather than billing an API key.
+| Agent | Needs | Started as |
+| --- | --- | --- |
+| Claude Code | `claude`, Node (`node`, `npx`) | its ACP adapter, `@agentclientprotocol/claude-agent-acp`, at a version fh has tested |
+| Copilot CLI | `copilot` (`brew install --cask copilot-cli`) | `copilot --acp --stdio` |
+| OpenCode | `opencode` (`brew install opencode`) | `opencode acp` |
 
-To change how an Agent starts, override it in `config.toml`:
+If a CLI is missing, New Session greys that Agent out and shows the install command.
+
+fh makes every Agent ask before it acts, whatever your own Agent settings say. With **Auto-approve**, it uses the Agent's own way of asking less:
+
+| Agent | Asks before acting | Auto-approve |
+| --- | --- | --- |
+| Claude Code | mode `default` | mode `auto` |
+| Copilot CLI | `allow_all` off | `allow_all` on |
+| OpenCode | `OPENCODE_PERMISSION={"bash":"ask","edit":"ask"}` | `{"bash":"allow","edit":"allow"}` |
+
+fh removes `ANTHROPIC_API_KEY` from Claude Code's environment, so Claude Code uses your Claude login rather than billing an API key.
+
+OpenCode over ACP doesn't use the model `opencode run` picks. Set one in your OpenCode config (`~/.config/opencode/opencode.jsonc`), or a prompt can hang with no reply:
+
+```json
+{ "model": "github-copilot/claude-haiku-5.5" }
+```
+
+To change how an Agent starts, or to add one, use `config.toml`:
 
 ```toml
 [agents.claude]
 command = ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.109.1"]
 env = { ANTHROPIC_API_KEY = "your-api-key" }   # only if you do want API billing
+
+[agents.myagent]                               # any ACP Agent
+command = ["my-agent", "--acp"]
 ```
 
 ### Logs
