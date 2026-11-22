@@ -29,7 +29,7 @@ Planned after v1: a **Roadmap** (Features from all repos ordered into Now / Next
 
 Development follows [Matt Pocock's engineering skills](https://github.com/mattpocock/skills). [`AGENTS.md`](AGENTS.md) and [`docs/agents/`](docs/agents/) configure them: issues live in GitHub Issues on this repo, with the five default triage labels.
 
-Next step: a throwaway prototype (`prototype/acp-agents`) that checks whether the three agents can be driven over ACP from Go. After that, `/to-spec` and `/to-tickets`.
+The ACP spike passed: all three agents work over ACP from Go (see `FINDINGS.md` on branch `prototype/acp-agents`). Next step: `/to-spec` and `/to-tickets` for v1.
 
 ## License
 

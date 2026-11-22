@@ -12,5 +12,5 @@ An Agent can hand work to another Agent by asking fullharness to start a Child S
 
 - A Child Session's permission requests go to the user's Inbox, never to the Parent Agent, so no Agent approves another Agent's actions.
 - Children keep running when their Parent ends; a Parent reopened through `session/load` can still call `get_session`.
-- Depends on passing an MCP server to the Agent when a Session starts; whether ACP's `session/new` supports this for each Agent is checked by the ACP prototype.
+- fh's MCP server is served over HTTP on fh's own localhost server, not over stdio: Copilot CLI rejects stdio MCP servers passed by an ACP client. Passing an HTTP MCP server in `session/new` worked for all three Agents in the ACP spike (branch `prototype/acp-agents`, `FINDINGS.md`).
 - Planned for after v1, together with the Roadmap and Readiness.
