@@ -15,6 +15,11 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # Contributors run Node 22 (web/.nvmrc); newer @types/node majors
+      # describe APIs they don't have. Raise this with .nvmrc.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # React and its types only install at matching versions (#34), so they
       # move together, majors included. Listed first: a package joins the
