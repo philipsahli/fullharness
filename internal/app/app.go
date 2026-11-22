@@ -165,7 +165,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	inst.sessions = sessions
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
 		// dev tells the tab to reload on a restart instead of stopping.
-		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "dev": opts.Dev}
+		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "dev": opts.Dev}
 	})
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	registerSessionRoutes(srv, sessionDeps{

@@ -25,12 +25,28 @@ import (
 	"github.com/philipsahli/fullharness/internal/agent"
 )
 
-// Session states (GLOSSARY.md). Waiting arrives with #7.
+// Session states (GLOSSARY.md). Waiting here means a permission request is
+// open; #7 adds Waiting for a turn that ended unseen.
 const (
 	Starting = "starting"
 	Working  = "working"
+	Waiting  = "waiting"
 	Idle     = "idle"
 	Exited   = "exited"
+)
+
+// Answer choices, and what a permission card shows once it's settled.
+const (
+	ChoiceAllow  = "allow"  // allow_once
+	ChoiceDeny   = "deny"   // reject_once
+	ChoiceAlways = "always" // allow_always, when the Agent offers it
+
+	StatusPending   = "pending"
+	StatusAllowed   = "allowed"
+	StatusDenied    = "denied"
+	StatusAlways    = "always"
+	StatusCancelled = "cancelled" // the turn was cancelled first
+	StatusExited    = "exited"    // the Agent exited first
 )
 
 // Exited reasons covered in #4; #7 adds the rest.
@@ -50,6 +66,8 @@ type Summary struct {
 	Worktree string `json:"worktree"`
 	Agent    string `json:"agent"`
 	State    string `json:"state"`
+	// AutoApprove is set when the Session started in the Agent's auto mode.
+	AutoApprove bool `json:"autoApprove"`
 	// Title is the Worktree's branch until the Agent names the Session.
 	Title string `json:"title"`
 	// Reason and Stderr explain an Exited Session.
@@ -59,9 +77,26 @@ type Summary struct {
 
 // Item is one entry of a conversation.
 type Item struct {
-	Type string `json:"type"` // user, agent, tool or notice
-	Text string `json:"text,omitempty"`
-	Tool *Tool  `json:"tool,omitempty"`
+	Type       string   `json:"type"` // user, agent, tool, permission or notice
+	Text       string   `json:"text,omitempty"`
+	Tool       *Tool    `json:"tool,omitempty"`
+	Permission *Request `json:"permission,omitempty"`
+}
+
+// Request is a permission request, as its card and its Inbox entry show it.
+type Request struct {
+	ID           string    `json:"id"`
+	Session      string    `json:"session"`
+	SessionTitle string    `json:"sessionTitle"`
+	Project      string    `json:"project"`
+	Title        string    `json:"title"`
+	Kind         string    `json:"kind"`
+	Command      string    `json:"command,omitempty"`
+	Paths        []string  `json:"paths,omitempty"`
+	Content      string    `json:"content,omitempty"` // text and diffs, plain
+	Always       bool      `json:"always"`            // the Agent offers "always allow"
+	Status       string    `json:"status"`            // StatusPending until settled
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // Tool is a tool call as its card shows it.
@@ -86,6 +121,9 @@ var (
 	ErrBusy        = errors.New("the Agent is working; wait for the turn to end or cancel it")
 	ErrNotRunning  = errors.New("the Session's Agent is not running")
 	ErrWorktreeUse = errors.New("this Worktree already has a Session")
+	ErrAnswered    = errors.New("this request was already answered")
+	ErrNoRequest   = errors.New("no such permission request")
+	ErrChoice      = errors.New("the Agent doesn't offer that choice")
 )
 
 // Config wires a Manager into fh.
@@ -119,16 +157,28 @@ type session struct {
 	sum        Summary
 	transcript []Item
 	tools      map[string]int // tool call ID → transcript index
+	pending    map[string]*pending
+	settled    []int // transcript indexes of cards settled since the last afterSettle
+	inTurn     bool  // a prompt is running; decides Working vs Idle once no request is open
 	proc       *acp.Process
 	acpID      sdk.SessionId
 	stopping   bool
 	logPath    string
 }
 
+// pending is an open permission request: where its card is, which option
+// each choice maps to, and where the answer goes.
+type pending struct {
+	index   int // into the transcript, which is only ever appended to
+	options map[string]sdk.PermissionOptionId
+	answer  chan sdk.PermissionOptionId // "" means cancelled
+}
+
 // Start creates a Session for worktree in project and launches its Agent.
 // The Worktree must already exist; the caller checked it may be used.
-// branch is the Worktree's branch, the Session's first title.
-func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt string) (Summary, error) {
+// branch is the Worktree's branch, the Session's first title. autoApprove
+// starts the Agent in its auto mode.
+func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt string, autoApprove bool) (Summary, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -143,10 +193,11 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 		}
 	}
 	s := &session{
-		m:     m,
-		def:   def,
-		sum:   Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch},
-		tools: map[string]int{},
+		m:       m,
+		def:     def,
+		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove},
+		tools:   map[string]int{},
+		pending: map[string]*pending{},
 	}
 	s.logPath = filepath.Join(m.cfg.LogDir, s.sum.ID+".log")
 	m.sessions = append(m.sessions, s)
@@ -201,6 +252,7 @@ func (s *session) beginTurn(from string) error {
 	switch s.sum.State {
 	case from:
 		s.sum.State = Working
+		s.inTurn = true
 		s.mu.Unlock()
 		s.publish()
 		return nil
@@ -222,10 +274,50 @@ func (m *Manager) Cancel(id string) error {
 	s.mu.Lock()
 	proc, sid, state := s.proc, s.acpID, s.sum.State
 	s.mu.Unlock()
-	if state != Working || proc == nil {
+	if (state != Working && state != Waiting) || proc == nil {
 		return nil // nothing to cancel; the turn already ended
 	}
+	// ACP: a client that cancels a turn answers its open permission
+	// requests with "cancelled".
+	s.settleAll(StatusCancelled)
 	return proc.Cancel(context.Background(), sid)
+}
+
+// Inbox returns every open permission request, oldest first, never nil.
+func (m *Manager) Inbox() []Request {
+	out := []Request{}
+	for _, s := range m.all() {
+		s.mu.Lock()
+		for _, p := range s.pending {
+			out = append(out, *s.transcript[p.index].Permission)
+		}
+		s.mu.Unlock()
+	}
+	slices.SortFunc(out, func(a, b Request) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return out
+}
+
+// Answer settles a permission request with choice (ChoiceAllow, ChoiceDeny
+// or ChoiceAlways). The Inbox and the Session card are the same request, so
+// answering in either place settles both; only the first answer counts.
+func (m *Manager) Answer(requestID, choice string) error {
+	for _, s := range m.all() {
+		if err := s.answer(requestID, choice); !errors.Is(err, ErrNoRequest) {
+			return err
+		}
+	}
+	return ErrNoRequest
+}
+
+// all returns the Sessions, safe to range over without m.mu.
+func (m *Manager) all() []*session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.sessions)
+}
+
+func (m *Manager) publishInbox() {
+	m.cfg.Broadcast(map[string]any{"type": "inbox", "inbox": m.Inbox()})
 }
 
 // StopAll ends every Agent process, as when fh quits (ADR 0002).
@@ -326,6 +418,9 @@ func (s *session) run(prompt string) {
 // conversation instead of finding out from an unasked edit.
 func (s *session) setAskingMode(ctx context.Context, proc *acp.Process, sid sdk.SessionId, modes []string) {
 	mode := s.def.Mode
+	if s.summary().AutoApprove {
+		mode = s.def.AutoMode
+	}
 	if mode == "" {
 		return
 	}
@@ -335,7 +430,11 @@ func (s *session) setAskingMode(ctx context.Context, proc *acp.Process, sid sdk.
 	}
 	if err != nil {
 		s.m.cfg.Log.Info("agent set_mode failed", "session", s.sum.ID, "err", err)
-		s.addItem(Item{Type: "notice", Text: "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."})
+		text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
+		if s.summary().AutoApprove {
+			text = "fh couldn't switch the Agent to auto-approve, so it asks before it acts as usual."
+		}
+		s.addItem(Item{Type: "notice", Text: text})
 	}
 }
 
@@ -369,13 +468,13 @@ func (s *session) prompt(text string) {
 		// The Agent is alive but refused the turn (an auth error, for
 		// example); show it and let the user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.setState(Idle)
+		s.endTurn()
 		return
 	}
 	if reason == sdk.StopReasonCancelled {
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
 	}
-	s.setState(Idle)
+	s.endTurn()
 	if s.m.cfg.TurnEnded != nil {
 		s.m.cfg.TurnEnded()
 	}
@@ -420,30 +519,219 @@ func (s *session) Update(n sdk.SessionNotification) {
 		})
 	case u.SessionInfoUpdate != nil:
 		if title, ok := u.SessionInfoUpdate.Title.Value(); ok && title != "" {
-			s.mu.Lock()
-			s.sum.Title = title
-			s.mu.Unlock()
-			s.publish()
+			s.retitle(title)
 		}
 	}
 }
 
-// Permission answers a permission request (acp.Handler). Until permission
-// cards arrive (#5), fh rejects every request and says so in the
-// conversation, so no turn hangs waiting for an answer nobody can give.
-func (s *session) Permission(r sdk.RequestPermissionRequest) sdk.RequestPermissionResponse {
-	title, _ := r.ToolCall.Title.Value()
-	s.addItem(Item{Type: "notice", Text: fmt.Sprintf("The Agent asked to run %q. fh can't answer permission requests yet (#5), so this one was denied.", title)})
-	// reject_once only: "reject always" would change the Agent's rules for
-	// the rest of the Session, which the user never chose.
-	for _, o := range r.Options {
-		if o.Kind == sdk.PermissionOptionKindRejectOnce {
-			return sdk.RequestPermissionResponse{Outcome: sdk.RequestPermissionOutcome{
-				Selected: &sdk.RequestPermissionOutcomeSelected{OptionId: o.OptionId},
-			}}
+// retitle renames the Session, including its open requests, so the Inbox
+// shows the current title.
+func (s *session) retitle(title string) {
+	s.mu.Lock()
+	s.sum.Title = title
+	var changed []int
+	for _, p := range s.pending {
+		req := *s.transcript[p.index].Permission
+		req.SessionTitle = title
+		s.transcript[p.index].Permission = &req
+		changed = append(changed, p.index)
+	}
+	items := make([]Item, len(changed))
+	for i, idx := range changed {
+		items[i] = s.transcript[idx]
+	}
+	s.mu.Unlock()
+	for i, idx := range changed {
+		s.emit("item", idx, "item", items[i])
+	}
+	s.publish()
+	if len(changed) > 0 {
+		s.m.publishInbox()
+	}
+}
+
+// Permission shows a permission request as a card and in the Inbox, and
+// waits for the user's answer (acp.Handler). The Session is Waiting while
+// any request is open.
+func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest) sdk.RequestPermissionResponse {
+	req := Request{ID: newID(), Status: StatusPending, CreatedAt: time.Now()}
+	tc := r.ToolCall
+	req.Title, _ = tc.Title.Value()
+	if k, ok := tc.Kind.Value(); ok {
+		req.Kind = string(k)
+	}
+	if raw, ok := tc.RawInput.Value(); ok {
+		var in struct {
+			Command string `json:"command"`
+		}
+		if json.Unmarshal(raw, &in) == nil {
+			req.Command = in.Command
 		}
 	}
+	if locs, ok := tc.Locations.Value(); ok {
+		for _, l := range locs {
+			req.Paths = append(req.Paths, l.Path)
+		}
+	}
+	if cs, ok := tc.Content.Value(); ok {
+		req.Content = contentText(cs)
+	}
+	p := &pending{options: map[string]sdk.PermissionOptionId{}, answer: make(chan sdk.PermissionOptionId, 1)}
+	for _, o := range r.Options {
+		// The first option of each kind; never reject_always, which would
+		// change the Agent's rules for the rest of the Session.
+		choice := map[sdk.PermissionOptionKind]string{
+			sdk.PermissionOptionKindAllowOnce:   ChoiceAllow,
+			sdk.PermissionOptionKindRejectOnce:  ChoiceDeny,
+			sdk.PermissionOptionKindAllowAlways: ChoiceAlways,
+		}[o.Kind]
+		if _, seen := p.options[choice]; choice != "" && !seen {
+			p.options[choice] = o.OptionId
+		}
+	}
+	_, req.Always = p.options[ChoiceAlways]
+
+	s.mu.Lock()
+	if s.sum.State == Exited {
+		s.mu.Unlock()
+		return cancelled()
+	}
+	req.Session, req.SessionTitle, req.Project = s.sum.ID, s.sum.Title, s.sum.Project
+	s.transcript = append(s.transcript, Item{Type: "permission", Permission: &req})
+	p.index = len(s.transcript) - 1
+	s.pending[req.ID] = p
+	s.sum.State = Waiting
+	s.mu.Unlock()
+	s.emit("item", p.index, "item", Item{Type: "permission", Permission: &req})
+	s.publish()
+	s.m.publishInbox()
+
+	select {
+	case opt := <-p.answer:
+		if opt == "" {
+			return cancelled()
+		}
+		return sdk.RequestPermissionResponse{Outcome: sdk.RequestPermissionOutcome{
+			Selected: &sdk.RequestPermissionOutcomeSelected{OptionId: opt},
+		}}
+	case <-ctx.Done():
+		// The SDK ends this context when the Agent withdraws this one
+		// request ($/cancel_request) or goes away; settle only this one.
+		status := StatusCancelled
+		if s.agentGone() {
+			status = StatusExited
+		}
+		s.settleOne(req.ID, status)
+		return cancelled()
+	}
+}
+
+func cancelled() sdk.RequestPermissionResponse {
 	return sdk.RequestPermissionResponse{Outcome: sdk.RequestPermissionOutcome{Cancelled: &sdk.RequestPermissionOutcomeCancelled{}}}
+}
+
+func (s *session) answer(requestID, choice string) error {
+	s.mu.Lock()
+	p, ok := s.pending[requestID]
+	if !ok {
+		answered := slices.ContainsFunc(s.transcript, func(it Item) bool {
+			return it.Permission != nil && it.Permission.ID == requestID
+		})
+		s.mu.Unlock()
+		if answered {
+			return ErrAnswered
+		}
+		return ErrNoRequest
+	}
+	opt, offered := p.options[choice]
+	if !offered {
+		s.mu.Unlock()
+		return ErrChoice
+	}
+	status := map[string]string{ChoiceAllow: StatusAllowed, ChoiceDeny: StatusDenied, ChoiceAlways: StatusAlways}[choice]
+	s.settleLocked(requestID, status, opt)
+	s.mu.Unlock()
+	s.afterSettle()
+	return nil
+}
+
+// agentGone reports whether the Agent process has exited.
+func (s *session) agentGone() bool {
+	s.mu.Lock()
+	proc := s.proc
+	s.mu.Unlock()
+	if proc == nil {
+		return false
+	}
+	select {
+	case <-proc.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// settleOne settles request id with status, if it's still open.
+func (s *session) settleOne(id, status string) {
+	s.mu.Lock()
+	if _, open := s.pending[id]; !open {
+		s.mu.Unlock()
+		return
+	}
+	s.settleLocked(id, status, "")
+	s.mu.Unlock()
+	s.afterSettle()
+}
+
+// settleAll settles every open request with status (cancelled or exited);
+// the Agent gets the cancelled outcome.
+func (s *session) settleAll(status string) {
+	s.mu.Lock()
+	if len(s.pending) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	for id := range s.pending {
+		s.settleLocked(id, status, "")
+	}
+	s.mu.Unlock()
+	s.afterSettle()
+}
+
+// settleLocked closes one request; the caller holds s.mu and calls
+// afterSettle once it has released it.
+func (s *session) settleLocked(id, status string, opt sdk.PermissionOptionId) {
+	p := s.pending[id]
+	delete(s.pending, id)
+	req := *s.transcript[p.index].Permission
+	req.Status = status
+	s.transcript[p.index].Permission = &req
+	s.settled = append(s.settled, p.index)
+	if len(s.pending) == 0 && s.sum.State == Waiting {
+		// Back to the turn, or to Idle if the request came between turns.
+		s.sum.State = Idle
+		if s.inTurn {
+			s.sum.State = Working
+		}
+	}
+	p.answer <- opt // buffered and written once: never blocks
+}
+
+// afterSettle tells the tabs about settled cards, the state and the Inbox.
+func (s *session) afterSettle() {
+	s.mu.Lock()
+	settled := s.settled
+	s.settled = nil
+	items := make([]Item, len(settled))
+	for i, idx := range settled {
+		items[i] = s.transcript[idx]
+	}
+	s.mu.Unlock()
+	for i, idx := range settled {
+		s.emit("item", idx, "item", items[i])
+	}
+	s.publish()
+	s.m.publishInbox()
 }
 
 func (s *session) appendAgentText(text string) {
@@ -483,6 +771,23 @@ func (s *session) addItem(it Item) {
 	s.emit("item", i, "item", it)
 }
 
+// endTurn marks the turn over: Idle, or still Waiting if the Agent left a
+// permission request open.
+func (s *session) endTurn() {
+	s.mu.Lock()
+	s.inTurn = false
+	if s.sum.State == Exited {
+		s.mu.Unlock()
+		return
+	}
+	s.sum.State = Idle
+	if len(s.pending) > 0 {
+		s.sum.State = Waiting
+	}
+	s.mu.Unlock()
+	s.publish()
+}
+
 func (s *session) setState(state string) {
 	s.mu.Lock()
 	if s.sum.State == Exited {
@@ -498,6 +803,8 @@ func (s *session) exit(reason string, stderr []string) {
 	s.mu.Lock()
 	s.sum.State, s.sum.Reason, s.sum.Stderr = Exited, reason, stderr
 	s.mu.Unlock()
+	// After Exited is set, so settling doesn't flash Working first.
+	s.settleAll(StatusExited)
 	s.m.cfg.Log.Info("session exited", "session", s.sum.ID, "reason", reason)
 	s.publish()
 }
@@ -518,14 +825,32 @@ func (s *session) publish() {
 	s.m.cfg.Broadcast(map[string]any{"type": "session", "session": s.summary()})
 }
 
+// contentText shows a tool call's content as plain text: text as is, a diff
+// as its path and every old line with "-", every new line with "+". It is
+// not a minimal diff; nicer diffs may come with #45.
 func contentText(cs []sdk.ToolCallContent) string {
 	var parts []string
 	for _, c := range cs {
-		if c.Content != nil && c.Content.Content.Text != nil {
+		switch {
+		case c.Content != nil && c.Content.Content.Text != nil:
 			parts = append(parts, c.Content.Content.Text.Text)
+		case c.Diff != nil:
+			var b strings.Builder
+			b.WriteString(c.Diff.Path + "\n")
+			if c.Diff.OldText != nil {
+				prefixLines(&b, "-", *c.Diff.OldText)
+			}
+			prefixLines(&b, "+", c.Diff.NewText)
+			parts = append(parts, strings.TrimRight(b.String(), "\n"))
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func prefixLines(b *strings.Builder, prefix, text string) {
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		b.WriteString(prefix + line + "\n")
+	}
 }
 
 // rawText shows raw output as plain text: a JSON string unquoted, anything

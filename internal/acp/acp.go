@@ -19,8 +19,9 @@ import (
 type Handler interface {
 	// Update is one session/update notification.
 	Update(sdk.SessionNotification)
-	// Permission answers a session/request_permission.
-	Permission(sdk.RequestPermissionRequest) sdk.RequestPermissionResponse
+	// Permission answers a session/request_permission. It may block until
+	// the user answers; ctx ends if the Agent goes away first.
+	Permission(context.Context, sdk.RequestPermissionRequest) sdk.RequestPermissionResponse
 }
 
 // Process is one running Agent with its ACP connection.
@@ -135,8 +136,8 @@ func (c client) SessionUpdate(_ context.Context, n sdk.SessionNotification) erro
 	return nil
 }
 
-func (c client) RequestPermission(_ context.Context, r sdk.RequestPermissionRequest) (sdk.RequestPermissionResponse, error) {
-	return c.h.Permission(r), nil
+func (c client) RequestPermission(ctx context.Context, r sdk.RequestPermissionRequest) (sdk.RequestPermissionResponse, error) {
+	return c.h.Permission(ctx, r), nil
 }
 
 func (client) ReadTextFile(context.Context, sdk.ReadTextFileRequest) (sdk.ReadTextFileResponse, error) {

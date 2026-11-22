@@ -135,7 +135,8 @@ Start one with **+ New Session** in the left rail. Pick:
 - a Project;
 - a Worktree: a new one on a new branch, or a free existing one;
 - the Agent (Claude Code for now);
-- an optional starting prompt.
+- an optional starting prompt;
+- **Auto-approve**, off by default.
 
 A Worktree that already has a Session, or is an Agent worktree, is greyed out with the reason.
 
@@ -143,10 +144,19 @@ A new Worktree goes to `<project>.worktrees/<branch>/`, next to the Project's fo
 
 The conversation shows your messages, the Agent's reply as it streams in, and each tool call as a card you can expand. While the Agent works, **Cancel** replaces **Send**.
 
+When the Agent wants to edit a file or run a command, it asks first:
+
+- The request shows as a card in its Session, with **Allow**, **Deny** and, when the Agent offers it, **Always allow**.
+- The **Inbox** lists every open request across Sessions, oldest first.
+- The Inbox count stays visible in the tab bar.
+- Answering in the Inbox or in the Session is the same answer; the request leaves both.
+- A Session with an open request is **Waiting**.
+- **Cancel** ends the turn and answers its open requests as cancelled.
+
+fh starts Claude Code in its asking mode (`default`), even if your own Claude Code setting is `auto`. With **Auto-approve** on, fh starts it in `auto` instead: Claude Code decides by itself what's safe and asks less. Anything it still asks goes to the Inbox. fh never uses the mode that skips asking altogether.
+
 Not there yet:
 
-- fh can't answer permission requests yet (#5). It denies each one and says so in the conversation.
-- Until then, Claude Code can read and answer, but not edit files or run commands.
 - Sessions don't survive an fh restart yet (#9). Quitting fh stops their Agents.
 - There's no way to close a Session yet (#9). A Session whose Agent exited frees its Worktree for a new one.
 

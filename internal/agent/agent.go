@@ -27,6 +27,9 @@ type Definition struct {
 	// Mode is the session mode in which the Agent asks before acting; fh
 	// sets it on every Session. Empty for an Agent without modes.
 	Mode string
+	// AutoMode is the mode New Session's auto-approve sets instead. fh never
+	// sets a mode that skips asking altogether (bypassPermissions).
+	AutoMode string
 	// claude marks Claude Code, whose environment fh adjusts (see Environ).
 	claude bool
 }
@@ -50,8 +53,9 @@ func Defaults() []Definition {
 			{"node", "install Node: brew install node"},
 			{"npx", "install Node: brew install node"},
 		},
-		Mode:   "default",
-		claude: true,
+		Mode:     "default",
+		AutoMode: "auto",
+		claude:   true,
 	}}
 }
 

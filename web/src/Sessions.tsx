@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import type {
   Item,
+  PermissionRequest,
   Project,
   SessionState,
   SessionSummary,
@@ -36,6 +37,7 @@ export function SessionList(props: {
             >
               <span className={`dot ${s.state}`} aria-hidden="true" />
               <span className="t">{s.title}</span>
+              {s.autoApprove && <span className="tag">auto-approve</span>}
               <StateBadge state={s.state} />
             </button>
           </li>
@@ -48,6 +50,7 @@ export function SessionList(props: {
 const stateNames: Record<SessionState, string> = {
   starting: "Starting",
   working: "Working",
+  waiting: "Waiting",
   idle: "Idle",
   exited: "Exited",
 };
@@ -74,6 +77,7 @@ export function NewSession(props: {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [autoApprove, setAutoApprove] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -94,7 +98,7 @@ export function NewSession(props: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const req: Record<string, string> = { project, agent, prompt };
+    const req: Record<string, string | boolean> = { project, agent, prompt, autoApprove };
     if (worktree) req.worktree = worktree;
     else req.branch = branch.trim();
     const r = await command("/api/sessions", req);
@@ -177,6 +181,14 @@ export function NewSession(props: {
           </label>
         ))}
       </fieldset>
+      <label className="choice">
+        <input
+          type="checkbox"
+          checked={autoApprove}
+          onChange={(e) => setAutoApprove(e.target.checked)}
+        />
+        Auto-approve: the Agent decides by itself what is safe to do, and asks less
+      </label>
       <label>
         Starting prompt (optional)
         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} />
@@ -242,6 +254,7 @@ export function Conversation(props: {
       <header className="mhead">
         <h2>{session.title}</h2>
         <StateBadge state={session.state} />
+        {session.autoApprove && <span className="tag">auto-approve</span>}
         <span className="crumb" title={session.worktree}>
           {session.agent} · {session.worktree}
         </span>
@@ -272,7 +285,7 @@ export function Conversation(props: {
             }
           }}
         />
-        {session.state === "working" ? (
+        {session.state === "working" || session.state === "waiting" ? (
           <button type="button" onClick={() => void command(`/api/sessions/${session.id}/cancel`)}>
             Cancel
           </button>
@@ -305,7 +318,96 @@ function ItemView({ item }: { item: Item }) {
       );
     case "tool":
       return <ToolCard tool={item.tool} />;
+    case "permission":
+      return <PermissionCard request={item.permission} />;
   }
+}
+
+const settledLabels: Record<PermissionRequest["status"], string> = {
+  pending: "",
+  allowed: "Allowed",
+  denied: "Denied",
+  always: "Always allowed",
+  cancelled: "Cancelled", // with the turn, or withdrawn by the Agent
+  exited: "Agent exited before you answered",
+};
+
+// PermissionCard is one permission request, in its Session and in the
+// Inbox. Answering in either place answers the same request.
+export function PermissionCard({
+  request,
+  showSession,
+}: {
+  request: PermissionRequest;
+  showSession?: () => void;
+}) {
+  const [error, setError] = useState("");
+  const answer = async (choice: "allow" | "deny" | "always") => {
+    const r = await command(`/api/inbox/${request.id}/answer`, { choice });
+    setError(r.ok ? "" : r.error);
+  };
+  const pending = request.status === "pending";
+  return (
+    <div
+      className={`permcard ${request.status}`}
+      role="group"
+      aria-label={`Permission: ${request.title}`}
+    >
+      <div className="permhead">
+        <span className="kind">{request.kind || "tool"}</span>
+        <strong>{request.title}</strong>
+        {showSession && (
+          <button type="button" className="link" onClick={showSession}>
+            {request.sessionTitle} · {basename(request.project)}
+          </button>
+        )}
+      </div>
+      {request.command && <pre>{request.command}</pre>}
+      {request.paths && request.paths.length > 0 && (
+        <p className="paths">{request.paths.join(", ")}</p>
+      )}
+      {request.content && <pre>{request.content}</pre>}
+      {pending ? (
+        <div className="row">
+          <button type="button" className="allow" onClick={() => void answer("allow")}>
+            Allow
+          </button>
+          <button type="button" onClick={() => void answer("deny")}>
+            Deny
+          </button>
+          {request.always && (
+            <button type="button" className="quiet" onClick={() => void answer("always")}>
+              Always allow
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="settled">{settledLabels[request.status]}</p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Inbox lists every open permission request across Sessions, oldest first.
+export function Inbox(props: { inbox: PermissionRequest[]; onOpen: (session: string) => void }) {
+  return (
+    <section className="panel inbox" aria-label="Inbox">
+      <h2>Inbox</h2>
+      {props.inbox.length === 0 && <p className="empty">Nothing is waiting for your answer.</p>}
+      {props.inbox.map((r) => (
+        <PermissionCard key={r.id} request={r} showSession={() => props.onOpen(r.session)} />
+      ))}
+    </section>
+  );
+}
+
+function basename(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
 }
 
 // ToolCard is collapsed by default, so following the Agent isn't noisy.
