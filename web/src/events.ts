@@ -29,7 +29,8 @@ export type SessionSummary = {
   id: string;
   project: string;
   worktree: string;
-  agent: string;
+  agent: string; // Agent ID, e.g. "claude"
+  agentName: string; // e.g. "Claude Code"
   state: SessionState;
   title: string;
   autoApprove: boolean; // started in the Agent's auto mode
@@ -231,3 +232,16 @@ export function byListOrder(a: SessionSummary, b: SessionSummary): number {
   const t = Date.parse(a.since) - Date.parse(b.since);
   return a.state === "waiting" ? t : -t;
 }
+
+// projectName is the Project's name for path, or the folder name.
+export function projectName(projects: Project[], path: string): string {
+  return (
+    projects.find((p) => p.path === path)?.name ?? path.split("/").filter(Boolean).pop() ?? path
+  );
+}
+
+// tabID names this tab when it tells fh which Session it's looking at.
+export const tabID = Math.random().toString(36).slice(2);
+
+// shortcutLabel is how the switcher's shortcut is written on this computer.
+export const shortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K";

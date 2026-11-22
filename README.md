@@ -163,7 +163,7 @@ Each Session shows its state:
 | Working | The Agent is on a turn. |
 | Waiting | The Agent wants you: a permission request is open, or a turn ended and you haven't looked yet. |
 | Idle | Nothing to do: you've seen the last turn, or cancelled it. |
-| Exited | The Agent is gone: Agent crashed, login needed, or fh quit. |
+| Exited | The Agent is gone: Agent crashed, login needed, or fh quit. (Closed by you comes with Close, #9.) |
 
 A turn counts as seen once its conversation is open in a visible tab. If a Session exits with **login needed**, it shows the command to run in your terminal (`claude auth login`, `copilot login` or `opencode auth login`).
 

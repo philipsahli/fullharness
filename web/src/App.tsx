@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useEventChannel, type Connection } from "./events";
+import { shortcutLabel, useEventChannel, type Connection } from "./events";
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
 import { Switcher } from "./Switcher";
@@ -35,7 +35,7 @@ export function App() {
           <span>fullharness</span>
         </div>
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
-          Jump to a Session… <kbd>⌘K</kbd>
+          Jump to a Session… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views">
           <Tab view="sessions" current={view} onSelect={setView}>

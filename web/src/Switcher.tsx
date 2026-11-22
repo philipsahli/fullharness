@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { byListOrder, type Project, type SessionSummary } from "./events";
-import { projectName } from "./Sessions";
+import { byListOrder, projectName, type Project, type SessionSummary } from "./events";
 
 type Entry = { key: string; label: string; detail: string; state?: string; pick: () => void };
 
@@ -24,12 +23,14 @@ export function Switcher(props: {
     const sessions: Entry[] = [...props.sessions]
       .sort(byListOrder)
       .filter((s) =>
-        matches(`${s.title} ${projectName(props.projects, s.project)} ${s.agent}`.toLowerCase()),
+        matches(
+          `${s.title} ${projectName(props.projects, s.project)} ${s.agentName}`.toLowerCase(),
+        ),
       )
       .map((s) => ({
         key: s.id,
         label: s.title,
-        detail: `${projectName(props.projects, s.project)} · ${s.agent}`,
+        detail: `${projectName(props.projects, s.project)} · ${s.agentName}`,
         state: s.state,
         pick: () => props.onOpen(s.id),
       }));

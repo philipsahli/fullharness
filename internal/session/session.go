@@ -53,7 +53,24 @@ const (
 const (
 	ReasonCrashed = "Agent crashed"
 	ReasonLogin   = "login needed"
-	ReasonFhQuit  = "fh quit"
+)
+
+// Why a Waiting Session waits (Summary.Waiting).
+const (
+	WaitingPermission = "permission" // a permission request is open
+	WaitingTurn       = "turn"       // a turn ended that nobody has looked at yet
+)
+
+// viewerTTL is how long a tab counts as looking at a Session after it last
+// said so. A tab repeats it every 15 s while it looks, so a tab that was
+// closed or crashed stops counting on its own.
+const viewerTTL = 30 * time.Second
+
+// codeAuthRequired is ACP's "authentication required" error code.
+const codeAuthRequired = -32000
+
+const (
+	ReasonFhQuit = "fh quit"
 )
 
 // stderrTail is how many lines of the Agent's stderr an Exited Session
@@ -66,7 +83,9 @@ type Summary struct {
 	Project  string `json:"project"`
 	Worktree string `json:"worktree"`
 	Agent    string `json:"agent"`
-	State    string `json:"state"`
+	// AgentName is the Agent's display name, e.g. "Claude Code".
+	AgentName string `json:"agentName"`
+	State     string `json:"state"`
 	// AutoApprove is set when the Session started in the Agent's auto mode.
 	AutoApprove bool `json:"autoApprove"`
 	// Waiting says why a Waiting Session waits: "permission" (a request is
@@ -173,10 +192,14 @@ type session struct {
 	ready       bool  // the ACP session exists; before that the Session is Starting
 	unseen      bool  // a turn ended that nobody has looked at yet
 	loginNeeded bool  // the Agent asked for a login; watch reports that, not a crash
-	proc        *acp.Process
-	acpID       sdk.SessionId
-	stopping    bool
-	logPath     string
+	// cancelRequested is set when you cancel a turn, so it ends Idle even if
+	// the Agent answers with another stop reason than "cancelled".
+	cancelRequested bool
+	viewers         map[string]time.Time // tab ID → when it last said it's looking
+	proc            *acp.Process
+	acpID           sdk.SessionId
+	stopping        bool
+	logPath         string
 }
 
 // pending is an open permission request: where its card is, which option
@@ -208,9 +231,10 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 	s := &session{
 		m:       m,
 		def:     def,
-		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove, Since: time.Now()},
+		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove, Since: time.Now(), AgentName: def.Name},
 		tools:   map[string]int{},
 		pending: map[string]*pending{},
+		viewers: map[string]time.Time{},
 	}
 	s.logPath = filepath.Join(m.cfg.LogDir, s.sum.ID+".log")
 	m.sessions = append(m.sessions, s)
@@ -246,13 +270,13 @@ func compareForList(a, b Summary) int {
 	return b.Since.Compare(a.Since) // most recent change first
 }
 
-// Seen records that you looked at Session id.
-func (m *Manager) Seen(id string) error {
+// Viewing records whether tab is looking at Session id.
+func (m *Manager) Viewing(id, tab string, on bool) error {
 	s, err := m.find(id)
 	if err != nil {
 		return err
 	}
-	s.seen()
+	s.viewing(tab, on)
 	return nil
 }
 
@@ -286,12 +310,12 @@ func (m *Manager) Prompt(id, text string) error {
 func (s *session) beginTurn(from string) error {
 	s.mu.Lock()
 	state := s.sum.State
-	if from == Idle && state == Waiting && s.sum.Waiting == "turn" {
+	if from == Idle && state == Waiting && s.sum.Waiting == WaitingTurn {
 		state = Idle // writing the next message means you've looked
 	}
 	switch state {
 	case from:
-		s.inTurn, s.unseen = true, false
+		s.inTurn, s.unseen, s.cancelRequested = true, false, false
 		s.deriveLocked()
 		s.mu.Unlock()
 		s.publish()
@@ -317,6 +341,9 @@ func (m *Manager) Cancel(id string) error {
 	if (state != Working && state != Waiting) || proc == nil {
 		return nil // nothing to cancel; the turn already ended
 	}
+	s.mu.Lock()
+	s.cancelRequested = true
+	s.mu.Unlock()
 	// ACP: a client that cancels a turn answers its open permission
 	// requests with "cancelled".
 	s.settleAll(StatusCancelled)
@@ -425,9 +452,7 @@ func (s *session) run(prompt string) {
 		_, _ = fmt.Fprintf(logFile, "fh: %s failed: %v\n", step, err) // best effort; the log is the only place to say it
 		s.m.cfg.Log.Info("agent start failed", "session", s.sum.ID, "step", step, "err", err)
 		if authRequired(err) {
-			s.mu.Lock()
-			s.loginNeeded = true
-			s.mu.Unlock()
+			s.markLoginNeeded()
 		}
 		proc.Stop()
 	}
@@ -445,10 +470,9 @@ func (s *session) run(prompt string) {
 	sid := acpSess.ID
 	s.setAsking(ctx, proc, acpSess)
 	s.mu.Lock()
-	s.acpID = sid
+	s.acpID, s.ready = sid, true
 	if prompt == "" {
-		s.ready = true
-		s.deriveLocked()
+		s.deriveLocked() // Idle; with a prompt, beginTurn goes straight to Working
 	}
 	s.mu.Unlock()
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
@@ -456,9 +480,6 @@ func (s *session) run(prompt string) {
 		s.publish()
 		return
 	}
-	s.mu.Lock()
-	s.ready = true // Starting moves straight to Working in beginTurn
-	s.mu.Unlock()
 	// Straight from Starting to Working: an Idle in between would let a
 	// second message in before the starting prompt.
 	if s.beginTurn(Starting) == nil {
@@ -535,9 +556,7 @@ func (s *session) prompt(text string) {
 		default:
 		}
 		if authRequired(err) {
-			s.mu.Lock()
-			s.loginNeeded = true
-			s.mu.Unlock()
+			s.markLoginNeeded()
 			proc.Stop() // watch reports "login needed"
 			return
 		}
@@ -852,30 +871,56 @@ func (s *session) addItem(it Item) {
 func (s *session) endTurn(cancelled bool) {
 	s.mu.Lock()
 	s.inTurn = false
-	s.unseen = !cancelled
+	// Seen already if you cancelled it, or if a tab is looking right now.
+	s.unseen = !cancelled && !s.cancelRequested && !s.viewedLocked()
 	s.deriveLocked()
 	s.mu.Unlock()
 	s.publish()
 }
 
-// seen records that you looked at the Session (its conversation is open in
-// a visible tab): a finished turn no longer waits.
-func (s *session) seen() {
+// viewing records whether tab is looking at the Session (its conversation
+// is open in a visible tab). Looking clears a finished turn's wait, and a
+// turn that ends while someone looks never waits.
+func (s *session) viewing(tab string, on bool) {
 	s.mu.Lock()
-	if !s.unseen {
+	if !on {
+		delete(s.viewers, tab)
 		s.mu.Unlock()
 		return
 	}
+	s.viewers[tab] = time.Now()
+	changed := s.unseen
 	s.unseen = false
 	s.deriveLocked()
 	s.mu.Unlock()
-	s.publish()
+	if changed {
+		s.publish()
+	}
 }
 
-// deriveLocked sets the Session state from the facts, in priority order
-// (GLOSSARY.md): Exited stays; not ready is Starting; an open permission
-// request is Waiting; a running turn is Working; a finished turn nobody has
-// seen is Waiting; else Idle. The caller holds s.mu.
+// viewedLocked reports whether a tab looked within viewerTTL; the caller
+// holds s.mu.
+func (s *session) viewedLocked() bool {
+	for tab, at := range s.viewers {
+		if time.Since(at) < viewerTTL {
+			return true
+		}
+		delete(s.viewers, tab)
+	}
+	return false
+}
+
+func (s *session) markLoginNeeded() {
+	s.mu.Lock()
+	s.loginNeeded = true
+	s.mu.Unlock()
+}
+
+// deriveLocked sets the Session state from the facts. The states are
+// GLOSSARY.md's; the order they're checked in is fh's choice, so that what
+// needs you wins: Exited stays; not ready is Starting; an open permission
+// request is Waiting (even mid-turn); a running turn is Working; a finished
+// turn nobody has seen is Waiting; else Idle. The caller holds s.mu.
 func (s *session) deriveLocked() {
 	if s.sum.State == Exited {
 		return
@@ -885,11 +930,11 @@ func (s *session) deriveLocked() {
 	case !s.ready && !s.inTurn:
 		state = Starting
 	case len(s.pending) > 0:
-		state, waiting = Waiting, "permission"
+		state, waiting = Waiting, WaitingPermission
 	case s.inTurn:
 		state = Working
 	case s.unseen:
-		state, waiting = Waiting, "turn"
+		state, waiting = Waiting, WaitingTurn
 	}
 	if state != s.sum.State || waiting != s.sum.Waiting {
 		s.sum.State, s.sum.Waiting, s.sum.Since = state, waiting, time.Now()
@@ -991,5 +1036,5 @@ func newID() string { return strings.ToLower(rand.Text()[:10]) }
 // (-32000): the Agent needs a login in a terminal before it can work.
 func authRequired(err error) bool {
 	var re *sdk.RequestError
-	return errors.As(err, &re) && re.Code == -32000
+	return errors.As(err, &re) && re.Code == codeAuthRequired
 }

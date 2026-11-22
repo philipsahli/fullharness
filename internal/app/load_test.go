@@ -60,10 +60,13 @@ func TestTenStreamingSessionsReachATabQuickly(t *testing.T) {
 		}
 	}
 
-	if len(latencies) < want {
-		t.Fatalf("got %d of %d chunks", len(latencies), want)
+	if len(latencies) == 0 {
+		t.Fatalf("got none of %d chunks", want)
 	}
 	slices.Sort(latencies)
+	if len(latencies) < want {
+		t.Errorf("got %d of %d chunks", len(latencies), want)
+	}
 	p95 := latencies[len(latencies)*95/100]
 	p99 := latencies[len(latencies)*99/100]
 	t.Logf("%d chunks from %d Sessions: p95 %v, p99 %v, max %v", len(latencies), sessions, p95, p99, latencies[len(latencies)-1])

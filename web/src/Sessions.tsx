@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
-import { byListOrder } from "./events";
+import { byListOrder, projectName, tabID } from "./events";
 import type {
   Item,
   PermissionRequest,
@@ -42,7 +42,7 @@ export function SessionList(props: {
               <span className="t">{s.title}</span>
               <StateBadge state={s.state} />
               <span className="s">
-                {projectName(props.projects, s.project)} · {s.agent}
+                {projectName(props.projects, s.project)} · {s.agentName}
                 {s.autoApprove && " · auto-approve"}
                 {s.state === "exited" && s.reason && ` · ${s.reason}`}
               </span>
@@ -244,19 +244,25 @@ export function Conversation(props: {
   }, [session.id, items, update]);
 
   // You're looking at this Session while its conversation is open in a
-  // visible tab: tell fh when that starts and whenever a turn ends meanwhile,
-  // so a finished turn doesn't wait for you.
-  const waitingForTurn = session.state === "waiting" && session.waiting === "turn";
+  // visible tab. Tell fh now, every 15 s (fh forgets a tab after 30 s, so a
+  // closed tab stops counting), and when that stops; a turn that ends while
+  // you look then never waits for you.
   useEffect(() => {
-    const look = () => {
-      if (document.visibilityState === "visible" && waitingForTurn) {
-        void command(`/api/sessions/${session.id}/seen`);
-      }
+    const say = (viewing: boolean) =>
+      // A lost update only means a turn waits until the next one.
+      void command(`/api/sessions/${session.id}/viewing`, { tab: tabID, viewing });
+    const update = () => say(document.visibilityState === "visible");
+    update();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") say(true);
+    }, 15_000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+      say(false);
     };
-    look();
-    document.addEventListener("visibilitychange", look);
-    return () => document.removeEventListener("visibilitychange", look);
-  }, [session.id, waitingForTurn]);
+  }, [session.id]);
 
   // A statement body on purpose: scrollIntoView returns a Promise in current
   // Chromium, and an effect must return nothing or a cleanup function.
@@ -278,7 +284,7 @@ export function Conversation(props: {
         <StateBadge state={session.state} />
         {session.autoApprove && <span className="tag">auto-approve</span>}
         <span className="crumb" title={session.worktree}>
-          {session.agent} · {session.worktree}
+          {session.agentName} · {session.worktree}
         </span>
       </header>
       <div className="items">
@@ -450,8 +456,4 @@ function ToolCard({ tool }: { tool: Tool }) {
       {output ? <pre>{output}</pre> : <p className="empty">No output yet.</p>}
     </details>
   );
-}
-
-export function projectName(projects: Project[], path: string): string {
-  return projects.find((p) => p.path === path)?.name ?? basename(path);
 }

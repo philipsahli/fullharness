@@ -15,6 +15,7 @@ GitHub Actions only calls these `make` targets, so the commands live in one plac
 
 - **Runners.** PRs run on `ubuntu-latest`. Pushes to `main` also run on `macos-latest`, which catches macOS-only problems (the `open` command, file modes, later `osascript`). On a private repo, macOS minutes count 10× against the free quota.
 - **Race detector always.** fh's core job is concurrent: many Agent processes, WebSockets, launch races. `-race` is on locally too, not only in CI.
+- **One exception: the load test (#7).** It checks spec #1's target of 10 Sessions without lag: 10 Sessions × 20 chunks a second, with each chunk reaching a tab within 100 ms at p95. The race detector slows everything by 2–10×, which would make that number meaningless, so the test is built only without `-race` (`//go:build !race`). `make test` runs it once more after the `-race` pass. It prints p95 and p99 on every run.
 - **Time budget.** The whole PR workflow finishes in under 3 minutes. A slow test is a bug to fix, for example a shutdown that waits for a close handshake.
 - **Browser smoke test.** This amends spec #1, which left the React UI to hand checks in v1. The tab's restart and reconnect logic lives only in the UI, so `web/e2e/` holds Playwright tests for it:
   - the shell loads through the token URL;

@@ -76,6 +76,11 @@ type script struct {
 	RejectAlwaysFirst bool `json:"rejectAlwaysFirst"`
 	// AllowAll offers Copilot's "allow_all" select config option (on/off).
 	AllowAll bool `json:"allowAll"`
+	// InitAuthError fails initialize with "authentication required".
+	InitAuthError bool `json:"initAuthError"`
+	// EndAfterCancel ends a cancelled turn with end_turn instead of
+	// cancelled, like an Agent that doesn't follow ACP there.
+	EndAfterCancel bool `json:"endAfterCancel"`
 }
 
 type agent struct {
@@ -102,6 +107,9 @@ func main() {
 }
 
 func (a *agent) Initialize(ctx context.Context, p acp.InitializeRequest) (acp.InitializeResponse, error) {
+	if a.script.InitAuthError {
+		return acp.InitializeResponse{}, acp.NewAuthRequired(nil)
+	}
 	return acp.InitializeResponse{ProtocolVersion: acp.ProtocolVersionNumber}, nil
 }
 
@@ -150,7 +158,7 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if err != nil {
 		return acp.PromptResponse{}, err
 	}
-	if cancelled {
+	if cancelled && !a.script.EndAfterCancel {
 		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 	}
 	reason := acp.StopReasonEndTurn
