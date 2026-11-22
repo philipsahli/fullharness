@@ -28,6 +28,7 @@ func run() error {
 	noOpen := flag.Bool("no-open", false, "print the URL instead of opening the browser")
 	uiURL := flag.String("ui-url", "", "open the UI from this origin instead (make dev uses the Vite dev server)")
 	dir := flag.String("dir", "", "config and state folder (default ~/.config/fullharness)")
+	verbose := flag.Bool("verbose", false, "log at debug level")
 	dev := flag.Bool("dev", false, "keep the token across restarts so open tabs reload (make dev); needs --dir")
 	flag.Parse()
 
@@ -45,8 +46,10 @@ func run() error {
 		*dir = filepath.Join(home, ".config", "fullharness")
 	}
 	opts := app.Options{
-		Dir: *dir,
-		Dev: *dev,
+		Dir:     *dir,
+		Dev:     *dev,
+		Verbose: *verbose,
+		Stderr:  os.Stderr,
 		OpenBrowser: func(u string) {
 			if *uiURL != "" {
 				u = withOrigin(u, *uiURL)

@@ -25,7 +25,13 @@ func startFhWithAgent(t *testing.T, s script) *fh {
 		t.Fatal(err)
 	}
 	writeConfig(t, dir, fmt.Sprintf("[agents.claude]\ncommand = [%q]\nenv = { FH_FAKE_SCRIPT = %q }\n", fakeAgentBin, raw))
-	return startFhWith(t, app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour})
+	return startFhWith(t, appOptions(dir))
+}
+
+// appOptions starts fh on a free port with periodic refresh effectively off,
+// so tests see only the refreshes they cause.
+func appOptions(dir string) app.Options {
+	return app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour}
 }
 
 // startSession posts a New Session and returns the new Session's ID.

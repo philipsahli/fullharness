@@ -25,7 +25,8 @@ import (
 type fh struct {
 	t      *testing.T
 	inst   *app.Instance
-	opened []string // URLs fh asked the browser to open
+	opts   app.Options // as started, for a restart with the same settings
+	opened []string    // URLs fh asked the browser to open
 }
 
 // startFh launches fh on any free port, so tests can run in parallel.
@@ -146,7 +147,7 @@ func startFhOnPort(t *testing.T, dir string, port int) *fh {
 
 func startFhWith(t *testing.T, opts app.Options) *fh {
 	t.Helper()
-	f := &fh{t: t}
+	f := &fh{t: t, opts: opts}
 	opts.OpenBrowser = func(u string) { f.opened = append(f.opened, u) }
 	inst, err := app.Start(context.Background(), opts)
 	if err != nil {
