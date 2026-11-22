@@ -34,6 +34,10 @@ _Avoid_: queue, notifications, approvals
 Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, login needed, or closed by the user.
 _Avoid_: status, busy, blocked, error (an error is an Exited reason)
 
+**Notification**:
+A desktop alert that a Session started Waiting while nobody was looking at it: shown by an fh tab, or natively by macOS when no tab can. It points to the Session; answering happens there or in the Inbox.
+_Avoid_: alert, ping; and never "notifications" for the Inbox
+
 **Close (a Session)**:
 Remove a Session from fullharness and free its Worktree; a live Session's Agent is stopped first. The Agent keeps its own history.
 _Avoid_: delete, kill, end

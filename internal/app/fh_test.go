@@ -110,11 +110,17 @@ func get(t *testing.T, c *http.Client, u string) *http.Response {
 // refused.
 func (f *fh) dialWS(c *http.Client, origin string) (*websocket.Conn, int, error) {
 	f.t.Helper()
+	return f.dialWSPath(c, origin, "/ws")
+}
+
+// dialWSPath is dialWS with a path and query, e.g. "/ws?notify=1".
+func (f *fh) dialWSPath(c *http.Client, origin, path string) (*websocket.Conn, int, error) {
+	f.t.Helper()
 	h := http.Header{}
 	if origin != "" {
 		h.Set("Origin", origin)
 	}
-	wsURL := "ws" + strings.TrimPrefix(f.origin(), "http") + "/ws"
+	wsURL := "ws" + strings.TrimPrefix(f.origin(), "http") + path
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPClient: c, HTTPHeader: h})

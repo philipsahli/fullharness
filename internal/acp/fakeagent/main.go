@@ -243,14 +243,21 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 				ToolCall:  tc,
 				Options:   a.permissionOptions(t.Always),
 			})
-			if perr != nil {
-				return false, perr
-			}
 			chosen := "cancelled"
-			if resp.Outcome.Selected != nil {
+			switch {
+			case perr != nil && ctx.Err() != nil:
+				// session/cancel arrived before the answer: the request ends
+				// cancelled, as ACP asks.
+			case perr != nil:
+				return false, perr
+			case resp.Outcome.Selected != nil:
 				chosen = string(resp.Outcome.Selected.OptionId)
 			}
-			err = update(acp.UpdateAgentMessageText("permission=" + chosen))
+			// Report what it got even if the turn is being cancelled right
+			// now: the test reads this, and a cancelled ctx would drop it.
+			err = a.conn.SessionUpdate(context.WithoutCancel(ctx), acp.SessionNotification{
+				SessionId: sid, Update: acp.UpdateAgentMessageText("permission=" + chosen),
+			})
 			if chosen == "cancelled" {
 				// A client answers "cancelled" when it cancels the turn, and
 				// session/cancel follows; end the turn as cancelled, as ACP

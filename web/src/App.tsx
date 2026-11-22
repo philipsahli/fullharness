@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { shortcutLabel, useEventChannel, type Connection } from "./events";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./events";
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
 import { Switcher } from "./Switcher";
@@ -7,10 +7,26 @@ import { Switcher } from "./Switcher";
 type View = "sessions" | "factory" | "inbox";
 
 export function App() {
-  const [conn, update] = useEventChannel();
   const [view, setView] = useState<View>("sessions");
   // What the Sessions view shows: the New Session dialog, or a Session.
   const [opened, setOpened] = useState<"new" | string | undefined>();
+  const [notifyPermission, setNotifyPermission] = useState(() =>
+    "Notification" in window ? Notification.permission : "denied",
+  );
+  // A Session started Waiting while nobody looks at it. Every open tab shows
+  // it; the tag makes the browser keep one per Session, not one per tab.
+  const showNotification = useCallback((n: Notify) => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const note = new Notification(n.title, { body: n.body, tag: n.session });
+    note.onclick = () => {
+      window.focus();
+      setView("sessions");
+      setOpened(n.session);
+      note.close();
+    };
+  }, []);
+  const [conn, update, reconnect] = useEventChannel(showNotification);
+
   const [switcher, setSwitcher] = useState(false);
 
   // ⌘K on macOS, Ctrl+K elsewhere, from anywhere in the page.
@@ -34,6 +50,21 @@ export function App() {
           <b>fh</b>
           <span>fullharness</span>
         </div>
+        {notifyPermission === "default" && (
+          <button
+            className="notify-on"
+            type="button"
+            onClick={() =>
+              void Notification.requestPermission().then((p) => {
+                setNotifyPermission(p);
+                if (p === "granted") reconnect(); // tell fh this tab can notify now
+              })
+            }
+            title="Get a notification when a Session needs you and no fh tab shows it"
+          >
+            Turn on notifications
+          </button>
+        )}
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
           Jump to a Session… <kbd>{shortcutLabel}</kbd>
         </button>

@@ -160,7 +160,10 @@ type Config struct {
 	LogDir    string          // holds logs/<session-id>.log
 	Broadcast func(event any) // sends an event to every tab
 	TurnEnded func()          // runs after each turn, e.g. a Worktree refresh
-	Log       *slog.Logger
+	// EnteredWaiting runs when a Session starts Waiting, with what it waits
+	// for, for notifications (#8). viewed is set when a tab is looking at it.
+	EnteredWaiting func(sum Summary, what string, viewed bool)
+	Log            *slog.Logger
 	// StartTimeout bounds initialize and session/new. The first Claude Code
 	// start can take a while: npx downloads the adapter.
 	StartTimeout time.Duration
@@ -196,6 +199,7 @@ type session struct {
 	// the Agent answers with another stop reason than "cancelled".
 	cancelRequested bool
 	viewers         map[string]time.Time // tab ID → when it last said it's looking
+	lastPublished   string               // state and why it waits, as last sent to tabs
 	proc            *acp.Process
 	acpID           sdk.SessionId
 	stopping        bool
@@ -968,7 +972,39 @@ func (s *session) emit(kind string, index int, key string, value any) {
 }
 
 func (s *session) publish() {
-	s.m.cfg.Broadcast(map[string]any{"type": "session", "session": s.summary()})
+	s.mu.Lock()
+	sum := s.sum
+	key := sum.State + "/" + sum.Waiting
+	entered := sum.State == Waiting && key != s.lastPublished
+	s.lastPublished = key
+	what, viewed := "", false
+	if entered {
+		what, viewed = s.waitingForLocked(), s.viewedLocked()
+	}
+	s.mu.Unlock()
+	s.m.cfg.Broadcast(map[string]any{"type": "session", "session": sum})
+	if entered && s.m.cfg.EnteredWaiting != nil {
+		s.m.cfg.EnteredWaiting(sum, what, viewed)
+	}
+}
+
+// waitingForLocked says in a few words what a Waiting Session waits for,
+// for a notification; the caller holds s.mu.
+func (s *session) waitingForLocked() string {
+	if s.sum.Waiting == WaitingTurn {
+		return s.sum.AgentName + " finished its turn"
+	}
+	// Name the oldest open request: the one the Inbox lists first.
+	var oldest *Request
+	for _, p := range s.pending {
+		if r := s.transcript[p.index].Permission; oldest == nil || r.CreatedAt.Before(oldest.CreatedAt) {
+			oldest = r
+		}
+	}
+	if oldest != nil {
+		return s.sum.AgentName + " asks to run " + oldest.Title
+	}
+	return s.sum.AgentName + " is waiting"
 }
 
 // contentText shows a tool call's content as plain text: text as is, a diff

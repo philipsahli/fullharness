@@ -778,3 +778,17 @@ button:disabled {
 .switcher li:not(:has(.dot)) {
   grid-template-columns: minmax(0, 1fr) auto;
 }
+
+.notify-on {
+  order: 2;
+  margin-left: auto;
+  border: 1px solid var(--waiting);
+  background: var(--waiting-soft);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.notify-on + .jump {
+  margin-left: 0;
+}

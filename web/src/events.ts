@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Worktree and Project match the JSON from internal/worktree and
 // internal/project.
@@ -101,8 +101,22 @@ const retryMs = 2000;
 // the restarted fh's own new tab already replaced the cookie for 127.0.0.1)
 // the snapshot carries a different launch ID. Either way the tab stops and
 // says so instead of quietly continuing on a launch it was never opened for.
-export function useEventChannel(): [Connection, Update] {
+// Notify is a "notify" event: a Session started Waiting and nobody is
+// looking at it (#8).
+export type Notify = { session: string; title: string; body: string };
+
+// Reconnect closes the event channel so it reconnects, e.g. after the tab
+// got notification permission and fh should know.
+export type Reconnect = () => void;
+
+export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Update, Reconnect] {
   const [conn, setConn] = useState<Connection>({ status: "connecting" });
+  const socket = useRef<WebSocket | undefined>(undefined);
+  const reconnect = useCallback(() => socket.current?.close(), []);
+  const notify = useRef(onNotify);
+  useEffect(() => {
+    notify.current = onNotify;
+  }, [onNotify]);
   const update: Update = useCallback(
     (f) => setConn((c) => (c.status === "open" ? { ...c, snapshot: f(c.snapshot) } : c)),
     [],
@@ -122,9 +136,17 @@ export function useEventChannel(): [Connection, Update] {
 
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      // notify=1 tells fh this tab can show notifications; without such a
+      // tab fh notifies natively instead (#8).
+      const canNotify = "Notification" in window && Notification.permission === "granted";
+      ws = new WebSocket(`${proto}://${location.host}/ws${canNotify ? "?notify=1" : ""}`);
+      socket.current = ws;
       ws.onmessage = (e) => {
         const ev = JSON.parse(e.data);
+        if (ev.type === "notify") {
+          notify.current?.(ev as Notify);
+          return;
+        }
         if (ev.type !== "snapshot") {
           update((snap) => apply(snap, ev));
           return;
@@ -178,7 +200,7 @@ export function useEventChannel(): [Connection, Update] {
     };
   }, [update]);
 
-  return [conn, update];
+  return [conn, update, reconnect];
 }
 
 // apply folds one event into the snapshot.
