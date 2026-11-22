@@ -28,9 +28,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod # uses the toolchain line
-          cache-dependency-path: |
-            go.sum
-            tools/go.sum
+          # fh's modules only; the lint tools are cached as binaries below, so a
+          # tools/go.sum bump doesn't empty this cache.
+          cache-dependency-path: go.sum
+      # Built lint tools (see TOOLS in the Makefile). Same key as the Makefile's
+      # folder name, so a hit means make skips building them.
+      - uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: lint-tools-${{ runner.os }}-${{ hashFiles('tools/go.mod', 'tools/go.sum') }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: web/.nvmrc
