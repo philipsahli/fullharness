@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -15,6 +17,9 @@ const configFileName = "config.toml"
 // definitions and the scan folder.
 type config struct {
 	Port *int `toml:"port"`
+	// ScanFolder is where Add Project looks for repos to suggest, for
+	// example "~/work".
+	ScanFolder string `toml:"scan_folder"`
 }
 
 // loadConfig reads config.toml from dir. A missing file is an empty config.
@@ -26,6 +31,13 @@ func loadConfig(dir string) (config, error) {
 			return config{}, nil
 		}
 		return config{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	if rest, ok := strings.CutPrefix(c.ScanFolder, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return config{}, err
+		}
+		c.ScanFolder = filepath.Join(home, rest)
 	}
 	return c, nil
 }

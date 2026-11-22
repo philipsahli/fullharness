@@ -99,11 +99,34 @@ Running `fh` again while it runs opens another tab on the running instance inste
 
 ## Configuration / Usage
 
-fh reads `~/.config/fullharness/config.toml`. The only setting so far is the port:
+fh reads `~/.config/fullharness/config.toml`. fh never writes this file, so your comments stay.
 
 ```toml
-port = 4815
+port = 4815               # the port fh listens on
+scan_folder = "~/work"    # where Add Project looks for git repositories to suggest
 ```
+
+`scan_folder` suggestions go two levels deep, so both `~/work/<name>` and `~/work/<org>/<name>` show up. fh never adds a Project on its own.
+
+### Projects
+
+Add the git repositories you work in as Projects with **+ Add Project** in the left rail. Type a path, or pick a suggestion from `scan_folder`.
+
+- A path inside a git repository adds the whole repository.
+- fh refuses a linked worktree.
+- Add the linked worktree's main repository instead; its Project lists all its Worktrees.
+- **Remove** takes a Project out of fh. The folder on disk stays as it is.
+
+fh keeps your Projects in `~/.config/fullharness/projects.toml`. Only fh writes that file.
+
+Each Project lists every git Worktree, with:
+
+- its branch;
+- a **main tree** tag for the Project's own folder, or an **Agent worktree** tag. fh shows an Agent worktree but never starts a Session in it or removes it. For now, that's every Worktree fh didn't create;
+- its uncommitted files;
+- its commits ahead of and behind `origin/<default branch>`, or the local `main` (else `master`) when there's no remote.
+
+fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. A Worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
 
 Flags override the config file:
 

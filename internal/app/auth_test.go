@@ -109,3 +109,36 @@ func TestPageWithoutCookieTellsUserToRunFh(t *testing.T) {
 		t.Errorf("body does not tell the user to run fh: %s", body)
 	}
 }
+
+func TestCommandsFromAnotherOriginAreRejected(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+
+	for _, origin := range []string{"https://evil.example", "null", ""} {
+		req, err := http.NewRequest("POST", f.origin()+"/api/projects/refresh", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Origin %q: status %d, want 403", origin, resp.StatusCode)
+		}
+	}
+}
+
+func TestCommandsWithoutCookieAreRejected(t *testing.T) {
+	f := startFh(t, t.TempDir())
+
+	status, _ := f.post(noRedirectClient(t), "/api/projects/refresh", nil)
+
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", status)
+	}
+}

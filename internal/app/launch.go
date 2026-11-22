@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/philipsahli/fullharness/internal/fileutil"
 )
 
 // launchFileName holds the running instance's port and token, so a second
@@ -34,33 +36,12 @@ func readLaunchFile(dir string) (launchInfo, bool) {
 	return li, true
 }
 
-// writeLaunchFile writes atomically, so a concurrent reader never sees a
-// half-written file.
 func writeLaunchFile(dir string, li launchInfo) error {
 	b, err := json.Marshal(li)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, launchFileName+".*")
-	if err != nil {
-		return err
-	}
-	// After a successful Rename the temp name no longer exists, so this only
-	// cleans up after a failure.
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	// CreateTemp already uses 0600; Chmod guards against a permissive umask
-	// policy on other platforms.
-	err = tmp.Chmod(0o600)
-	if err == nil {
-		_, err = tmp.Write(b)
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, launchFileName))
+	return fileutil.WriteAtomic(filepath.Join(dir, launchFileName), b)
 }
 
 // removeLaunchFile removes the launch file only if it still describes this

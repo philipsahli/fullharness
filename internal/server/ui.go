@@ -34,6 +34,11 @@ func writeUnauthorised(w http.ResponseWriter) {
 func uiHandler(ui fs.FS) http.Handler {
 	files := http.FileServerFS(ui)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			// An unknown API path is an error, not a client-side route.
+			http.NotFound(w, r)
+			return
+		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if name != "" {
 			if info, err := fs.Stat(ui, name); err == nil && !info.IsDir() {

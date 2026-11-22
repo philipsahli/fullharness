@@ -1,5 +1,27 @@
 import { useEffect, useState } from "react";
 
+// Worktree and Project match the JSON from internal/worktree and
+// internal/project.
+export type Worktree = {
+  path: string;
+  branch: string; // empty when HEAD is detached
+  main: boolean; // the Project's own tree
+  agent: boolean; // not created by fh: fh never starts a Session in it
+  missing: boolean; // git lists it, but its folder is gone
+  uncommitted: number;
+  ahead: number;
+  behind: number;
+  base: string; // what ahead/behind compare with, e.g. "origin/main"
+  fetchedAt: string | null; // last git fetch; null if never
+};
+
+export type Project = {
+  path: string;
+  name: string;
+  missing: boolean; // folder not found
+  worktrees: Worktree[];
+};
+
 // Snapshot is the full state the server sends when the event channel opens.
 // Later tickets give Sessions and Inbox items a shape.
 export type Snapshot = {
@@ -7,6 +29,7 @@ export type Snapshot = {
   launch: string; // random ID of the fh launch; changes on restart
   sessions: unknown[];
   inbox: unknown[];
+  projects: Project[];
 };
 
 export type Connection =
@@ -42,6 +65,13 @@ export function useEventChannel(): Connection {
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onmessage = (e) => {
         const ev = JSON.parse(e.data);
+        if (ev.type === "projects") {
+          const projects = ev.projects as Project[];
+          setConn((c) =>
+            c.status === "open" ? { ...c, snapshot: { ...c.snapshot, projects } } : c,
+          );
+          return;
+        }
         if (ev.type !== "snapshot") return;
         const snap = ev as Snapshot;
         launch ??= snap.launch;
