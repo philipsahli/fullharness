@@ -360,7 +360,7 @@ func (s *session) run(prompt string) {
 	}
 	defer func() { _ = logFile.Close() }() // the process holds its own copy of the descriptor
 
-	proc, err := acp.Start(s.def.Command, s.def.Environ(), s.summary().Worktree, logFile, s)
+	proc, err := acp.Start(s.def.Command, s.def.Environ(s.summary().AutoApprove), s.summary().Worktree, logFile, s)
 	if err != nil {
 		s.exit(ReasonCrashed, []string{err.Error()})
 		return
@@ -391,12 +391,13 @@ func (s *session) run(prompt string) {
 		fail("initialize", err)
 		return
 	}
-	sid, modes, err := proc.NewSession(ctx, s.summary().Worktree)
+	acpSess, err := proc.NewSession(ctx, s.summary().Worktree)
 	if err != nil {
 		fail("session/new", err)
 		return
 	}
-	s.setAskingMode(ctx, proc, sid, modes)
+	sid := acpSess.ID
+	s.setAsking(ctx, proc, acpSess)
 	s.mu.Lock()
 	s.acpID = sid
 	s.mu.Unlock()
@@ -412,30 +413,41 @@ func (s *session) run(prompt string) {
 	}
 }
 
-// setAskingMode puts the Agent in the mode where it asks before acting.
-// Claude Code otherwise keeps the user's own mode (the spike saw "auto")
-// and never asks (ADR 0003). If that fails, the user is told in the
-// conversation instead of finding out from an unasked edit.
-func (s *session) setAskingMode(ctx context.Context, proc *acp.Process, sid sdk.SessionId, modes []string) {
-	mode := s.def.Mode
-	if s.summary().AutoApprove {
-		mode = s.def.AutoMode
-	}
-	if mode == "" {
+// setAsking puts the Agent in "ask before acting", or auto-approve, by
+// mode and config option as its definition says (the environment part was
+// set at launch). If that fails, the conversation says so instead of the
+// user finding out from an unasked edit.
+func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) {
+	a, auto := s.def.Asking, s.summary().AutoApprove
+	if !a.Known() {
+		s.addItem(Item{Type: "notice", Text: "fh doesn't know how to make this Agent ask before it acts, so it follows its own settings; auto-approve has no effect."})
 		return
 	}
-	err := fmt.Errorf("the Agent doesn't offer mode %q", mode)
-	if slices.Contains(modes, mode) {
-		err = proc.SetMode(ctx, sid, mode)
-	}
-	if err != nil {
-		s.m.cfg.Log.Info("agent set_mode failed", "session", s.sum.ID, "err", err)
-		text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
-		if s.summary().AutoApprove {
-			text = "fh couldn't switch the Agent to auto-approve, so it asks before it acts as usual."
+	var problems []error
+	if mode := a.Mode.Pick(auto); mode != "" {
+		if !slices.Contains(acpSess.Modes, mode) {
+			problems = append(problems, fmt.Errorf("mode %q not offered", mode))
+		} else if err := proc.SetMode(ctx, acpSess.ID, mode); err != nil {
+			problems = append(problems, err)
 		}
-		s.addItem(Item{Type: "notice", Text: text})
 	}
+	if a.Option != "" {
+		value := a.Value.Pick(auto)
+		if !slices.Contains(acpSess.Options[a.Option], value) {
+			problems = append(problems, fmt.Errorf("option %s=%s not offered", a.Option, value))
+		} else if err := proc.SetOption(ctx, acpSess.ID, a.Option, value); err != nil {
+			problems = append(problems, err)
+		}
+	}
+	if len(problems) == 0 {
+		return
+	}
+	s.m.cfg.Log.Info("agent asking setup failed", "session", s.sum.ID, "err", errors.Join(problems...))
+	text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
+	if auto {
+		text = "fh couldn't switch the Agent to auto-approve, so it keeps its own setting."
+	}
+	s.addItem(Item{Type: "notice", Text: text})
 }
 
 // watch turns an unexpected process exit into Exited "Agent crashed".

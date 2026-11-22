@@ -91,20 +91,45 @@ func (p *Process) Initialize(ctx context.Context) error {
 	return err
 }
 
-// NewSession creates an ACP session in cwd. It returns the session ID and
-// the mode IDs the Agent offers.
-func (p *Process) NewSession(ctx context.Context, cwd string) (sdk.SessionId, []string, error) {
+// Session is a new ACP session: its ID, the mode IDs the Agent offers, and
+// its select config options with the values each allows.
+type Session struct {
+	ID      sdk.SessionId
+	Modes   []string
+	Options map[string][]string
+}
+
+// NewSession creates an ACP session in cwd.
+func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 	resp, err := p.conn.NewSession(ctx, sdk.NewSessionRequest{Cwd: cwd, McpServers: []sdk.McpServer{}})
 	if err != nil {
-		return "", nil, err
+		return Session{}, err
 	}
-	var modes []string
+	s := Session{ID: resp.SessionId, Options: map[string][]string{}}
 	if resp.Modes != nil {
 		for _, m := range resp.Modes.AvailableModes {
-			modes = append(modes, string(m.Id))
+			s.Modes = append(s.Modes, string(m.Id))
 		}
 	}
-	return resp.SessionId, modes, nil
+	for _, o := range resp.ConfigOptions {
+		// Only plain selects: the options fh sets (Copilot's allow_all) are
+		// ungrouped; a grouped one would show up as "not offered".
+		if o.Select == nil || o.Select.Options.Ungrouped == nil {
+			continue
+		}
+		for _, v := range *o.Select.Options.Ungrouped {
+			s.Options[string(o.Select.Id)] = append(s.Options[string(o.Select.Id)], string(v.Value))
+		}
+	}
+	return s, nil
+}
+
+// SetOption sets a select config option.
+func (p *Process) SetOption(ctx context.Context, sid sdk.SessionId, id, value string) error {
+	_, err := p.conn.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{
+		SessionId: sid, ConfigId: sdk.SessionConfigId(id), Value: sdk.SessionConfigValueId(value),
+	}})
+	return err
 }
 
 // SetMode sets the session's mode.
