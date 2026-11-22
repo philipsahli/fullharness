@@ -7,7 +7,7 @@ fullharness is a local app for running several coding agents in parallel across 
 
 > **Status:** design phase. There is no code yet. The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
 
-Planned after v1: a **Roadmap** (Features from all repos ordered into Now / Next / Later) and **Readiness** (fixed checks plus an optional Agent Assessment that tell you whether a Spec and its Tickets are ready for `/implement-spec`). See [ADR 0005](docs/adr/0005-fh-writes-roadmap-group-to-tracker.md).
+Planned after v1: a **Roadmap** (Features from all repos ordered into Now / Next / Later), **Readiness** (fixed checks plus an optional Agent Assessment that tell you whether a Spec and its Tickets are ready for `/implement-spec`), and **Child Sessions** (an Agent asks fh to start another Agent in a new Worktree; you approve each request in the Inbox). See [ADR 0005](docs/adr/0005-fh-writes-roadmap-group-to-tracker.md) and [ADR 0006](docs/adr/0006-agents-start-child-sessions-via-fh-mcp.md).
 
 ## How it works (planned v1)
 

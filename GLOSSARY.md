@@ -22,8 +22,12 @@ _Avoid_: checkout, branch (a Worktree has a branch, but is not one)
 One running conversation of one Agent, inside exactly one Worktree, started by fullharness.
 _Avoid_: chat, run, terminal, instance
 
+**Child Session**:
+A Session that another Session's Agent asked fullharness to start, and the user approved. The Session that asked is its **Parent Session**. A Child Session runs in its own new Worktree of the same Project and belongs to its Parent's Feature unless the user changes it.
+_Avoid_: subagent (that runs inside one Session), spawned session, sub-session
+
 **Inbox**:
-The single list of every pending permission request across all Sessions, where the user answers them.
+The single list of everything waiting for the user's answer across all Sessions: permission requests and requests to start a Child Session.
 _Avoid_: queue, notifications, approvals
 
 **Session state**:

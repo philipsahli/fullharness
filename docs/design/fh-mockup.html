@@ -82,6 +82,8 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .srow[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .srow .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srow .s { grid-column: 2 / 4; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow.child { padding-left: 28px; }
+.srow.child .t::before { content: "↳ "; color: var(--muted); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); }
 .dot.waiting { background: var(--waiting); box-shadow: 0 0 0 3px var(--waiting-soft); }
 .dot.working { background: var(--working); animation: pulse 1.6s ease-in-out infinite; }
@@ -305,6 +307,7 @@ const projects = [
     { path: "fh-12-pty-fallback", branch: "fh-12-pty-fallback" },
     { path: "fh-14-worktree-list", branch: "fh-14-worktree-list" },
     { path: "impl-spec-7-t13", branch: "impl-spec-7-t13", agentWt: true },
+    { path: "wt-porcelain-check", branch: "wt-porcelain-check" },
   ]},
   { id: "io", name: "inventory-operator", tracker: "GitHub", worktrees: [
     { path: "inventory-operator", branch: "main" },
@@ -330,6 +333,7 @@ let sessions = [
       { r: "tool", k: "Write", d: "docs/adr/0005-inbox-batching.md", s: "ok", out: "# Inbox answers are one-shot in v1\n…" },
       { r: "tool", k: "Edit", d: "internal/acp/client.go", s: "ok", out: "@@ func (c *Client) onRequestPermission\n+ c.inbox.Push(req)" },
       { r: "perm" },
+      { r: "tool", k: "fh", d: "start_session(copilot, inbox-ui-sketch, \"Sketch the Inbox list…\")", s: "run", st: "pending approval", out: "id: req_51\nstatus: pending approval (waiting in your Inbox)" },
     ] },
   { id: "s3", title: "#14 List all git worktrees", project: "fh", wt: "fh-14-worktree-list", agent: "opencode", state: "waiting",
     feature: "Worktree view", stage: "Implementing", ticket: { n: 14, title: "List every git worktree, mark Agent worktrees" }, acp: "ses_02be…91d", started: "12 min ago",
@@ -341,6 +345,14 @@ let sessions = [
       { r: "tool", k: "Write", d: "internal/worktree/list_test.go", s: "ok", out: "func TestListMarksAgentWorktrees(t *testing.T) { … }" },
       { r: "tool", k: "Run", d: "go test ./internal/worktree/", s: "ok", out: "--- FAIL: TestListMarksAgentWorktrees (0.01s)\n    list_test.go:31: got 0 worktrees, want 3" },
       { r: "perm" },
+    ] },
+  { id: "s6", parent: "s3", title: "Check porcelain output across git versions", project: "fh", wt: "wt-porcelain-check", agent: "claude", state: "idle",
+    feature: "Worktree view", stage: "Implementing", acp: "sess_44d0…a17", started: "9 min ago",
+    git: { ahead: 0, behind: 0, files: [], pr: "none" },
+    msgs: [
+      { r: "user", t: "Started by OpenCode (#14): Check whether `git worktree list --porcelain` output differs between git 2.39 and 2.54. Report differences only." },
+      { r: "tool", k: "Run", d: "git --version && git worktree list --porcelain", s: "ok", out: "git version 2.54.0\nworktree /Users/…/fullharness\nHEAD 35d72ae…\nbranch refs/heads/main" },
+      { r: "agent", t: ["No format differences that affect parsing: 2.54 adds a `locked` reason line, which the parser should skip if unknown."] },
     ] },
   { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "fh-12-pty-fallback", agent: "copilot", state: "working", view: "terminal",
     feature: "ACP session view", stage: "Implementing", ticket: { n: 12, title: "Terminal fallback when an Agent can't speak ACP" }, acp: "— (terminal fallback)", started: "26 min ago",
@@ -392,6 +404,10 @@ const factory = {
     { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/ · 4 issues", next: "Implement spec", skill: "/implement-spec", bd: { shipped: 1, todo: 3 } },
   ],
 };
+/* Child Session requests made through fh's MCP tool start_session; always need approval in the Inbox. */
+const spawns = [
+  { id: "r1", parent: "s1", agent: "copilot", branch: "inbox-ui-sketch", prompt: "Sketch the Inbox list UI in the web app: one row per pending request, Allow and Deny on each.", answer: null },
+];
 const CHECKS = [
   "Spec has all six sections, none empty",
   "Spec has at least one Ticket",
@@ -438,11 +454,12 @@ function sorted() { return [...sessions].sort((a, b) => STATE_ORDER[a.state] - S
 function renderRail() {
   const waiting = sessions.filter(s => s.state === "waiting").length;
   $("#sess-sum").textContent = `${sessions.length} · ${waiting} waiting`;
-  $("#slist").innerHTML = sorted().map(s => `
-    <li><button class="srow" data-sid="${s.id}" aria-current="${ui.view === "sessions" && ui.current === s.id}">
+  const row = (s, child) => `
+    <li><button class="srow${child ? " child" : ""}" data-sid="${s.id}" aria-current="${ui.view === "sessions" && ui.current === s.id}">
       <span class="dot ${s.state}"></span><span class="t">${s.title}</span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
-      <span class="s">${proj(s.project).name} · ${AGENTS[s.agent].name}</span>
-    </button></li>`).join("");
+      <span class="s">${child ? `Child Session · ${AGENTS[s.agent].name}` : `${proj(s.project).name} · ${AGENTS[s.agent].name}`}</span>
+    </button></li>`;
+  $("#slist").innerHTML = sorted().filter(s => !s.parent).map(s => row(s) + sorted().filter(c => c.parent === s.id).map(c => row(c, true)).join("")).join("");
   $("#ptree").innerHTML = projects.map(p => `
     <li class="proj"><div>${p.name}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
@@ -450,7 +467,7 @@ function renderRail() {
         return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span>${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
       }).join("")}</ul></li>`).join("");
   const c = $("#inbox-count");
-  const pending = sessions.filter(s => s.perm && !s.perm.answer).length;
+  const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length;
   c.textContent = pending; pending ? c.removeAttribute("data-zero") : c.setAttribute("data-zero", "");
 }
 
@@ -469,7 +486,7 @@ function renderMsgs(s) {
   return s.msgs.map(m => {
     if (m.r === "user") return `<div class="msg user">${m.t}</div>`;
     if (m.r === "agent") return `<div class="msg agent"><div class="who">${AGENTS[s.agent].name}</div>${m.t.map(p => `<p>${p}</p>`).join("")}</div>`;
-    if (m.r === "tool") return `<details class="tool"><summary><span class="k">${m.k}</span><code>${m.d}</code><span class="${m.s === "ok" ? "ok" : "run"}">${m.s === "ok" ? "done" : "running…"}</span></summary><pre>${m.out}</pre></details>`;
+    if (m.r === "tool") return `<details class="tool"><summary><span class="k">${m.k}</span><code>${m.d}</code><span class="${m.s === "ok" ? "ok" : "run"}">${m.st || (m.s === "ok" ? "done" : "running…")}</span></summary><pre>${m.out}</pre></details>`;
     if (m.r === "perm") return permCard(s);
     return "";
   }).join("");
@@ -525,6 +542,8 @@ function renderMain() {
       <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
       ${s.ticket ? `<section><h3>Ticket</h3><div class="ticketcard"><span class="mono">#${s.ticket.n}</span><strong>${s.ticket.title}</strong><span class="crumb">Feature: ${s.feature} · Stage: ${s.stage}</span></div></section>`
         : s.feature ? `<section><h3>Feature</h3><div class="ticketcard"><strong>${s.feature}</strong><span class="crumb">Stage: ${s.stage}. Run /to-spec here and fh offers to link the new Spec.</span></div></section>` : ""}
+      ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${sess(s.parent).title}</button><p class="hint">Started this Session through fh's start_session tool, with your approval. Feature inherited from the Parent.</p></section>`
+        : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${k.title}</button></p>`).join("")}</section>` : ""}
       <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
         <p class="hint" style="margin-top:10px"><button class="btn small" disabled>Remove Worktree</button></p>
         <p class="hint">Offered once the branch is merged, has no uncommitted changes and no live Session.</p></section>`;
@@ -553,14 +572,19 @@ function renderMain() {
     main.innerHTML = renderRoadmap();
   } else {
     const pend = sessions.filter(s => s.perm);
-    main.innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request across all Sessions, oldest first.</span></div>
-      <div class="inbox">${pend.map(s => `
+    main.innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request and Child Session request across all Sessions, oldest first.</span></div>
+      <div class="inbox">${spawns.map(r => { const par = sess(r.parent); return `
+        <div class="ibox"><div>
+          <div class="meta">${agentTag(par.agent)}<span>${proj(par.project).name} / ${par.wt}</span><button class="btn small" data-open="${par.id}">Open Session</button></div>
+          <div style="margin-top:6px"><strong>Start a Child Session</strong> — ${AGENTS[par.agent].name} wants to start ${AGENTS[r.agent].name} in a new Worktree <span class="mono">${r.branch}</span>. Auto-approve never covers this.</div><code>${r.prompt}</code></div>
+          <div class="acts">${r.answer ? `<span class="resolved">${r.answer}</span>` : `<button class="btn primary" data-spallow="${r.id}">Allow</button><button class="btn" data-spdeny="${r.id}">Deny</button>`}</div>
+        </div>`; }).join("")}${pend.map(s => `
         <div class="ibox"><div>
           <div class="meta">${agentTag(s.agent)}<span>${proj(s.project).name} / ${s.wt}</span><button class="btn small" data-open="${s.id}">Open Session</button></div>
           <div style="margin-top:6px"><strong>${s.perm.kind}</strong> — ${s.perm.why}</div><code>${s.perm.cmd}</code></div>
           <div class="acts">${s.perm.answer ? `<span class="resolved">${s.perm.answer}</span>` : `<button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button>`}</div>
         </div>`).join("")}
-        ${pend.every(s => s.perm.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a macOS notification.</p>` : ""}</div>`;
+        ${pend.every(s => s.perm.answer) && spawns.every(r => r.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a macOS notification.</p>` : ""}</div>`;
   }
   $("#shell").dataset.view = ui.view;
   document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === ui.view));
@@ -767,6 +791,18 @@ document.addEventListener("click", e => {
   if (d.feat) { ui.feature = d.feat; return renderMain(); }
   if (d.start) return openStart(+d.start);
   if (d.new) return openNew();
+  if (d.spallow || d.spdeny) {
+    const r = spawns.find(x => x.id === (d.spallow || d.spdeny)), par = sess(r.parent), msg = par.msgs.find(m => m.k === "fh");
+    if (d.spdeny) { r.answer = "Denied"; if (msg) { msg.st = "denied"; msg.s = "ok"; } toast("Child Session denied"); return renderMain(); }
+    r.answer = "Allowed";
+    proj(par.project).worktrees.push({ path: r.branch, branch: r.branch });
+    const id = "c" + Date.now();
+    sessions.push({ id, parent: par.id, title: "Sketch the Inbox list UI", project: par.project, wt: r.branch, agent: r.agent, state: "working",
+      feature: par.feature, stage: par.stage, acp: "sess_new…", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: "none" },
+      msgs: [{ r: "user", t: `Started by ${AGENTS[par.agent].name}: ${r.prompt}` }] });
+    if (msg) { msg.st = "running"; msg.s = "ok"; msg.out = "id: req_51\nstatus: Working"; }
+    toast(`Child Session started: ${AGENTS[r.agent].name} in ${r.branch}`); return renderMain();
+  }
   if (d.confirm) return openConfirm(d.confirm);
   if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return renderMain(); }
   if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
