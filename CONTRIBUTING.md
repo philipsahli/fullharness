@@ -12,7 +12,8 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | `make dev` | Starts the Vite dev server on `127.0.0.1:5173`, proxied to a Go server on port 4816 with its own state folder `.dev/`, and opens the UI. |
 | `make lint` | Runs golangci-lint, a gofmt check and govulncheck on the Go code, and `tsc`, ESLint and a Prettier check on the UI. |
 | `make test` | Runs the Go tests with the race detector. |
-| `make check` | Runs `lint` and `test`, the same as CI. Run it before you open a PR. |
+| `make e2e` | Builds `bin/fh` and runs the Playwright smoke tests in Chromium. The first run downloads Chromium (about 150 MB). |
+| `make check` | Runs `lint`, `test` and `e2e`, the same as CI. Run it before you open a PR. |
 
 The lint tool versions are pinned in `tools/go.mod` (Go) and `web/package.json` (UI). `cd web && npm run format` fixes Prettier findings.
 

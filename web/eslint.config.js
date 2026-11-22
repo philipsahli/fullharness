@@ -6,16 +6,17 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules"] },
+  { ignores: ["dist", "node_modules", "test-results", "playwright-report"] },
   js.configs.recommended,
   tseslint.configs.recommended,
-  reactHooks.configs.flat.recommended,
+  // React rules only where React code lives; e2e/ has Playwright's `use`.
+  { ...reactHooks.configs.flat.recommended, files: ["src/**/*.{ts,tsx}"] },
   {
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ["vite.config.ts", "eslint.config.js"],
+    files: ["vite.config.ts", "playwright.config.ts", "eslint.config.js", "e2e/**/*.ts"],
     languageOptions: { globals: globals.node },
   },
 );

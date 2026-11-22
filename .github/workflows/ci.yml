@@ -28,12 +28,28 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod # uses the toolchain line
-          cache-dependency-path: |
-            go.sum
-            tools/go.sum
+          # fh's modules only; the lint tools are cached as binaries below, so a
+          # tools/go.sum bump doesn't empty this cache.
+          cache-dependency-path: go.sum
+      # Built lint tools (see TOOLS in the Makefile). Same key as the Makefile's
+      # folder name, so a hit means make skips building them.
+      - uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: lint-tools-${{ runner.os }}-${{ hashFiles('tools/go.mod', 'tools/go.sum') }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: web/.nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Chromium for the Playwright smoke tests (make e2e). The cache saves the
+      # download; --with-deps still installs its system libraries each run.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
       - run: make check
+        env:
+          PLAYWRIGHT_INSTALL_FLAGS: ${{ runner.os == 'Linux' && '--with-deps' || '' }}
