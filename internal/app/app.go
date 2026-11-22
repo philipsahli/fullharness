@@ -9,15 +9,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/philipsahli/fullharness/internal/agent"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
+	"github.com/philipsahli/fullharness/internal/session"
+	"github.com/philipsahli/fullharness/internal/state"
 	"github.com/philipsahli/fullharness/web"
 )
 
@@ -38,6 +43,10 @@ type Options struct {
 	// still lives only in the 0600 launch file. cmd/fh allows it only with an
 	// explicit --dir, never for the real config folder.
 	Dev bool
+	// Stderr receives fh's log lines next to fh.log; nil discards them.
+	Stderr io.Writer
+	// Verbose logs at debug level.
+	Verbose bool
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
@@ -54,6 +63,9 @@ type Instance struct {
 	token string
 	dev   bool           // keep the launch file on Close, for the next launch's token
 	srv   *server.Server // nil when the launch handed off to a running instance
+
+	sessions *session.Manager
+	logFile  io.Closer
 
 	done      chan struct{}
 	stop      chan struct{} // ends the refresh loop
@@ -102,20 +114,56 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 
 	inst := &Instance{dir: opts.Dir, token: token, dev: opts.Dev, done: make(chan struct{})}
+	fail := func(err error) (*Instance, error) {
+		_ = ln.Close()                        // the original error is the one worth reporting
+		_ = removeLaunchFile(opts.Dir, token) // as above
+		return nil, err
+	}
+	stderr := opts.Stderr
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	log, logFile, err := newLogger(opts.Dir, stderr, opts.Verbose)
+	if err != nil {
+		return fail(fmt.Errorf("open fh.log: %w", err))
+	}
+	inst.logFile = logFile
+	logDir := filepath.Join(opts.Dir, "logs")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		return fail(err)
+	}
+	st, err := state.Open(opts.Dir)
+	if err != nil {
+		return fail(err)
+	}
 	var srv *server.Server
-	reg, err := project.Open(opts.Dir, func(ps []project.Project) {
+	reg, err := project.Open(opts.Dir, st.CreatedWorktree, func(ps []project.Project) {
 		srv.Broadcast(map[string]any{"type": "projects", "projects": ps})
 	})
 	if err != nil {
-		_ = ln.Close() // the projects.toml error is the one worth reporting
-		_ = removeLaunchFile(opts.Dir, token)
-		return nil, err
+		return fail(err)
 	}
+	sessions := session.New(session.Config{
+		LogDir:    logDir,
+		Broadcast: func(ev any) { srv.Broadcast(ev) },
+		// A turn usually changes files; show it without waiting for a tick.
+		TurnEnded: reg.Refresh,
+		Log:       log,
+	})
+	inst.sessions = sessions
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
 		// dev tells the tab to reload on a restart instead of stopping.
-		return map[string]any{"projects": reg.List(), "dev": opts.Dev}
+		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "dev": opts.Dev}
 	})
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
+	registerSessionRoutes(srv, sessionDeps{
+		projects: reg,
+		sessions: sessions,
+		state:    st,
+		agents:   agent.Resolve(cfg.Agents),
+		log:      log,
+	})
+	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
 	// quiet spell gets the last state read, then the current one at once.
 	srv.OnConnect(reg.Refresh)
@@ -194,7 +242,10 @@ func (i *Instance) Close() error {
 	var err error
 	i.closeOnce.Do(func() {
 		close(i.stop)
+		// Agent processes end with fh (ADR 0002).
+		i.sessions.StopAll()
 		err = i.srv.Close()
+		defer func() { _ = i.logFile.Close() }() // nothing left to log the error to
 		if i.dev {
 			return // the next dev launch reuses the token from this file
 		}

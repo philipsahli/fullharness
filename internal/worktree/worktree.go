@@ -20,9 +20,8 @@ type Worktree struct {
 	Branch string `json:"branch"` // empty when HEAD is detached
 	// Main is the Project's own tree, the first entry git reports.
 	Main bool `json:"main"`
-	// Agent marks a Worktree fh didn't create; fh never starts a Session in
-	// one or removes it. Until fh creates Worktrees (#4), that is every
-	// Worktree except the main tree.
+	// Agent marks a Worktree fh didn't create (and isn't the main tree); fh
+	// never starts a Session in one or removes it.
 	Agent bool `json:"agent"`
 	// Missing means git still lists the Worktree but its folder is gone
 	// (`git worktree prune` would drop it). Its counts stay zero.
@@ -40,7 +39,8 @@ type Worktree struct {
 }
 
 // List returns every Worktree of the repo at repo, main tree first.
-func List(repo string) ([]Worktree, error) {
+// created reports whether fh created the Worktree at a path.
+func List(repo string, created func(path string) bool) ([]Worktree, error) {
 	out, err := run(repo, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func List(repo string) ([]Worktree, error) {
 	for i := range wts {
 		w := &wts[i]
 		w.Main = i == 0
-		w.Agent = i != 0
+		w.Agent = i != 0 && !created(w.Path)
 		w.Base = base
 		w.FetchedAt = fetchedAt
 		if _, err := os.Stat(w.Path); err != nil {
@@ -195,4 +195,30 @@ func TopLevel(path string) (string, error) {
 		return "", &InvalidPathError{Reason: fmt.Sprintf("%s is a worktree of %s; add that instead", top, main)}
 	}
 	return top, nil
+}
+
+// Create adds a Worktree on a new branch at <project>.worktrees/<branch>,
+// next to the Project's folder so the Project's own tree stays clean (#1,
+// story 19). The branch starts from the same base ahead/behind uses, so a
+// new Worktree starts from what is shipped, not from whatever the main tree
+// has checked out. It returns the Worktree's path.
+func Create(repo, branch string) (string, error) {
+	if _, err := run(repo, "check-ref-format", "--branch", branch); err != nil {
+		return "", &InvalidPathError{Reason: fmt.Sprintf("%q is not a valid branch name", branch)}
+	}
+	if _, err := run(repo, "rev-parse", "--verify", "-q", "refs/heads/"+branch); err == nil {
+		return "", &InvalidPathError{Reason: fmt.Sprintf("branch %q already exists; pick its Worktree instead, or another name", branch)}
+	}
+	path := filepath.Join(filepath.Dir(repo), filepath.Base(repo)+".worktrees", filepath.FromSlash(branch))
+	if _, err := os.Stat(path); err == nil {
+		return "", &InvalidPathError{Reason: path + " already exists"}
+	}
+	args := []string{"worktree", "add", "-q", "-b", branch, path}
+	if base := defaultBase(repo); base != "" {
+		args = append(args, base)
+	}
+	if _, err := run(repo, args...); err != nil {
+		return "", err
+	}
+	return path, nil
 }

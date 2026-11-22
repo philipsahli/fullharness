@@ -38,6 +38,7 @@ type Project struct {
 type Registry struct {
 	file     string
 	onChange func([]Project)
+	created  func(path string) bool // whether fh created a Worktree
 
 	// change serialises Add, Remove and Refresh including their onChange
 	// call, so tabs get events in the order the changes happened and an
@@ -57,16 +58,17 @@ type storedProject struct {
 	Path string `toml:"path"`
 }
 
-// Open loads projects.toml from dir. onChange gets the new list after every
-// change, for pushing to tabs.
-func Open(dir string, onChange func([]Project)) (*Registry, error) {
-	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange}
+// Open loads projects.toml from dir. created reports whether fh created a
+// Worktree (those aren't Agent worktrees). onChange gets the new list after
+// every change, for pushing to tabs.
+func Open(dir string, created func(path string) bool, onChange func([]Project)) (*Registry, error) {
+	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created}
 	var s stored
 	if _, err := toml.DecodeFile(r.file, &s); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("read %s: %w", r.file, err)
 	}
 	for _, p := range s.Project {
-		r.projects = append(r.projects, read(p.Path))
+		r.projects = append(r.projects, r.read(p.Path))
 	}
 	return r, nil
 }
@@ -76,6 +78,16 @@ func (r *Registry) List() []Project {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]Project{}, r.projects...)
+}
+
+// Get returns the Project at path.
+func (r *Registry) Get(path string) (Project, bool) {
+	for _, p := range r.List() {
+		if p.Path == path {
+			return p, true
+		}
+	}
+	return Project{}, false
 }
 
 // ErrExists means the repo is already a Project.
@@ -93,7 +105,7 @@ func (r *Registry) Add(path string) (Project, error) {
 	if slices.ContainsFunc(r.List(), func(q Project) bool { return q.Path == top }) {
 		return Project{}, ErrExists
 	}
-	p := read(top)
+	p := r.read(top)
 	if err := r.set(append(r.List(), p), true); err != nil {
 		return Project{}, err
 	}
@@ -123,7 +135,7 @@ func (r *Registry) Refresh() {
 	old := r.List()
 	fresh := make([]Project, len(old))
 	for i, p := range old {
-		fresh[i] = read(p.Path)
+		fresh[i] = r.read(p.Path)
 	}
 	if reflect.DeepEqual(old, fresh) {
 		return
@@ -161,7 +173,7 @@ func (r *Registry) write(list []Project) error {
 }
 
 // read builds a Project's current state from git.
-func read(path string) Project {
+func (r *Registry) read(path string) Project {
 	p := Project{Path: path, Name: filepath.Base(path), Worktrees: []worktree.Worktree{}}
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
 		p.Missing = true
@@ -169,7 +181,7 @@ func read(path string) Project {
 	}
 	// A folder that is no longer a git repository lists no Worktrees; the
 	// user sees an empty Project and can remove it.
-	if wts, err := worktree.List(path); err == nil {
+	if wts, err := worktree.List(path, r.created); err == nil {
 		p.Worktrees = wts
 	}
 	return p
