@@ -197,7 +197,7 @@ A Session whose Agent exited also frees its Worktree for a new Session.
 
 ### Software factory
 
-The **Software factory** tab shows one Project's Features, each under its Stage: Idea, Spec, Tickets, Implementing, Review, Shipped. Pick the Project at the top. Open a Feature to see its Tickets with their label, Stage and blockers; **Startable** marks the ones an Agent can pick up (labelled `ready-for-agent`, no open blockers).
+The **Software factory** tab shows one Project's Features, each under its Stage: Idea, Spec, Tickets, Implementing, Review, Shipped. Pick the Project at the top. Open a Feature to see its Tickets with their label, Stage and blockers; **Startable** marks the ones an Agent can pick up: labelled `ready-for-agent`, no open blockers, and not started yet (no branch with commits, no open PR).
 
 fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`. Without that file, a `.scratch/` folder means local markdown, and a GitHub remote means GitHub. Local markdown follows the files [Matt Pocock's skills](https://github.com/mattpocock/skills) write:
 

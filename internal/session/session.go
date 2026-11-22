@@ -477,7 +477,8 @@ func (m *Manager) Get(id string) (Detail, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Detail{Summary: s.sum, Transcript: append([]Item{}, s.transcript...)}, nil
+	// summaryLocked, not s.sum: it fills the derived fields (canReopen).
+	return Detail{Summary: s.summaryLocked(), Transcript: append([]Item{}, s.transcript...)}, nil
 }
 
 // Prompt sends text as the next turn. Sending is only allowed while Idle,

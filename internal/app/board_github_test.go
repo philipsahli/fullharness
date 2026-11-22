@@ -305,3 +305,27 @@ func TestAnEmptyBoardSaysHowToStart(t *testing.T) {
 		t.Errorf("empty .scratch: note = %q, want a hint to run /to-spec", note)
 	}
 }
+
+func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
+	repo := githubRepo(t)
+	git(t, repo, "checkout", "-q", "-b", "3-work")
+	commitFile(t, repo, "w.go", "package main\n")
+	git(t, repo, "checkout", "-q", "main")
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "Spec", State: "OPEN", SubIssues: []int{2, 3, 4}},
+		{Number: 2, Title: "In review", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+		{Number: 3, Title: "Implementing", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+		{Number: 4, Title: "Not started", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+	}, []map[string]any{{"number": 9, "headRefName": "2-review", "body": ""}}, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	spec := featureByID(t, f.board(c, repo), "1")
+
+	for n, want := range map[string]bool{"2": false, "3": false, "4": true} {
+		if got := ticketByNumber(t, spec, n)["startable"]; got != want {
+			t.Errorf("#%s startable = %v, want %v", n, got, want)
+		}
+	}
+}
