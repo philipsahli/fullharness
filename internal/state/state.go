@@ -30,6 +30,9 @@ type data struct {
 	// CreatedWorktrees are the Worktree paths fh created. Every other
 	// non-main Worktree is an Agent worktree.
 	CreatedWorktrees []string `json:"createdWorktrees"`
+	// Sessions is what fh keeps of each Session across restarts (#9); the
+	// session package owns its shape.
+	Sessions json.RawMessage `json:"sessions,omitempty"`
 }
 
 // Open reads state.json from dir; a missing file is an empty state.
@@ -74,6 +77,28 @@ func (s *Store) RemoveWorktree(path string) error {
 	defer s.mu.Unlock()
 	s.data.CreatedWorktrees = slices.DeleteFunc(s.data.CreatedWorktrees, func(p string) bool { return p == path })
 	return s.save()
+}
+
+// SetSessions replaces the saved Sessions with v, as JSON.
+func (s *Store) SetSessions(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Sessions = b
+	return s.save()
+}
+
+// Sessions decodes the saved Sessions into v; nothing saved leaves v as is.
+func (s *Store) Sessions(v any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.data.Sessions) == 0 {
+		return nil
+	}
+	return json.Unmarshal(s.data.Sessions, v)
 }
 
 // CreatedWorktree reports whether fh created the Worktree at path.

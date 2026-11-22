@@ -97,6 +97,9 @@ type Summary struct {
 	// Login is the command to run in a terminal when the reason is "login
 	// needed".
 	Login string `json:"login,omitempty"`
+	// CanReopen is set when the Session can be reopened once Exited: its
+	// Agent offered session/load.
+	CanReopen bool `json:"canReopen"`
 	// Title is the Worktree's branch until the Agent names the Session.
 	Title string `json:"title"`
 	// Reason and Stderr explain an Exited Session.
@@ -153,7 +156,23 @@ var (
 	ErrAnswered    = errors.New("this request was already answered")
 	ErrNoRequest   = errors.New("no such permission request")
 	ErrChoice      = errors.New("the Agent doesn't offer that choice")
+	ErrConfirm     = errors.New("the Session's Agent is running; confirm to stop it and close the Session")
+	ErrNoReopen    = errors.New("this Agent can't reopen Sessions (no session/load)")
+	ErrNotExited   = errors.New("only an Exited Session can be reopened")
 )
+
+// Saved is what state.json keeps of a Session across fh restarts. The
+// conversation isn't kept: the Agent replays it on session/load.
+type Saved struct {
+	ID          string `json:"id"`
+	ACPID       string `json:"acpSessionId"`
+	Agent       string `json:"agent"`
+	Project     string `json:"project"`
+	Worktree    string `json:"worktree"`
+	Title       string `json:"title"`
+	AutoApprove bool   `json:"autoApprove"`
+	CanLoad     bool   `json:"canLoad"` // the Agent offered session/load
+}
 
 // Config wires a Manager into fh.
 type Config struct {
@@ -167,6 +186,8 @@ type Config struct {
 	// StartTimeout bounds initialize and session/new. The first Claude Code
 	// start can take a while: npx downloads the adapter.
 	StartTimeout time.Duration
+	// Persist saves every Session that can come back after a restart.
+	Persist func([]Saved)
 }
 
 // Manager holds all Sessions.
@@ -198,6 +219,9 @@ type session struct {
 	// cancelRequested is set when you cancel a turn, so it ends Idle even if
 	// the Agent answers with another stop reason than "cancelled".
 	cancelRequested bool
+	canLoad         bool                 // the Agent can reopen this Session (session/load)
+	agentKnown      bool                 // the Agent is configured; a restored Session's may not be
+	closed          bool                 // removed from fh; nothing more is published
 	viewers         map[string]time.Time // tab ID → when it last said it's looking
 	lastPublished   string               // state and why it waits, as last sent to tabs
 	proc            *acp.Process
@@ -225,29 +249,190 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 		return Summary{}, ErrNotRunning
 	}
 	for _, s := range m.sessions {
-		// An Exited Session frees its Worktree. Until Close exists (#9) that
-		// is the only way a crashed Session's Worktree becomes usable again.
+		// An Exited Session frees its Worktree, so a crashed or quit Session
+		// doesn't block it until someone closes it.
 		if sum := s.summary(); sum.Worktree == worktree && sum.State != Exited {
 			m.mu.Unlock()
 			return Summary{}, ErrWorktreeUse
 		}
 	}
-	s := &session{
-		m:       m,
-		def:     def,
-		sum:     Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID, State: Starting, Title: branch, AutoApprove: autoApprove, Since: time.Now(), AgentName: def.Name},
-		tools:   map[string]int{},
-		pending: map[string]*pending{},
-		viewers: map[string]time.Time{},
-	}
-	s.logPath = filepath.Join(m.cfg.LogDir, s.sum.ID+".log")
+	s := m.newSession(def, Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID,
+		State: Starting, Title: branch, AutoApprove: autoApprove})
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
 
 	m.cfg.Log.Info("session starting", "session", s.sum.ID, "agent", def.ID, "worktree", worktree)
+	// Saved from the start, so even a Session that fails before it has an
+	// ACP session (login needed, say) is listed after a restart.
+	m.persist()
 	s.publish()
-	go s.run(prompt)
+	go s.run(false, prompt)
 	return s.summary(), nil
+}
+
+func (m *Manager) newSession(def agent.Definition, sum Summary) *session {
+	sum.AgentName, sum.Since = def.Name, time.Now()
+	return &session{
+		m:          m,
+		def:        def,
+		agentKnown: true,
+		sum:        sum,
+		tools:      map[string]int{},
+		pending:    map[string]*pending{},
+		viewers:    map[string]time.Time{},
+		logPath:    filepath.Join(m.cfg.LogDir, sum.ID+".log"),
+	}
+}
+
+// Restore lists the Sessions saved before fh last quit, Exited with "fh
+// quit": their Agents ended with fh (ADR 0002). agentFor finds an Agent
+// definition by ID; an Agent no longer defined can't be reopened.
+func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definition, bool)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, sv := range saved {
+		def, ok := agentFor(sv.Agent)
+		if !ok {
+			def = agent.Definition{ID: sv.Agent, Name: sv.Agent}
+		}
+		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
+			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove})
+		// canLoad is kept as saved even while the Agent is missing, so
+		// Reopen comes back when the Agent is configured again.
+		s.acpID, s.canLoad, s.agentKnown = sdk.SessionId(sv.ACPID), sv.CanLoad, ok
+		m.sessions = append(m.sessions, s)
+	}
+}
+
+// persist saves every Session the Agent could reopen later.
+func (m *Manager) persist() {
+	if m.cfg.Persist == nil {
+		return
+	}
+	saved := []Saved{}
+	for _, s := range m.all() {
+		s.mu.Lock()
+		if !s.closed {
+			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
+				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad})
+		}
+		s.mu.Unlock()
+	}
+	m.cfg.Persist(saved)
+}
+
+// Reopen restarts an Exited Session's Agent in the same Worktree, Agent and
+// auto-approve setting. With an ACP session it reloads it (session/load),
+// and the Agent replays the conversation; a Session that never got one
+// (e.g. login needed at start) starts a fresh one. Checks and the reset
+// happen under the Manager's lock, so two Reopens, or a Reopen and a
+// Close or quit, can't both go ahead.
+func (m *Manager) Reopen(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return ErrNotRunning
+	}
+	i := slices.IndexFunc(m.sessions, func(o *session) bool { return o.summary().ID == id })
+	if i < 0 {
+		return ErrNotFound
+	}
+	s := m.sessions[i]
+	worktree := s.summary().Worktree
+	for _, o := range m.sessions {
+		if sum := o.summary(); o != s && sum.Worktree == worktree && sum.State != Exited {
+			return ErrWorktreeUse
+		}
+	}
+	s.mu.Lock()
+	if s.sum.State != Exited || s.closed {
+		s.mu.Unlock()
+		return ErrNotExited
+	}
+	if !s.reopenableLocked() {
+		s.mu.Unlock()
+		return ErrNoReopen
+	}
+	load := s.acpID != ""
+	s.resetRunLocked()
+	s.mu.Unlock()
+	m.cfg.Log.Info("session reopening", "session", id, "load", load)
+	m.cfg.Broadcast(map[string]any{"type": "reset", "session": id}) // tabs drop the old conversation
+	s.publish()
+	go s.run(load, "")
+	return nil
+}
+
+// reopenableLocked reports whether Reopen can work: the Agent is
+// configured, and it can load the Session or there's none to load yet.
+func (s *session) reopenableLocked() bool {
+	return s.agentKnown && (s.acpID == "" || s.canLoad)
+}
+
+// resetRunLocked clears everything one run of the Agent leaves behind, for
+// Reopen. The caller holds s.mu.
+func (s *session) resetRunLocked() {
+	s.sum.State, s.sum.Since = Starting, time.Now()
+	s.sum.Reason, s.sum.Stderr, s.sum.Login, s.sum.Waiting = "", nil, "", ""
+	s.proc, s.stopping, s.loginNeeded, s.ready = nil, false, false, false
+	s.inTurn, s.unseen, s.cancelRequested = false, false, false
+	s.transcript, s.tools = nil, map[string]int{} // the Agent replays the conversation
+	s.lastPublished = ""
+}
+
+// Close removes a Session from fh and frees its Worktree. A live Session's
+// Agent is stopped first, which the caller must confirm. The Agent keeps
+// its own history; fh deletes the Session's log.
+func (m *Manager) Close(id string, confirm bool) error {
+	s, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	live := s.sum.State != Exited
+	if live && !confirm {
+		s.mu.Unlock()
+		return ErrConfirm
+	}
+	s.closed, s.stopping = true, true
+	proc := s.proc
+	s.mu.Unlock()
+	m.mu.Lock()
+	m.sessions = slices.DeleteFunc(m.sessions, func(o *session) bool { return o == s })
+	m.mu.Unlock()
+	if live && proc != nil {
+		proc.Stop()
+	}
+	s.settleAll(StatusExited)
+	if err := os.Remove(s.logPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		m.cfg.Log.Info("delete session log failed", "session", id, "err", err)
+	}
+	m.cfg.Log.Info("session closed", "session", id)
+	m.cfg.Broadcast(map[string]any{"type": "closed", "session": id})
+	m.publishInbox()
+	m.persist()
+	return nil
+}
+
+// SweepLogs deletes Session logs in dir that belong to no Session fh
+// knows, e.g. from Sessions that were never saved before a crash.
+func (m *Manager) SweepLogs() {
+	known := map[string]bool{}
+	for _, s := range m.all() {
+		known[filepath.Base(s.logPath)] = true
+	}
+	entries, err := os.ReadDir(m.cfg.LogDir)
+	if err != nil {
+		m.cfg.Log.Debug("session log sweep skipped", "err", err) // a missing folder has nothing to sweep
+		return
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".log") && !known[e.Name()] {
+			if err := os.Remove(filepath.Join(m.cfg.LogDir, e.Name())); err != nil {
+				m.cfg.Log.Info("delete stale session log failed", "file", e.Name(), "err", err)
+			}
+		}
+	}
 }
 
 // List returns every Session's summary, never nil, in the global list's
@@ -423,7 +608,7 @@ func (m *Manager) find(id string) (*session, error) {
 
 // run starts the Agent, creates the ACP session and sends the starting
 // prompt.
-func (s *session) run(prompt string) {
+func (s *session) run(load bool, prompt string) {
 	logFile, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		s.exit(ReasonCrashed, []string{"open the Session log: " + err.Error()})
@@ -462,14 +647,30 @@ func (s *session) run(prompt string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.m.cfg.StartTimeout)
 	defer cancel()
-	if err := proc.Initialize(ctx); err != nil {
+	canLoad, err := proc.Initialize(ctx)
+	if err != nil {
 		fail("initialize", err)
 		return
 	}
-	acpSess, err := proc.NewSession(ctx, s.summary().Worktree)
-	if err != nil {
-		fail("session/new", err)
-		return
+	var acpSess acp.Session
+	if load {
+		s.mu.Lock()
+		sid := s.acpID
+		s.mu.Unlock()
+		acpSess, err = proc.LoadSession(ctx, sid, s.summary().Worktree)
+		if err != nil {
+			fail("session/load", err)
+			return
+		}
+	} else {
+		acpSess, err = proc.NewSession(ctx, s.summary().Worktree)
+		if err != nil {
+			fail("session/new", err)
+			return
+		}
+		s.mu.Lock()
+		s.canLoad = canLoad
+		s.mu.Unlock()
 	}
 	sid := acpSess.ID
 	s.setAsking(ctx, proc, acpSess)
@@ -480,6 +681,7 @@ func (s *session) run(prompt string) {
 	}
 	s.mu.Unlock()
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
+	s.m.persist()
 	if prompt == "" {
 		s.publish()
 		return
@@ -588,7 +790,12 @@ func (s *session) Update(n sdk.SessionNotification) {
 	switch {
 	case u.AgentMessageChunk != nil:
 		if t := u.AgentMessageChunk.Content.Text; t != nil {
-			s.appendAgentText(t.Text)
+			s.appendText("agent", t.Text)
+		}
+	case u.UserMessageChunk != nil:
+		// Sent when the Agent replays a reopened Session's conversation.
+		if t := u.UserMessageChunk.Content.Text; t != nil {
+			s.appendText("user", t.Text)
 		}
 	case u.ToolCall != nil:
 		tc := u.ToolCall
@@ -650,6 +857,7 @@ func (s *session) retitle(title string) {
 	if len(changed) > 0 {
 		s.m.publishInbox()
 	}
+	s.m.persist()
 }
 
 // Permission shows a permission request as a card and in the Inbox, and
@@ -833,17 +1041,19 @@ func (s *session) afterSettle() {
 	s.m.publishInbox()
 }
 
-func (s *session) appendAgentText(text string) {
+// appendText adds text to the last item if it's a message of the same kind,
+// else starts one.
+func (s *session) appendText(kind, text string) {
 	s.mu.Lock()
 	n := len(s.transcript)
-	if n > 0 && s.transcript[n-1].Type == "agent" {
+	if n > 0 && s.transcript[n-1].Type == kind {
 		s.transcript[n-1].Text += text
 		s.mu.Unlock()
 		s.emit("chunk", n-1, "text", text)
 		return
 	}
 	s.mu.Unlock()
-	s.addItem(Item{Type: "agent", Text: text})
+	s.addItem(Item{Type: kind, Text: text})
 }
 
 func (s *session) upsertTool(id string, apply func(*Tool)) {
@@ -962,7 +1172,13 @@ func (s *session) exit(reason string, stderr []string) {
 func (s *session) summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sum
+	return s.summaryLocked()
+}
+
+func (s *session) summaryLocked() Summary {
+	sum := s.sum
+	sum.CanReopen = s.reopenableLocked()
+	return sum
 }
 
 // emit sends a conversation event: kind "item" (a new or replaced item at
@@ -973,7 +1189,11 @@ func (s *session) emit(kind string, index int, key string, value any) {
 
 func (s *session) publish() {
 	s.mu.Lock()
-	sum := s.sum
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	sum := s.summaryLocked()
 	key := sum.State + "/" + sum.Waiting
 	entered := sum.State == Waiting && key != s.lastPublished
 	s.lastPublished = key

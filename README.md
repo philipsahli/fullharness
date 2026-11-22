@@ -163,7 +163,7 @@ Each Session shows its state:
 | Working | The Agent is on a turn. |
 | Waiting | The Agent wants you: a permission request is open, or a turn ended and you haven't looked yet. |
 | Idle | Nothing to do: you've seen the last turn, or cancelled it. |
-| Exited | The Agent is gone: Agent crashed, login needed, or fh quit. (Closed by you comes with Close, #9.) |
+| Exited | The Agent is gone: Agent crashed, login needed, or fh quit. |
 
 A turn counts as seen once its conversation is open in a visible tab. If a Session exits with **login needed**, it shows the command to run in your terminal (`claude auth login`, `copilot login` or `opencode auth login`).
 
@@ -184,10 +184,16 @@ When a Session starts Waiting and you're not looking at it, fh notifies you:
 
 Press **⌘K** (Ctrl+K off macOS) to jump to a Session by words from its title, Project or Agent, or to start a New Session.
 
-Not there yet:
+Quitting fh stops every Agent. When fh starts again, your Sessions are listed as Exited ("fh quit"):
 
-- Sessions don't survive an fh restart yet (#9). Quitting fh stops their Agents.
-- There's no way to close a Session yet (#9). A Session whose Agent exited frees its Worktree for a new one.
+- **Reopen** restarts the Agent in the same Worktree, with the same auto-approve setting.
+- The Agent then replays the conversation (ACP `session/load`).
+- Reopen isn't offered for an Agent that can't reload Sessions, or one no longer configured. Use the Agent's own resume command instead.
+- Reopen is refused while another Session uses that Worktree.
+- **Close** removes a Session from fh and frees its Worktree. For a Session whose Agent still runs, fh asks first and stops the Agent.
+- The Agent keeps its own history; fh deletes the Session's log.
+
+A Session whose Agent exited also frees its Worktree for a new Session.
 
 ### Agents
 

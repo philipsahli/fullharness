@@ -94,6 +94,23 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
 
+	srv.Handle("POST /api/sessions/{id}/reopen", func(w http.ResponseWriter, r *http.Request) {
+		accepted(w, d.sessions.Reopen(r.PathValue("id")))
+	})
+
+	// Close needs {"confirm": true} for a live Session: it stops the Agent.
+	srv.Handle("POST /api/sessions/{id}/close", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Confirm bool `json:"confirm"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req) // an empty body means no confirmation
+		if err := d.sessions.Close(r.PathValue("id"), req.Confirm); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// A tab says every 15 s that it's looking at a Session (its conversation
 	// is open and the tab visible), and when it stops. Looking clears a
 	// finished turn's wait; a turn that ends while someone looks never waits.
@@ -148,7 +165,8 @@ func writeSessionError(w http.ResponseWriter, err error) {
 	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest):
 		server.WriteError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
-		errors.Is(err, session.ErrAnswered):
+		errors.Is(err, session.ErrAnswered), errors.Is(err, session.ErrConfirm), errors.Is(err, session.ErrNoReopen),
+		errors.Is(err, session.ErrNotExited):
 		server.WriteError(w, http.StatusConflict, err.Error())
 	default:
 		server.WriteError(w, http.StatusInternalServerError, err.Error())

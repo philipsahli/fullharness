@@ -153,6 +153,10 @@ func aheadBehind(dir, base string) (ahead, behind int, err error) {
 func run(dir string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	// Background reads like `git status` may otherwise refresh .git/index,
+	// writing to the user's repo and contending for its lock with the
+	// user's own git commands; fh only reads.
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

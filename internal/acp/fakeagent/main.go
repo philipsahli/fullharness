@@ -81,6 +81,11 @@ type script struct {
 	// EndAfterCancel ends a cancelled turn with end_turn instead of
 	// cancelled, like an Agent that doesn't follow ACP there.
 	EndAfterCancel bool `json:"endAfterCancel"`
+	// NoLoad leaves out the loadSession capability.
+	NoLoad bool `json:"noLoad"`
+	// History is replayed on session/load, as a real Agent replays a
+	// Session's conversation: {"user": "..."} or {"agent": "..."}.
+	History []map[string]string `json:"history"`
 }
 
 type agent struct {
@@ -110,7 +115,10 @@ func (a *agent) Initialize(ctx context.Context, p acp.InitializeRequest) (acp.In
 	if a.script.InitAuthError {
 		return acp.InitializeResponse{}, acp.NewAuthRequired(nil)
 	}
-	return acp.InitializeResponse{ProtocolVersion: acp.ProtocolVersionNumber}, nil
+	return acp.InitializeResponse{
+		ProtocolVersion:   acp.ProtocolVersionNumber,
+		AgentCapabilities: acp.AgentCapabilities{LoadSession: !a.script.NoLoad},
+	}, nil
 }
 
 func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.NewSessionResponse, error) {
@@ -136,6 +144,27 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 		}}}
 	}
 	return resp, nil
+}
+
+// LoadSession replays the scripted history, then answers like session/new.
+// It only knows the ID NewSession hands out, like a real Agent only knows
+// its own Sessions.
+func (a *agent) LoadSession(ctx context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	if p.SessionId != "fake-session" {
+		return acp.LoadSessionResponse{}, acp.NewInvalidParams(map[string]any{"error": "unknown session " + string(p.SessionId)})
+	}
+	a.cwd = p.Cwd
+	for _, h := range a.script.History {
+		u := acp.UpdateAgentMessageText(h["agent"])
+		if text, ok := h["user"]; ok {
+			u = acp.UpdateUserMessageText(text)
+		}
+		if err := a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: u}); err != nil {
+			return acp.LoadSessionResponse{}, err
+		}
+	}
+	resp, err := a.NewSession(ctx, acp.NewSessionRequest{Cwd: p.Cwd})
+	return acp.LoadSessionResponse{Modes: resp.Modes, ConfigOptions: resp.ConfigOptions}, err
 }
 
 func (a *agent) SetSessionMode(ctx context.Context, p acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {

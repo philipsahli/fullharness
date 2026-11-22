@@ -85,13 +85,14 @@ func (p *Process) Stop() {
 	}
 }
 
-// Initialize negotiates ACP v1 with empty client capabilities.
-func (p *Process) Initialize(ctx context.Context) error {
-	_, err := p.conn.Initialize(ctx, sdk.InitializeRequest{
+// Initialize negotiates ACP v1 with empty client capabilities. It reports
+// whether the Agent can reopen a Session (session/load).
+func (p *Process) Initialize(ctx context.Context) (canLoad bool, err error) {
+	resp, err := p.conn.Initialize(ctx, sdk.InitializeRequest{
 		ProtocolVersion:    sdk.ProtocolVersionNumber,
 		ClientCapabilities: sdk.ClientCapabilities{},
 	})
-	return err
+	return resp.AgentCapabilities.LoadSession, err
 }
 
 // Session is a new ACP session: its ID, the mode IDs the Agent offers, and
@@ -108,13 +109,17 @@ func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	s := Session{ID: resp.SessionId, Options: map[string][]string{}}
-	if resp.Modes != nil {
-		for _, m := range resp.Modes.AvailableModes {
+	return newSessionInfo(resp.SessionId, resp.Modes, resp.ConfigOptions), nil
+}
+
+func newSessionInfo(id sdk.SessionId, modes *sdk.SessionModeState, options []sdk.SessionConfigOption) Session {
+	s := Session{ID: id, Options: map[string][]string{}}
+	if modes != nil {
+		for _, m := range modes.AvailableModes {
 			s.Modes = append(s.Modes, string(m.Id))
 		}
 	}
-	for _, o := range resp.ConfigOptions {
+	for _, o := range options {
 		// Only plain selects: the options fh sets (Copilot's allow_all) are
 		// ungrouped; a grouped one would show up as "not offered".
 		if o.Select == nil || o.Select.Options.Ungrouped == nil {
@@ -124,7 +129,17 @@ func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 			s.Options[string(o.Select.Id)] = append(s.Options[string(o.Select.Id)], string(v.Value))
 		}
 	}
-	return s, nil
+	return s
+}
+
+// LoadSession reopens the ACP session sid in cwd. The Agent replays its
+// conversation as session/update notifications before it answers.
+func (p *Process) LoadSession(ctx context.Context, sid sdk.SessionId, cwd string) (Session, error) {
+	resp, err := p.conn.LoadSession(ctx, sdk.LoadSessionRequest{SessionId: sid, Cwd: cwd, McpServers: []sdk.McpServer{}})
+	if err != nil {
+		return Session{}, err
+	}
+	return newSessionInfo(sid, resp.Modes, resp.ConfigOptions), nil
 }
 
 // SetOption sets a select config option.

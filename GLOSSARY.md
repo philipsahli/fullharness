@@ -31,7 +31,7 @@ The single list of everything waiting for the user's answer across all Sessions:
 _Avoid_: queue, notifications, approvals
 
 **Session state**:
-Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, login needed, or closed by the user.
+Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, or login needed. (Closing a Session removes it, so "closed" is never shown as a reason.)
 _Avoid_: status, busy, blocked, error (an error is an Exited reason)
 
 **Notification**:

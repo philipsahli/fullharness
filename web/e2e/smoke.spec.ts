@@ -255,3 +255,44 @@ test("a Session that starts Waiting while you look elsewhere notifies, and the c
     await fh.dispose();
   }
 });
+
+test("after a restart a Session can be reopened with its history, then closed", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    dev: true, // the tab reloads across the restart instead of stopping
+    agentScript: { history: [{ user: "fix the login" }, { agent: "Done, login works." }] },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByRole("button", { name: "Start Session" }).click();
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.locator(".mhead .state")).toHaveText("Idle");
+
+    await fh.restart();
+
+    const row = page
+      .getByRole("region", { name: "Sessions" })
+      .getByRole("button", { name: /main/ });
+    await expect(row).toContainText("fh quit", { timeout: 10_000 });
+    await row.click();
+    await conversation.getByRole("button", { name: "Reopen" }).click();
+    await expect(conversation.getByText("Done, login works.")).toBeVisible();
+    await expect(conversation.locator(".mhead .state")).toHaveText("Idle");
+
+    page.once("dialog", (d) => void d.accept()); // confirm stopping the live Agent
+    await conversation.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByText("No Sessions yet.")).toBeVisible();
+  } finally {
+    await fh.dispose();
+  }
+});
