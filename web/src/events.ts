@@ -7,6 +7,7 @@ export type Worktree = {
   branch: string; // empty when HEAD is detached
   main: boolean; // the Project's own tree
   agent: boolean; // not created by fh: fh never starts a Session in it
+  missing: boolean; // git lists it, but its folder is gone
   uncommitted: number;
   ahead: number;
   behind: number;

@@ -24,6 +24,9 @@ type Worktree struct {
 	// one or removes it. Until fh creates Worktrees (#4), that is every
 	// Worktree except the main tree.
 	Agent bool `json:"agent"`
+	// Missing means git still lists the Worktree but its folder is gone
+	// (`git worktree prune` would drop it). Its counts stay zero.
+	Missing bool `json:"missing"`
 	// Uncommitted counts changed, staged and untracked files.
 	Uncommitted int `json:"uncommitted"`
 	// Ahead and Behind count commits against Base: origin's default branch
@@ -66,10 +69,15 @@ func List(repo string) ([]Worktree, error) {
 		w.Agent = i != 0
 		w.Base = base
 		w.FetchedAt = fetchedAt
+		if _, err := os.Stat(w.Path); err != nil {
+			w.Missing = true
+			continue
+		}
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			// A Worktree whose folder is gone makes these fail; it keeps zeros.
+			// These fail only if the folder vanishes mid-refresh; the next
+			// refresh marks it Missing, so zeros are fine meanwhile.
 			w.Uncommitted, _ = uncommitted(w.Path)
 			if base != "" {
 				w.Ahead, w.Behind, _ = aheadBehind(w.Path, base)
@@ -169,6 +177,11 @@ func TopLevel(path string) (string, error) {
 	}
 	out, err := run(path, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir")
 	if err != nil {
+		// --show-toplevel fails in a bare repository, which has no working
+		// folder for a Session to run in.
+		if bare, err := run(path, "rev-parse", "--is-bare-repository"); err == nil && strings.TrimSpace(string(bare)) == "true" {
+			return "", &InvalidPathError{Reason: path + " is a bare git repository; add a clone with a working folder"}
+		}
 		return "", &InvalidPathError{Reason: path + " is not a git repository"}
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")

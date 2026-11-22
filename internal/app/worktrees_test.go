@@ -179,3 +179,25 @@ func TestARemoteWithoutOriginHeadStillComparesWithOrigin(t *testing.T) {
 		t.Errorf("base %v behind %v, want origin/main 1", w["base"], w["behind"])
 	}
 }
+
+func TestAWorktreeWhoseFolderWasDeletedIsMarkedMissing(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	repo := newRepo(t, parent, "shop")
+	gone := filepath.Join(parent, "gone")
+	git(t, repo, "worktree", "add", "-q", "-b", "gone", gone)
+	writeFile(t, filepath.Join(gone, "work.txt"), "x\n")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	w := worktreeAt(t, f.addProject(c, repo), gone)
+
+	if w["missing"] != true {
+		t.Errorf("missing = %v, want true", w["missing"])
+	}
+	if main := worktreeAt(t, projects(t, f.state(c))[0], repo); main["missing"] != false {
+		t.Errorf("main tree missing = %v, want false", main["missing"])
+	}
+}

@@ -180,3 +180,18 @@ func TestRemovingAnUnknownProjectIsNotFound(t *testing.T) {
 		t.Fatalf("status %d, want 404", status)
 	}
 }
+
+func TestAddProjectRejectsABareRepositoryAndSaysWhy(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	bare := filepath.Join(t.TempDir(), "shop.git")
+	git(t, t.TempDir(), "init", "-q", "--bare", bare)
+
+	status, body := f.post(f.authorisedClient(), "/api/projects", map[string]string{"path": bare})
+
+	if status != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", status)
+	}
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "bare") {
+		t.Errorf("error %q, want it to say the repository is bare", msg)
+	}
+}

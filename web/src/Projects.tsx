@@ -79,7 +79,11 @@ function WorktreeItem({ wt }: { wt: Worktree }) {
       <span className="dot" aria-hidden="true" />
       <span>{wt.branch || "(detached)"}</span>
       <span className="tag">{wt.main ? "main tree" : "Agent worktree"}</span>
-      {counts.length > 0 && <span className="counts">{counts.join(" · ")}</span>}
+      {wt.missing ? (
+        <span className="counts warn">Folder not found</span>
+      ) : (
+        counts.length > 0 && <span className="counts">{counts.join(" · ")}</span>
+      )}
     </li>
   );
 }
