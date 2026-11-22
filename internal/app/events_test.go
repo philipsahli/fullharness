@@ -60,7 +60,7 @@ func TestSnapshotNamesTheLaunchAndChangesOnRestart(t *testing.T) {
 	}
 	before := readEvent(t, conn)["launch"]
 	port, _ := strconv.Atoi(first.launchURL().Port())
-	first.inst.Close()
+	first.stop()
 
 	restarted := startFhOnPort(t, dir, port)
 	conn, _, err = restarted.dialWS(restarted.authorisedClient(), restarted.origin())

@@ -82,7 +82,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 	port = ln.Addr().(*net.TCPAddr).Port
 	if err := writeLaunchFile(opts.Dir, launchInfo{PID: os.Getpid(), Port: port, Token: token}); err != nil {
-		ln.Close()
+		_ = ln.Close() // the launch file error is the one worth reporting
 		return nil, fmt.Errorf("write launch file: %w", err)
 	}
 

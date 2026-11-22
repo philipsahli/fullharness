@@ -2,9 +2,12 @@ package app_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -69,11 +72,24 @@ func (f *fh) authorisedClient() *http.Client {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	resp.Body.Close()
+	readBody(f.t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
 		f.t.Fatalf("launch URL: status %d, want 303", resp.StatusCode)
 	}
 	return c
+}
+
+// readBody reads and closes resp's body, failing the test on a read error.
+func readBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func get(t *testing.T, c *http.Client, u string) *http.Response {
@@ -82,7 +98,7 @@ func get(t *testing.T, c *http.Client, u string) *http.Response {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	readBody(t, resp)
 	return resp
 }
 
@@ -104,7 +120,7 @@ func (f *fh) dialWS(c *http.Client, origin string) (*websocket.Conn, int, error)
 		status = resp.StatusCode
 	}
 	if conn != nil {
-		f.t.Cleanup(func() { conn.CloseNow() })
+		f.t.Cleanup(func() { _ = conn.CloseNow() }) // already closed if fh stopped first
 	}
 	return conn, status, err
 }
@@ -135,6 +151,28 @@ func startFhWith(t *testing.T, opts app.Options) *fh {
 		t.Fatalf("start fh: %v", err)
 	}
 	f.inst = inst
-	t.Cleanup(func() { inst.Close() })
+	t.Cleanup(func() { stopFh(t, inst) })
 	return f
+}
+
+// stop stops this launch the way Ctrl+C does.
+func (f *fh) stop() {
+	f.t.Helper()
+	stopFh(f.t, f.inst)
+}
+
+// stopFh closes inst and fails the test if that goes wrong (for example, the
+// launch file could not be removed). Closing twice is fine.
+func stopFh(t *testing.T, inst *app.Instance) {
+	t.Helper()
+	if err := inst.Close(); err != nil {
+		t.Errorf("stop fh: %v", err)
+	}
+}
+
+func writeConfig(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

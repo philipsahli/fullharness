@@ -10,7 +10,11 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | --- | --- |
 | `make build` | Builds the UI into `web/dist` and a binary at `bin/fh` that embeds it. |
 | `make dev` | Starts the Vite dev server on `127.0.0.1:5173`, proxied to a Go server on port 4816 with its own state folder `.dev/`, and opens the UI. |
-| `make test` | Runs the Go tests and the UI typecheck. |
+| `make lint` | Runs golangci-lint, a gofmt check and govulncheck on the Go code, and `tsc`, ESLint and a Prettier check on the UI. |
+| `make test` | Runs the Go tests with the race detector. |
+| `make check` | Runs `lint` and `test`, the same as CI. Run it before you open a PR. |
+
+The lint tool versions are pinned in `tools/go.mod` (Go) and `web/package.json` (UI). `cd web && npm run format` fixes Prettier findings.
 
 The Go tests in `internal/app` start fh in-process against a temp folder and drive it over HTTP and WebSocket, the same way the UI does. New tests go through that API, not against unexported code.
 
@@ -31,6 +35,8 @@ We triage new issues with these labels:
 ## Opening a pull request
 
 - Branch from `main` and open a PR against it.
+- Run `make check` before you open it.
+- Merge only when the PR's checks are green (`gh pr checks <number>`). GitHub doesn't enforce this yet, because the repo is private on the free plan.
 - Link the issue the PR closes, for example `Closes #42`.
 - Name decisions with the terms in [`GLOSSARY.md`](GLOSSARY.md). Record new decisions as an ADR in [`docs/adr/`](docs/adr/).
 

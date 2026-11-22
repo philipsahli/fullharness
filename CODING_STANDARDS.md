@@ -15,4 +15,14 @@ Internal docs are exempt from its README structure and audience rules, but not f
 
 ## Code
 
-No code standards yet. Add rules here when `/retro` or a review finds a judgement call worth enforcing; turn mechanical rules into automated checks instead.
+Mechanical rules live in the linters, which `make lint` runs (see [ADR 0007](docs/adr/0007-quality-gates.md)):
+
+- Go: [`.golangci.yml`](.golangci.yml) (golangci-lint's standard linters and gofmt), plus govulncheck
+- UI: [`web/eslint.config.js`](web/eslint.config.js) and Prettier ([`web/.prettierrc.json`](web/.prettierrc.json))
+
+This file holds only the rules a linter can't check:
+
+- **An ignored error says why.** When code drops an error on purpose, write `_ =` and a short comment giving the reason, for example `_ = resp.Body.Close() // only the status matters`. A linter suppression (`//nolint`) needs the same kind of comment.
+- **Tests go through the API.** Tests drive fh over HTTP and WebSocket, as the UI does, and never call unexported code (spec #1, Testing Decisions).
+
+Add a rule here when `/retro` or a review finds a judgement call worth enforcing. Turn mechanical rules into linter config instead.

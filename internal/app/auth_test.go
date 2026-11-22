@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -61,7 +60,7 @@ func TestRequestWithWrongCookieIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	readBody(t, resp)
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status %d, want 401", resp.StatusCode)
@@ -101,13 +100,12 @@ func TestPageWithoutCookieTellsUserToRunFh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status %d, want 401", resp.StatusCode)
 	}
-	if !strings.Contains(string(body), "Run <code>fh</code>") {
+	if !strings.Contains(body, "Run <code>fh</code>") {
 		t.Errorf("body does not tell the user to run fh: %s", body)
 	}
 }

@@ -26,7 +26,7 @@ var (
 func writeUnauthorised(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
-	w.Write(unauthorisedPage)
+	_, _ = w.Write(unauthorisedPage) // a write error means the client went away
 }
 
 // uiHandler serves the built UI. Paths that aren't files get index.html, so
@@ -47,6 +47,6 @@ func uiHandler(ui fs.FS) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(index)
+		_, _ = w.Write(index) // a write error means the client went away
 	})
 }

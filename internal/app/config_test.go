@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -18,14 +16,17 @@ func freePort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return port
 }
 
 func TestPortComesFromConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	port := freePort(t)
-	os.WriteFile(filepath.Join(dir, "config.toml"), []byte(fmt.Sprintf("port = %d\n", port)), 0o600)
+	writeConfig(t, dir, fmt.Sprintf("port = %d\n", port))
 
 	f := startFhWith(t, app.Options{Dir: dir})
 
@@ -36,7 +37,7 @@ func TestPortComesFromConfigFile(t *testing.T) {
 
 func TestInvalidConfigFileFailsLaunch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "config.toml"), []byte("port = \"not a number\"\n"), 0o600)
+	writeConfig(t, dir, "port = \"not a number\"\n")
 
 	_, err := app.Start(context.Background(), app.Options{Dir: dir, OpenBrowser: func(string) {}})
 

@@ -45,18 +45,19 @@ func writeLaunchFile(dir string, li launchInfo) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	// After a successful Rename the temp name no longer exists, so this only
+	// cleans up after a failure.
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	// CreateTemp already uses 0600; Chmod guards against a permissive umask
 	// policy on other platforms.
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
+	err = tmp.Chmod(0o600)
+	if err == nil {
+		_, err = tmp.Write(b)
 	}
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
 	}
-	if err := tmp.Close(); err != nil {
+	if err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), filepath.Join(dir, launchFileName))
@@ -84,7 +85,7 @@ func running(li launchInfo) bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close() // only the status matters
 	return resp.StatusCode == http.StatusOK
 }
 

@@ -66,7 +66,9 @@ func run() error {
 	}
 	go func() {
 		<-ctx.Done()
-		inst.Close()
+		if err := inst.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "fh: stop:", err)
+		}
 	}()
 	return inst.Wait()
 }
