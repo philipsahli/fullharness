@@ -56,7 +56,8 @@ export function Board({ projects }: { projects: Project[] }) {
   const [board, setBoard] = useState<BoardData | undefined>();
   const [open, setOpen] = useState<string | undefined>();
 
-  const [reloads, setReloads] = useState(0); // Refresh bumps this to read again
+  // Refresh bumps reloads to read again, past fh's GitHub cache.
+  const [reloads, setReloads] = useState(0);
 
   // Keyed on the path, not the Project object: every projects event
   // brings new objects, and the board shouldn't be read again for those.
@@ -65,8 +66,9 @@ export function Board({ projects }: { projects: Project[] }) {
     if (!chosenPath) return;
     const url = `/api/board?project=${encodeURIComponent(chosenPath)}`;
     // get never rejects: a failed read resolves to undefined, shown as no board.
-    const read = () => void get<BoardData>(url).then(setBoard);
-    read();
+    const read = (refresh = false) =>
+      void get<BoardData>(refresh ? `${url}&refresh=1` : url).then(setBoard);
+    read(reloads > 0);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") read();
     }, refreshEvery);

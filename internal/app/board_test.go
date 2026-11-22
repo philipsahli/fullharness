@@ -160,6 +160,7 @@ func TestABranchAheadMakesItsTicketImplementing(t *testing.T) {
 }
 
 func TestTrackerDetection(t *testing.T) {
+	fakeGh(t, nil, nil, false) // GitHub cases must never reach the real gh
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())

@@ -11,8 +11,10 @@ import (
 
 // ReadLocal reads Features from .scratch/<feature>/spec.md and
 // .scratch/<feature>/issues/<NN>-<slug>.md, as Matt's skills write them.
-// aheadBranches are the Project's branches with commits ahead of its base.
-func ReadLocal(repo string, aheadBranches []string) []Feature {
+// aheadBranches are the Project's branches with commits ahead of its base,
+// prBranches the source branches of its open PRs (when it has a GitHub
+// remote and gh).
+func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 	features := []Feature{}
 	dirs, err := os.ReadDir(filepath.Join(repo, ".scratch"))
 	if err != nil {
@@ -36,7 +38,9 @@ func ReadLocal(repo string, aheadBranches []string) []Feature {
 				continue // unreadable file: skip it rather than fail the board
 			}
 			t := readLocalTicket(filepath.Base(file), string(b))
-			t.BranchAhead = slices.ContainsFunc(aheadBranches, func(br string) bool { return localBranchFor(br, filepath.Base(file)) })
+			mine := func(br string) bool { return localBranchFor(br, filepath.Base(file)) }
+			t.BranchAhead = slices.ContainsFunc(aheadBranches, mine)
+			t.OpenPR = slices.ContainsFunc(prBranches, mine)
 			f.Tickets = append(f.Tickets, t)
 		}
 		slices.SortFunc(f.Tickets, func(a, b Ticket) int { return strings.Compare(a.Number, b.Number) })
