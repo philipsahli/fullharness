@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -161,12 +162,30 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		Broadcast:    func(ev any) { srv.Broadcast(ev) },
 		// A turn usually changes files; show it without waiting for a tick.
 		TurnEnded: reg.Refresh,
+		Persist: func(saved []session.Saved) {
+			if err := st.SetSessions(saved); err != nil {
+				log.Info("save sessions failed", "err", err)
+			}
+		},
 		EnteredWaiting: func(sum session.Summary, what string, viewed bool) {
 			notes.enteredWaiting(sum, what, viewed)
 		},
 		Log: log,
 	})
 	inst.sessions = sessions
+	agents := agent.Resolve(cfg.Agents)
+	var saved []session.Saved
+	if err := st.Sessions(&saved); err != nil {
+		return fail(fmt.Errorf("read sessions from state.json: %w", err))
+	}
+	sessions.Restore(saved, func(id string) (agent.Definition, bool) {
+		i := slices.IndexFunc(agents, func(a agent.Definition) bool { return a.ID == id })
+		if i < 0 {
+			return agent.Definition{}, false
+		}
+		return agents[i], true
+	})
+	sessions.SweepLogs()
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
 		// dev tells the tab to reload on a restart instead of stopping.
 		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "dev": opts.Dev}
@@ -177,7 +196,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		projects: reg,
 		sessions: sessions,
 		state:    st,
-		agents:   agent.Resolve(cfg.Agents),
+		agents:   agents,
 		log:      log,
 	})
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)

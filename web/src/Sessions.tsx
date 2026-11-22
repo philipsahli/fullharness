@@ -270,6 +270,18 @@ export function Conversation(props: {
     end.current?.scrollIntoView({ block: "end" });
   }, [items?.length]);
 
+  const reopen = async () => {
+    const r = await command(`/api/sessions/${session.id}/reopen`);
+    setError(r.ok ? "" : r.error);
+  };
+  const close = async () => {
+    const live = session.state !== "exited";
+    // A live Session's Agent is stopped by Close (#1, story 57): ask first.
+    if (live && !window.confirm(`Stop ${session.agentName} and close "${session.title}"?`)) return;
+    const r = await command(`/api/sessions/${session.id}/close`, { confirm: live });
+    setError(r.ok ? "" : r.error);
+  };
+
   const send = async (e: FormEvent) => {
     e.preventDefault();
     const r = await command(`/api/sessions/${session.id}/prompt`, { text });
@@ -283,6 +295,9 @@ export function Conversation(props: {
         <h2>{session.title}</h2>
         <StateBadge state={session.state} />
         {session.autoApprove && <span className="tag">auto-approve</span>}
+        <button type="button" className="link close" onClick={() => void close()}>
+          Close
+        </button>
         <span className="crumb" title={session.worktree}>
           {session.agentName} · {session.worktree}
         </span>
@@ -300,6 +315,14 @@ export function Conversation(props: {
               </p>
             )}
             {session.stderr && session.stderr.length > 0 && <pre>{session.stderr.join("\n")}</pre>}
+            {session.canReopen && (
+              <p>
+                <button type="button" onClick={() => void reopen()}>
+                  Reopen
+                </button>{" "}
+                restarts the Agent and loads this conversation again.
+              </p>
+            )}
           </div>
         )}
         <div ref={end} />

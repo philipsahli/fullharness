@@ -792,3 +792,8 @@ button:disabled {
 .notify-on + .jump {
   margin-left: 0;
 }
+
+.mhead .close {
+  margin-left: auto;
+  font-size: 12.5px;
+}

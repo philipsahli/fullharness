@@ -37,6 +37,7 @@ export type SessionSummary = {
   waiting?: "permission" | "turn"; // why a Waiting Session waits
   since: string; // when the state last changed; orders the list
   login?: string; // the command to run when the reason is "login needed"
+  canReopen: boolean; // its Agent can reload it (session/load) once Exited
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
 };
@@ -210,6 +211,12 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
       return { ...snap, projects: ev.projects as Project[] };
     case "inbox":
       return { ...snap, inbox: ev.inbox as PermissionRequest[] };
+    case "closed": {
+      const id = ev.session as string;
+      const transcripts = { ...snap.transcripts };
+      delete transcripts[id];
+      return { ...snap, sessions: snap.sessions.filter((s) => s.id !== id), transcripts };
+    }
     case "session": {
       const s = ev.session as SessionSummary;
       const known = snap.sessions.some((x) => x.id === s.id);
@@ -229,7 +236,8 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
         next[index] = ev.item as Item;
       } else {
         const it = next[index];
-        if (it && it.type === "agent") next[index] = { ...it, text: it.text + (ev.text as string) };
+        if (it && (it.type === "agent" || it.type === "user"))
+          next[index] = { ...it, text: it.text + (ev.text as string) };
       }
       return { ...snap, transcripts: { ...snap.transcripts, [id]: next } };
     }
