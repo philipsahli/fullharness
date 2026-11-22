@@ -212,7 +212,8 @@ A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Impleme
 
 For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
-- A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only with the `ready-for-agent` label.
+- A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
+- A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
 - An open PR puts its Ticket in Review.
@@ -221,6 +222,8 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs thr
 - **Refresh** reads GitHub again at once.
 
 A local markdown Project with a GitHub remote gets its open PRs the same way, matched by branch `<N>-<slug>…`.
+
+A board with no Specs says so, with a hint to run `/to-spec` in a Session.
 
 Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
 

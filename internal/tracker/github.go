@@ -62,7 +62,7 @@ var (
 // ReadGitHub builds Features from a repository's issues and open PRs
 // (#12). A Spec is an issue with sub-issues, or that others name with
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
-// only when labelled ready-for-agent. Wayfinder issues are left out.
+// only when open and labelled ready-for-agent. Wayfinder issues are left out.
 // aheadBranches are the Project's branches with commits ahead of its base.
 func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 	byNum := map[int]Issue{}
@@ -90,8 +90,11 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 	features := []Feature{}
 	for _, i := range byNum {
 		kids := children[i.Number]
-		if len(kids) == 0 && (hasParent[i.Number] || !slices.Contains(labels(i), ReadyLabel)) {
-			continue // a Ticket, or an issue that isn't part of the factory
+		if len(kids) == 0 && (hasParent[i.Number] || !slices.Contains(labels(i), ReadyLabel) || i.State == "CLOSED") {
+			// A Ticket, an issue outside the factory, or a closed one-off
+			// issue: without Tickets a closed issue was never a Feature
+			// worth showing, and they would pile up in Shipped (#12).
+			continue
 		}
 		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED"}
 		for _, k := range kids {

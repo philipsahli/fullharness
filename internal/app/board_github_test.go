@@ -261,3 +261,47 @@ func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
 		t.Errorf("#6 = %v, want review: the PR on branch 3-part also says Closes: #6", s)
 	}
 }
+
+func TestClosedIssuesWithoutTicketsAreLeftOff(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "Old chore", State: "CLOSED", Labels: []string{"ready-for-agent"}},
+		{Number: 2, Title: "Shipped spec", State: "CLOSED", SubIssues: []int{3}},
+		{Number: 3, Title: "Its ticket", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 2},
+		{Number: 4, Title: "Open spec", State: "OPEN", Labels: []string{"ready-for-agent"}},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	ids := []string{}
+	for _, ft := range objects(t, b, "features") {
+		ids = append(ids, ft["id"].(string))
+	}
+	if strings.Join(ids, ",") != "2,4" {
+		t.Errorf("features = %v, want 2 (closed with Tickets) and 4 (open), not 1", ids)
+	}
+}
+
+func TestAnEmptyBoardSaysHowToStart(t *testing.T) {
+	fakeGh(t, nil, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+
+	gh := githubRepo(t)
+	f.addProject(c, gh)
+	if note, _ := f.board(c, gh)["note"].(string); !strings.Contains(note, "No Specs in GitHub yet") || !strings.Contains(note, "/to-spec") {
+		t.Errorf("GitHub, no issues: note = %q, want a hint to run /to-spec", note)
+	}
+
+	local := realPath(t, newRepo(t, t.TempDir(), "notes"))
+	if err := os.MkdirAll(filepath.Join(local, ".scratch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.addProject(c, local)
+	if note, _ := f.board(c, local)["note"].(string); !strings.Contains(note, "No Specs in .scratch yet") {
+		t.Errorf("empty .scratch: note = %q, want a hint to run /to-spec", note)
+	}
+}

@@ -67,6 +67,9 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 			}
 		}
 		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prBranches)
+		if len(board.Features) == 0 {
+			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
+		}
 	case tracker.KindGitHub:
 		gr := b.gh(repo, true, refresh)
 		if gr.err != nil {
@@ -74,6 +77,9 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 			break
 		}
 		board.Features = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
+		if len(board.Features) == 0 {
+			board.Note = "No Specs in GitHub yet: run /to-spec in a Session to write one."
+		}
 	case tracker.KindUnsupported:
 		board.Note = name + " is not supported in v1. fh reads GitHub Issues and local markdown."
 	case tracker.KindNone:
