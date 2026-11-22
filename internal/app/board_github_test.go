@@ -230,3 +230,34 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 		t.Errorf("01 = %v, want review (open PR from branch 1-form)", s)
 	}
 }
+
+func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "Spec", State: "OPEN", Labels: []string{"ready-for-agent"}},
+		{Number: 2, Title: "Native open blocker", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1, BlockedBy: map[int]string{3: "OPEN"}},
+		{Number: 3, Title: "Part of", State: "OPEN", Labels: []string{"ready-for-agent"}, Body: "Part of #1"},
+		{Number: 4, Title: "Section blockers", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1,
+			Body: "## Blocked by\n\n- #3 (needs #9 first)\n- #5\n\n## Notes\n\n#7 is unrelated"},
+		{Number: 5, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 1},
+		{Number: 6, Title: "Linked by body", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+	}, []map[string]any{{"number": 9, "headRefName": "3-part", "body": "Closes: #6"}}, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	spec := featureByID(t, f.board(c, repo), "1")
+
+	if tk := ticketByNumber(t, spec, "2"); tk["startable"] != false {
+		t.Errorf("#2 = %v, want blocked by open #3 (native)", tk)
+	}
+	if s := ticketByNumber(t, spec, "3")["stage"]; s != "review" {
+		t.Errorf("#3 (Part of #1) = %v, want review via branch 3-part", s)
+	}
+	if got := asJSON(ticketByNumber(t, spec, "4")["blockers"]); got != `[{"known":true,"number":"3","open":true},{"known":true,"number":"5","open":false}]` {
+		t.Errorf("#4 blockers = %s, want #3 (open) and #5 (closed) from the section", got)
+	}
+	if s := ticketByNumber(t, spec, "6")["stage"]; s != "review" {
+		t.Errorf("#6 = %v, want review: the PR on branch 3-part also says Closes: #6", s)
+	}
+}

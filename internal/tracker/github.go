@@ -46,12 +46,17 @@ type PR struct {
 var triageRoles = []string{"needs-triage", "needs-info", ReadyLabel, "ready-for-human", "wontfix"}
 
 var (
-	partOf       = regexp.MustCompile(`(?i)\bpart of #(\d+)`)
-	parentHead   = regexp.MustCompile(`(?im)^##\s*parent\s*\n+\s*#(\d+)`)
-	bodyBlockers = regexp.MustCompile(`(?im)^\**blocked by:?\**:?\s*(.*)$`)
-	issueRef     = regexp.MustCompile(`#(\d+)`)
-	// closingRef matches the keywords GitHub itself reads to close an issue.
-	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)`)
+	partOf     = regexp.MustCompile(`(?i)\bpart of #(\d+)`)
+	parentHead = regexp.MustCompile(`(?im)^##\s*parent\s*\n+\s*#(\d+)`)
+	// blockerLine is "Blocked by: #3, #5" (bold or not); blockerSection is
+	// a "## Blocked by" heading with "- #3" items below, as /to-tickets
+	// writes it, up to the next heading.
+	blockerLine    = regexp.MustCompile(`(?im)^\**blocked by:?\**:?[ \t]*(\S.*)$`)
+	blockerSection = regexp.MustCompile(`(?ims)^#+\s*blocked by\s*$(.*?)(?:^#|\z)`)
+	leadingRef     = regexp.MustCompile(`^[-*\s]*#(\d+)`)
+	// closingRef matches the keywords GitHub itself reads to close an
+	// issue, with or without a colon.
+	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
 
 // ReadGitHub builds Features from a repository's issues and open PRs
@@ -113,24 +118,43 @@ func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string
 		t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(b.Number), Known: true, Open: b.State != "CLOSED"})
 	}
 	if len(t.Blockers) == 0 {
-		for _, m := range bodyBlockers.FindAllStringSubmatch(i.Body, -1) {
-			for _, ref := range issueRef.FindAllStringSubmatch(m[1], -1) {
-				n := atoi(ref[1])
-				other, known := byNum[n]
-				t.Blockers = append(t.Blockers, Blocker{Number: ref[1], Known: known, Open: !known || other.State != "CLOSED"})
-			}
+		for _, n := range bodyBlockerRefs(i.Body) {
+			other, known := byNum[n]
+			t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(n), Known: known, Open: !known || other.State != "CLOSED"})
 		}
 	}
 	t.BranchAhead = slices.ContainsFunc(aheadBranches, func(b string) bool { n, ok := numberOf(b); return ok && n == i.Number })
-	t.OpenPR = slices.ContainsFunc(prs, func(p PR) bool { return prLinks(p, i.Number) })
+	t.OpenPR = slices.ContainsFunc(prs, func(p PR) bool { return p.linksTo(i.Number) })
 	return t
 }
 
-// prLinks: a PR belongs to Ticket n by its source branch <n>-…, or else by
-// a closing keyword for #n in its body.
-func prLinks(p PR, n int) bool {
-	if b, ok := numberOf(p.HeadRefName); ok {
-		return b == n
+// bodyBlockerRefs reads blockers from an issue body: the #N starting each
+// item of a "Blocked by:" line or of a "## Blocked by" section's list.
+// Text in parentheses is a note, not a blocker ("#3 (needs #9)" is #3).
+func bodyBlockerRefs(body string) []int {
+	var items []string
+	for _, m := range blockerLine.FindAllStringSubmatch(body, -1) {
+		items = append(items, strings.Split(m[1], ",")...)
+	}
+	for _, m := range blockerSection.FindAllStringSubmatch(body, -1) {
+		items = append(items, strings.Split(m[1], "\n")...)
+	}
+	var out []int
+	for _, item := range items {
+		item = parenthesised.ReplaceAllString(item, "")
+		if m := leadingRef.FindStringSubmatch(strings.TrimSpace(item)); m != nil && !slices.Contains(out, atoi(m[1])) {
+			out = append(out, atoi(m[1]))
+		}
+	}
+	return out
+}
+
+// linksTo: a PR belongs to Ticket n by its source branch <n>-…, or by a
+// closing keyword for #n in its body. Both count: one PR can carry a
+// Ticket's branch and close another.
+func (p PR) linksTo(n int) bool {
+	if b, ok := numberOf(p.HeadRefName); ok && b == n {
+		return true
 	}
 	for _, m := range closingRef.FindAllStringSubmatch(p.Body, -1) {
 		if atoi(m[1]) == n {

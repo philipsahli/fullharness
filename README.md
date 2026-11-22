@@ -214,9 +214,11 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs thr
 
 - A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only with the `ready-for-agent` label.
 - Issues labelled `wayfinder:*` are left out.
-- Blockers are GitHub's issue dependencies, or a `Blocked by: #N` line in the body when an issue has none.
-- An open PR puts its Ticket in Review. It belongs to a Ticket by its branch `<N>-…`, or else by `Closes`, `Fixes` or `Resolves #N` in its body.
-- fh reuses a Project's GitHub results for 50 seconds, so several tabs share one `gh` call. **Refresh** reads again at once.
+- Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
+- An open PR puts its Ticket in Review.
+- A PR belongs to a Ticket by its branch `<N>-…`, or by `Closes`, `Fixes` or `Resolves #N` in its body.
+- fh reuses a Project's GitHub results for 50 seconds, so several tabs share one `gh` call.
+- **Refresh** reads GitHub again at once.
 
 A local markdown Project with a GitHub remote gets its open PRs the same way, matched by branch `<N>-<slug>…`.
 

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -20,7 +19,7 @@ const ghCacheFor = 50 * time.Second
 // registerBoardRoutes adds GET /api/board?project=<path>[&refresh=1].
 // Local markdown is read fresh on every call; gh results are cached.
 func registerBoardRoutes(srv *server.Server, projects *project.Registry) {
-	b := &boards{cache: map[string]ghResult{}}
+	b := &boards{cache: map[string]*ghEntry{}}
 	srv.Handle("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projects.Get(r.URL.Query().Get("project"))
 		if !ok {
@@ -33,15 +32,24 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry) {
 
 type boards struct {
 	mu    sync.Mutex
-	cache map[string]ghResult // repo → last gh read
+	cache map[string]*ghEntry // repo → its gh reads
 }
 
-// ghResult is one gh read of a repository: issues only for GitHub boards.
+// ghEntry is one repository's cached gh read. Its own lock is held during
+// the read, so tabs on the same board wait for one call, while other
+// Projects' boards don't wait at all.
+type ghEntry struct {
+	mu sync.Mutex
+	ghResult
+}
+
+// ghResult is one gh read of a repository.
 type ghResult struct {
-	at     time.Time
-	issues []tracker.Issue
-	prs    []tracker.PR
-	err    error
+	at         time.Time
+	withIssues bool // issues were read (GitHub boards); local boards need PRs only
+	issues     []tracker.Issue
+	prs        []tracker.PR
+	err        error
 }
 
 func (b *boards) read(repo string, refresh bool) tracker.Board {
@@ -62,10 +70,7 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 	case tracker.KindGitHub:
 		gr := b.gh(repo, true, refresh)
 		if gr.err != nil {
-			board.Note = gr.err.Error()
-			if !errors.Is(gr.err, tracker.ErrNoGh) && !errors.Is(gr.err, tracker.ErrGhLogin) {
-				board.Note = "Couldn't read GitHub: " + board.Note
-			}
+			board.Note = tracker.Note(gr.err)
 			break
 		}
 		board.Features = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
@@ -78,26 +83,29 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 }
 
 // gh returns the repo's gh read, from the cache when it's fresh and has
-// what's asked for. The lock is held during the read, so concurrent tabs
-// wait for one call instead of each making their own.
+// what's asked for.
 func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if c, ok := b.cache[repo]; ok && !refresh && time.Since(c.at) < ghCacheFor && (c.issues != nil || !withIssues || c.err != nil) {
-		return c
+	e, ok := b.cache[repo]
+	if !ok {
+		e = &ghEntry{}
+		b.cache[repo] = e
 	}
-	r := ghResult{at: time.Now()}
-	if r.err = tracker.CheckGh(repo); r.err == nil {
-		if withIssues {
-			r.issues, r.err = tracker.FetchIssues(repo)
-			if r.issues == nil && r.err == nil {
-				r.issues = []tracker.Issue{} // read, and empty: still cacheable
-			}
-		}
-		if r.err == nil {
-			r.prs, r.err = tracker.FetchPRs(repo)
-		}
+	b.mu.Unlock()
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	fresh := !e.at.IsZero() && time.Since(e.at) < ghCacheFor
+	if fresh && !refresh && (e.withIssues || !withIssues || e.err != nil) {
+		return e.ghResult
 	}
-	b.cache[repo] = r
+	r := ghResult{at: time.Now(), withIssues: withIssues}
+	if r.err = tracker.CheckGh(repo); r.err == nil && withIssues {
+		r.issues, r.err = tracker.FetchIssues(repo)
+	}
+	if r.err == nil {
+		r.prs, r.err = tracker.FetchPRs(repo)
+	}
+	e.ghResult = r
 	return r
 }

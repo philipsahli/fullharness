@@ -1,12 +1,17 @@
 package tracker
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// ghTimeout bounds one gh call, so a hung gh can't hold a board forever.
+const ghTimeout = 30 * time.Second
 
 // Reasons a gh read fails, each with what the user does about it.
 var (
@@ -37,12 +42,21 @@ func CheckGh(repo string) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return ErrNoGh
 	}
-	cmd := exec.Command("gh", "auth", "status")
-	cmd.Dir = repo
-	if err := cmd.Run(); err != nil {
+	// Any auth status failure reads as "not logged in": it is the usual
+	// cause, and the note's command is what fixes it.
+	if _, err := gh(repo, "auth", "status"); err != nil {
 		return ErrGhLogin
 	}
 	return nil
+}
+
+// Note is what the board says for a failed gh read: the error itself when
+// it says what to do, else that GitHub couldn't be read and why.
+func Note(err error) string {
+	if errors.Is(err, ErrNoGh) || errors.Is(err, ErrGhLogin) {
+		return err.Error()
+	}
+	return "Couldn't read GitHub: " + err.Error()
 }
 
 // FetchIssues reads every issue of the repo's GitHub repository through
@@ -86,13 +100,18 @@ func FetchPRs(repo string) ([]PR, error) {
 }
 
 func gh(repo string, args ...string) ([]byte, error) {
-	cmd := exec.Command("gh", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = repo
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("gh %s: %s", args[0], strings.TrimSpace(stderr.String()))
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("gh %s: %s", args[0], msg)
+		}
+		return nil, fmt.Errorf("gh %s: %w", args[0], err)
 	}
 	return out, nil
 }
