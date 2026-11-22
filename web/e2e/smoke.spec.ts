@@ -329,3 +329,22 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
     "blocked by 01",
   );
 });
+
+test("a Worktree fh created is not labelled an Agent worktree", async ({ page, fh }) => {
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+
+  await page.getByRole("button", { name: "+ New Session" }).click();
+  const form = page.getByRole("form", { name: "New Session" });
+  await form.getByLabel("New branch name").fill("7-login");
+  await form.getByRole("button", { name: "Start Session" }).click();
+
+  const row = projects.locator(".wt").filter({ hasText: "7-login" });
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("Agent worktree");
+});
