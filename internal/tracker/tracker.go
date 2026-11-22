@@ -5,7 +5,6 @@ package tracker
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -70,8 +69,10 @@ type Ticket struct {
 // Blocker is a Ticket that has to close first.
 type Blocker struct {
 	Number string `json:"number"`
-	Known  bool   `json:"known"` // false: no such Ticket; counts as open
-	Open   bool   `json:"open"`
+	// Known: the Ticket exists. An adapter that sees blockers outside the
+	// Feature (GitHub) sets Known and Open itself; unknown counts as open.
+	Known bool `json:"known"`
+	Open  bool `json:"open"`
 }
 
 // Detect finds the Project's Issue tracker: the `# Issue tracker: …`
@@ -98,7 +99,7 @@ func Detect(repo string) (kind, name string) {
 	if info, err := os.Stat(filepath.Join(repo, ".scratch")); err == nil && info.IsDir() {
 		return KindLocal, "Local Markdown"
 	}
-	if out, err := exec.Command("git", "-C", repo, "remote", "-v").Output(); err == nil && strings.Contains(string(out), "github.com") {
+	if HasGitHubRemote(repo) {
 		return KindGitHub, "GitHub"
 	}
 	return KindNone, ""
@@ -142,12 +143,14 @@ func Derive(features []Feature) {
 			for k := range t.Blockers {
 				b := &t.Blockers[k]
 				n, err := strconv.Atoi(b.Number)
-				other, known := byValue[n]
-				if err == nil && known {
+				if other, inFeature := byValue[n]; err == nil && inFeature {
 					b.Number = other.Number // show it as the Ticket names itself
+					b.Known, b.Open = true, !other.Closed
+				} else if !b.Known {
+					// Not in this Feature, and the adapter doesn't know it
+					// either (GitHub blockers may sit in other Features).
+					b.Open = true
 				}
-				b.Known = err == nil && known
-				b.Open = !b.Known || !other.Closed
 				blocked = blocked || b.Open
 			}
 			t.Startable = !t.Closed && t.Label == ReadyLabel && !blocked

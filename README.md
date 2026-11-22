@@ -210,7 +210,22 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 
 A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base: `origin/<default branch>`, or the local default branch without a remote. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
-GitHub boards come with #12. Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
+For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
+
+- A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
+- A closed issue without Tickets is left off the board.
+- Issues labelled `wayfinder:*` are left out.
+- Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
+- An open PR puts its Ticket in Review.
+- A PR belongs to a Ticket by its branch `<N>-…`, or by `Closes`, `Fixes` or `Resolves #N` in its body.
+- fh reuses a Project's GitHub results for 50 seconds, so several tabs share one `gh` call.
+- **Refresh** reads GitHub again at once.
+
+A local markdown Project with a GitHub remote gets its open PRs the same way, matched by branch `<N>-<slug>…`.
+
+A board with no Specs says so, with a hint to run `/to-spec` in a Session.
+
+Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
 
 ### Agents
 
