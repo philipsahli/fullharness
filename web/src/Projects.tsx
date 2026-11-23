@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { command, get } from "./api";
-import type { Project, SessionSummary, Worktree } from "./events";
+import type { Project, Worktree } from "./events";
 
 // Suggestion matches internal/project.Suggestion.
 type Suggestion = { path: string; name: string };
@@ -8,13 +8,7 @@ type Suggestion = { path: string; name: string };
 // Projects is the rail's Projects section: every Project with its
 // Worktrees, plus adding and removing Projects. Changes come back as
 // "projects" events, so nothing here keeps its own copy of the list.
-export function Projects({
-  projects,
-  sessions,
-}: {
-  projects: Project[];
-  sessions: SessionSummary[];
-}) {
+export function Projects({ projects }: { projects: Project[] }) {
   return (
     <section aria-label="Projects">
       <h3>
@@ -31,7 +25,7 @@ export function Projects({
       {projects.length === 0 && <p className="empty">No Projects yet.</p>}
       <ul className="ptree">
         {projects.map((p) => (
-          <ProjectItem key={p.path} project={p} sessions={sessions} />
+          <ProjectItem key={p.path} project={p} />
         ))}
       </ul>
       <AddProject />
@@ -39,7 +33,7 @@ export function Projects({
   );
 }
 
-function ProjectItem({ project, sessions }: { project: Project; sessions: SessionSummary[] }) {
+function ProjectItem({ project }: { project: Project }) {
   const [error, setError] = useState("");
   const remove = async () => {
     const r = await command("/api/projects/remove", { path: project.path });
@@ -66,7 +60,7 @@ function ProjectItem({ project, sessions }: { project: Project; sessions: Sessio
       ) : (
         <ul className="wts">
           {project.worktrees.map((w) => (
-            <WorktreeItem key={w.path} project={project.path} wt={w} sessions={sessions} />
+            <WorktreeItem key={w.path} project={project.path} wt={w} />
           ))}
         </ul>
       )}
@@ -75,15 +69,7 @@ function ProjectItem({ project, sessions }: { project: Project; sessions: Sessio
   );
 }
 
-function WorktreeItem({
-  project,
-  wt,
-  sessions,
-}: {
-  project: string;
-  wt: Worktree;
-  sessions: SessionSummary[];
-}) {
+function WorktreeItem({ project, wt }: { project: string; wt: Worktree }) {
   const [error, setError] = useState("");
   const counts = [
     wt.uncommitted > 0 && `${wt.uncommitted} uncommitted`,
@@ -96,9 +82,7 @@ function WorktreeItem({
       {/* fh's own Worktrees need no tag; the others say why they differ. */}
       {wt.main && <span className="tag">main tree</span>}
       {wt.agent && <span className="tag">Agent worktree</span>}
-      {!wt.main && !wt.agent && (
-        <RemoveWorktree project={project} wt={wt} sessions={sessions} onError={setError} />
-      )}
+      {!wt.main && !wt.agent && <RemoveWorktree project={project} wt={wt} onError={setError} />}
       {wt.missing ? (
         <span className="counts warn">Folder not found</span>
       ) : (
@@ -109,30 +93,45 @@ function WorktreeItem({
   );
 }
 
-// RemoveWorktree is offered only on fh's own Worktrees, and only once
-// nothing can be lost (#1, story 20). fh asks first and never removes one on
-// its own (story 21).
+// RemoveWorktree is offered only on fh's own Worktrees, and works only once
+// nothing can be lost (#1, story 20); wt.removal says why not, from the
+// server. fh asks first and never removes one on its own (story 21).
 function RemoveWorktree({
   project,
   wt,
-  sessions,
   onError,
 }: {
   project: string;
   wt: Worktree;
-  sessions: SessionSummary[];
   onError: (e: string) => void;
 }) {
-  const reason = removeRefusal(wt, sessions);
   const name = wt.branch || wt.path;
+  const state = wt.noOwnCommits ? "It has no commits of its own." : `It is merged into ${wt.base}.`;
   const remove = async () => {
     // The button stays focusable when refused, so the reason is reachable
     // by keyboard and screen reader, not only as a hover tooltip.
-    if (reason) {
-      onError(`Can't remove: ${reason}`);
+    if (wt.removal) {
+      onError(`Can't remove: ${wt.removal}`);
       return;
     }
-    if (!window.confirm(`Remove the Worktree ${wt.path}? Its branch ${name} stays.`)) return;
+    // Asking without confirm returns what removal would delete that git
+    // doesn't track, for the question below.
+    const ask = await command("/api/worktrees/remove", { project, path: wt.path });
+    const body = (ask.ok ? undefined : ask.body) as
+      { confirm?: boolean; ignored?: string[] } | undefined;
+    if (!ask.ok && !body?.confirm) {
+      onError(ask.error);
+      return;
+    }
+    const ignored = body?.ignored?.length
+      ? `\n\nThese ignored files will be deleted: ${body.ignored.join(", ")}`
+      : "";
+    if (
+      !window.confirm(
+        `Remove the Worktree ${wt.path}? ${state} Its branch ${name} stays.${ignored}`,
+      )
+    )
+      return;
     const r = await command("/api/worktrees/remove", { project, path: wt.path, confirm: true });
     onError(r.ok ? "" : r.error);
   };
@@ -140,27 +139,18 @@ function RemoveWorktree({
     <button
       type="button"
       className="link"
-      aria-disabled={reason !== ""}
+      aria-disabled={wt.removal !== ""}
       onClick={() => void remove()}
       aria-label={`Remove Worktree ${name}`}
-      title={reason ? `Can't remove: ${reason}` : "Run git worktree remove; the branch stays"}
+      title={
+        wt.removal
+          ? `Can't remove: ${wt.removal}`
+          : `${state} Run git worktree remove; the branch stays`
+      }
     >
       Remove
     </button>
   );
-}
-
-// removeRefusal mirrors internal/app/worktrees_api.go: why fh won't remove a
-// Worktree it created, or "" when it may. The server checks again.
-function removeRefusal(wt: Worktree, sessions: SessionSummary[]): string {
-  if (wt.missing) return "the Worktree's folder is gone";
-  if (wt.uncommitted > 0)
-    return `it has ${wt.uncommitted} uncommitted ${wt.uncommitted === 1 ? "file" : "files"}`;
-  if (!wt.base) return "no main branch to check the merge against";
-  if (!wt.merged) return `its branch isn't merged into ${wt.base}`;
-  if (sessions.some((s) => s.worktree === wt.path))
-    return "a Session is linked to it; close the Session first";
-  return "";
 }
 
 function fetchNote(wt: Worktree): string {

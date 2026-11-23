@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,10 +36,16 @@ type Worktree struct {
 	Ahead  int    `json:"ahead"`
 	Behind int    `json:"behind"`
 	Base   string `json:"base"` // empty when no default branch was found
-	// Merged means Base already has everything on HEAD: HEAD is part of
-	// Base, or a squash commit on Base carries the same change. Read only
-	// for Worktrees fh created, the only ones it offers to remove.
-	Merged bool `json:"merged"`
+	// Merged means the branch has commits of its own and Base has them all:
+	// as the same commits, as rebased copies (`git cherry`), or as one squash
+	// commit with the same change. NoOwnCommits means HEAD is still where the
+	// branch was created. Both are read only for Worktrees fh created, the
+	// only ones it offers to remove.
+	Merged       bool `json:"merged"`
+	NoOwnCommits bool `json:"noOwnCommits"`
+	// Removal is why fh won't remove the Worktree, or "" when it would.
+	// Package project fills it in, because it depends on Sessions.
+	Removal string `json:"removal"`
 	// FetchedAt is the last `git fetch` in this repo, nil if never.
 	FetchedAt *time.Time `json:"fetchedAt"`
 }
@@ -63,13 +70,16 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 	}
 	base := defaultBase(repo)
 	fetchedAt := lastFetch(repo)
-	// Two git calls per Worktree, plus up to two for the merge check of
+	// Two git calls per Worktree, plus one or two for the merge check of
 	// fh's own Worktrees (more when HEAD or the base moved); run Worktrees in
 	// parallel so a refresh of 20 stays well under #3's 1 s target (measured
 	// before the merge check, on an M-series Mac with small repositories:
 	// about 480 ms one by one, 185 ms in parallel).
 	sem := make(chan struct{}, parallelGit)
 	var wg sync.WaitGroup
+	var usedMu sync.Mutex
+	used := map[string]bool{} // mergeCache keys this List read
+	defer func() { mergeCache.keep(repo, used) }()
 	for i := range wts {
 		w := &wts[i]
 		w.Main = i == 0
@@ -90,10 +100,22 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 				return
 			}
 			var err error
-			// Merged stays false on an error: zero ahead from a failed
-			// read must not offer removal.
-			if w.Ahead, w.Behind, err = aheadBehind(w.Path, base); err == nil && !w.Main && !w.Agent {
-				w.Merged = w.Ahead == 0 || squashMerged(w.Path, base)
+			// Both stay false on an error: zero ahead from a failed read
+			// must not offer removal.
+			if w.Ahead, w.Behind, err = aheadBehind(w.Path, base); err != nil || w.Main || w.Agent {
+				return
+			}
+			if w.Ahead == 0 {
+				w.NoOwnCommits = atCreation(w.Path, w.Branch)
+				w.Merged = !w.NoOwnCommits
+				return
+			}
+			key, merged := mergedAhead(repo, w.Path, base)
+			w.Merged = merged
+			if key != "" {
+				usedMu.Lock()
+				used[key] = true
+				usedMu.Unlock()
 			}
 		})
 	}
@@ -162,38 +184,73 @@ func aheadBehind(dir, base string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
-// squashMerged reports whether a commit on base since HEAD branched off has
-// the same patch as all of HEAD's work together, which is what a squash
-// merge (GitHub's "Squash and merge") leaves behind. HEAD stays ahead of
-// base after one, so ahead/behind alone never sees it. Patch IDs are
-// compared without writing to the repo; a squash commit that also changed
-// other files, or resolved a conflict, doesn't match.
-func squashMerged(dir, base string) bool {
-	out, err := run(dir, "rev-parse", "HEAD", base)
+// atCreation reports whether branch still points where it was created:
+// the oldest entry of its reflog. HEAD being part of base can't tell a
+// fresh branch from a fast-forward merge; the reflog can. Without a
+// reflog (detached HEAD, or reflogs turned off) it says no, so the
+// Worktree counts as merged.
+func atCreation(dir, branch string) bool {
+	if branch == "" {
+		return false
+	}
+	out, err := run(dir, "log", "-g", "--format=%H", "refs/heads/"+branch, "--")
 	if err != nil {
 		return false
 	}
-	key := strings.Join(strings.Fields(string(out)), " ")
-	if v, ok := squashCache.Load(key); ok {
-		return v.(bool)
-	}
-	merged := squashMergedUncached(dir, base)
-	squashCache.Store(key, merged)
-	return merged
+	entries := strings.Fields(string(out))
+	head, err := run(dir, "rev-parse", "HEAD")
+	return err == nil && len(entries) > 0 && entries[len(entries)-1] == strings.TrimSpace(string(head))
 }
 
-// squashCache holds squashMerged's answer per HEAD and base commit pair,
-// which can't change, so a refresh repeats the patch comparison only when
-// either side moved.
-var squashCache sync.Map
+// mergedAhead reports whether base has all of HEAD's commits although HEAD
+// is ahead of it: as rebased copies, or as one squash commit. The answer
+// is cached per HEAD and base commit pair, which can't change; key is
+// that pair, "" when it couldn't be read.
+func mergedAhead(repo, dir, base string) (key string, merged bool) {
+	out, err := run(dir, "rev-parse", "HEAD", base)
+	if err != nil {
+		return "", false
+	}
+	key = strings.Join(strings.Fields(string(out)), " ")
+	if v, ok := mergeCache.get(repo, key); ok {
+		return key, v
+	}
+	merged = rebaseMerged(dir, base) || squashMerged(dir, base)
+	mergeCache.put(repo, key, merged)
+	return key, merged
+}
 
-func squashMergedUncached(dir, base string) bool {
+// rebaseMerged reports whether every commit on HEAD has a copy with the
+// same patch on base, which is what GitHub's "Rebase and merge" leaves:
+// `git cherry` marks those "-" and the rest "+".
+func rebaseMerged(dir, base string) bool {
+	out, err := run(dir, "cherry", base, "HEAD")
+	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.HasPrefix(line, "+") {
+			return false
+		}
+	}
+	return true
+}
+
+// squashMerged reports whether a commit on base since HEAD branched off has
+// the same patch as all of HEAD's work together, which is what a squash
+// merge (GitHub's "Squash and merge") leaves behind. Patch IDs are compared
+// without writing to the repo; a squash commit that also changed other
+// files, or resolved a conflict, doesn't match.
+func squashMerged(dir, base string) bool {
 	mb, err := run(dir, "merge-base", base, "HEAD")
 	if err != nil {
 		return false
 	}
 	fork := strings.TrimSpace(string(mb))
-	diff, err := run(dir, "diff", fork, "HEAD")
+	// The user's diff settings must not change the patch: no external
+	// diff tool, textconv filter, colour or signature lines.
+	plain := []string{"--no-ext-diff", "--no-textconv", "--no-color"}
+	diff, err := run(dir, append(append([]string{"diff"}, plain...), fork, "HEAD")...)
 	if err != nil || len(diff) == 0 {
 		return false
 	}
@@ -205,7 +262,7 @@ func squashMergedUncached(dir, base string) bool {
 	if id == "" {
 		return false
 	}
-	log, err := run(dir, "log", "-p", "--no-merges", "--format=commit %H", fork+".."+base)
+	log, err := run(dir, append(append([]string{"log", "-p", "--no-merges", "--no-show-signature", "--format=commit %H"}, plain...), fork+".."+base)...)
 	if err != nil {
 		return false
 	}
@@ -219,6 +276,45 @@ func squashMergedUncached(dir, base string) bool {
 		}
 	}
 	return false
+}
+
+// mergeCache holds mergedAhead's answers per repo. List keeps only the
+// keys it read, so entries for commits no Worktree is on any more go.
+var mergeCache = &answerCache{byRepo: map[string]map[string]bool{}}
+
+type answerCache struct {
+	mu     sync.Mutex
+	byRepo map[string]map[string]bool
+}
+
+func (c *answerCache) get(repo, key string) (v, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok = c.byRepo[repo][key]
+	return v, ok
+}
+
+func (c *answerCache) put(repo, key string, v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.byRepo[repo] == nil {
+		c.byRepo[repo] = map[string]bool{}
+	}
+	c.byRepo[repo][key] = v
+}
+
+// keep drops repo's entries that aren't in used.
+func (c *answerCache) keep(repo string, used map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k := range c.byRepo[repo] {
+		if !used[k] {
+			delete(c.byRepo[repo], k)
+		}
+	}
+	if len(c.byRepo[repo]) == 0 {
+		delete(c.byRepo, repo)
+	}
 }
 
 // run runs git in dir and returns stdout. The error carries git's stderr.
@@ -344,6 +440,29 @@ func BranchesAhead(repo string) []string {
 		}
 	}
 	return ahead
+}
+
+// Ignored lists the top-level entries in the Worktree at path that git
+// ignores, such as .env or node_modules, which `git worktree remove`
+// deletes along with the folder.
+func Ignored(path string) ([]string, error) {
+	out, err := run(path, "status", "--porcelain=v1", "-z", "--ignored")
+	if err != nil {
+		return nil, err
+	}
+	var top []string
+	for _, entry := range strings.Split(string(out), "\x00") {
+		name, ok := strings.CutPrefix(entry, "!! ")
+		if !ok {
+			continue
+		}
+		first, _, _ := strings.Cut(name, "/")
+		if !slices.Contains(top, first) {
+			top = append(top, first)
+		}
+	}
+	slices.Sort(top)
+	return top, nil
 }
 
 // Remove runs `git worktree remove` on the Worktree at path, without

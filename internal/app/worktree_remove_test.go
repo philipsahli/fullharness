@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -45,8 +46,8 @@ func TestAMergedCleanWorktreeIsRemovedAfterConfirmation(t *testing.T) {
 	f.addProject(c, repo)
 	wt := mergedWorktree(t, f, c, repo)
 	f.post(c, "/api/projects/refresh", nil)
-	if w := worktreeAt(t, projects(t, f.state(c))[0], wt); w["merged"] != true {
-		t.Fatalf("merged = %v, want true", w["merged"])
+	if w := worktreeAt(t, projects(t, f.state(c))[0], wt); w["merged"] != true || w["noOwnCommits"] != false || w["removal"] != "" {
+		t.Fatalf("merged %v noOwnCommits %v removal %q, want true, false and no refusal", w["merged"], w["noOwnCommits"], w["removal"])
 	}
 
 	if status, msg := f.removeWorktree(c, repo, wt, false); status != http.StatusConflict || !strings.Contains(msg, "confirm") {
@@ -64,6 +65,9 @@ func TestAMergedCleanWorktreeIsRemovedAfterConfirmation(t *testing.T) {
 	}
 	if n := len(worktrees(t, projects(t, f.state(c))[0])); n != 1 {
 		t.Errorf("got %d worktrees after removal, want only the main tree", n)
+	}
+	if got := git(t, repo, "branch", "--list", "done"); got == "" {
+		t.Error("branch done is gone, want it kept")
 	}
 }
 
@@ -96,6 +100,10 @@ func TestASquashMergedBranchCountsAsMerged(t *testing.T) {
 	commitFile(t, repo, "other.txt", "main moved on\n")
 	git(t, repo, "merge", "-q", "--squash", "squashed")
 	git(t, repo, "commit", "-q", "-m", "squashed (#1)")
+	// A user's diff settings must not change the patch fh compares: an
+	// external diff tool that prints nothing, and colour always on.
+	git(t, repo, "config", "diff.external", "true")
+	git(t, repo, "config", "color.ui", "always")
 
 	f.post(c, "/api/projects/refresh", nil)
 	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
@@ -140,6 +148,10 @@ func TestAWorktreeWithALiveSessionIsNotRemoved(t *testing.T) {
 
 	if status != http.StatusConflict || msg != "a Session is linked to it; close the Session first" {
 		t.Errorf("status %d %q, want 409 naming the Session", status, msg)
+	}
+	// The snapshot says so too, without waiting for a refresh tick.
+	if w := worktreeAt(t, projects(t, f.state(c))[0], wt); w["removal"] != "a Session is linked to it; close the Session first" {
+		t.Errorf("removal = %q, want the Session reason", w["removal"])
 	}
 }
 
@@ -206,5 +218,104 @@ func TestAWorktreeWhoseFolderIsGoneIsNotRemoved(t *testing.T) {
 
 	if status != http.StatusConflict || msg != "the Worktree's folder is gone" {
 		t.Errorf("status %d %q, want 409 saying the folder is gone", status, msg)
+	}
+}
+
+func TestARebaseMergedBranchCountsAsMerged(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "rebased")
+	commitFile(t, wt, "a.txt", "1\n")
+	commitFile(t, wt, "b.txt", "2\n")
+	commitFile(t, repo, "other.txt", "main moved on\n")
+	// GitHub's "Rebase and merge": main gets copies of both commits, with
+	// new IDs; the local branch keeps the old ones.
+	git(t, repo, "cherry-pick", "main..rebased")
+
+	f.post(c, "/api/projects/refresh", nil)
+	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
+
+	if w["merged"] != true || w["ahead"] != float64(2) {
+		t.Fatalf("merged %v ahead %v, want true and still 2 ahead", w["merged"], w["ahead"])
+	}
+}
+
+func TestAWorktreeWithNoCommitsOfItsOwnIsRemovableButNotCalledMerged(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "fresh")
+
+	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
+
+	if w["noOwnCommits"] != true || w["merged"] != false || w["removal"] != "" {
+		t.Fatalf("noOwnCommits %v merged %v removal %q, want true, false and no refusal", w["noOwnCommits"], w["merged"], w["removal"])
+	}
+	if status, msg := f.removeWorktree(c, repo, wt, true); status != http.StatusNoContent {
+		t.Errorf("status %d %q, want 204", status, msg)
+	}
+}
+
+func TestTheConfirmationListsTheIgnoredFilesRemovalDeletes(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "done")
+	commitFile(t, wt, ".gitignore", ".env\nnode_modules/\n")
+	git(t, repo, "merge", "-q", "--ff-only", "done")
+	writeFile(t, filepath.Join(wt, ".env"), "SECRET=1\n")
+	if err := os.MkdirAll(filepath.Join(wt, "node_modules", "left-pad"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(wt, "node_modules", "left-pad", "index.js"), "x\n")
+
+	status, body := f.post(c, "/api/worktrees/remove", map[string]any{"project": repo, "path": wt})
+
+	if status != http.StatusConflict || body["confirm"] != true {
+		t.Fatalf("status %d body %v, want 409 asking to confirm", status, body)
+	}
+	var ignored []string
+	for _, v := range body["ignored"].([]any) {
+		ignored = append(ignored, v.(string))
+	}
+	if !slices.Equal(ignored, []string{".env", "node_modules"}) {
+		t.Errorf("ignored = %v, want [.env node_modules]", ignored)
+	}
+}
+
+func TestRemovingInAnUnknownProjectIsNotFound(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+
+	if status, _ := f.removeWorktree(c, "/no/such/project", "/no/such/project.worktrees/x", true); status != http.StatusNotFound {
+		t.Errorf("status %d, want 404", status)
+	}
+}
+
+func TestAWorktreeMergedIntoOriginIsRemoved(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	seed := newRepo(t, parent, "seed")
+	origin := filepath.Join(parent, "origin.git")
+	git(t, parent, "clone", "-q", "--bare", seed, origin)
+	repo := filepath.Join(parent, "shop")
+	git(t, parent, "clone", "-q", origin, repo)
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "done")
+	commitFile(t, wt, "done.txt", "1\n")
+	if status, msg := f.removeWorktree(c, repo, wt, true); msg != "its branch isn't merged into origin/main" {
+		t.Fatalf("before the merge: status %d %q, want it not merged into origin/main", status, msg)
+	}
+
+	git(t, wt, "push", "-q", "origin", "done:main") // merged on the remote…
+	git(t, repo, "fetch", "-q")                     // …and fetched
+
+	if status, msg := f.removeWorktree(c, repo, wt, true); status != http.StatusNoContent {
+		t.Errorf("status %d %q, want 204", status, msg)
 	}
 }

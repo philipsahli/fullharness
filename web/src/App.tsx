@@ -118,7 +118,7 @@ export function App() {
               onNew={() => newSession()}
             />
           )}
-          {snapshot && <Projects projects={snapshot.projects} sessions={snapshot.sessions} />}
+          {snapshot && <Projects projects={snapshot.projects} />}
         </nav>
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
           {view === "sessions" && sessionsView()}

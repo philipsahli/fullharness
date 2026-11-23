@@ -39,6 +39,7 @@ type Registry struct {
 	file     string
 	onChange func([]Project)
 	created  func(path string) bool // whether fh created a Worktree
+	linked   func(path string) bool // whether a Session is linked to a Worktree
 
 	// change serialises Add, Remove and Refresh including their onChange
 	// call, so tabs get events in the order the changes happened and an
@@ -59,10 +60,11 @@ type storedProject struct {
 }
 
 // Open loads projects.toml from dir. created reports whether fh created a
-// Worktree (those aren't Agent worktrees). onChange gets the new list after
-// every change, for pushing to tabs.
-func Open(dir string, created func(path string) bool, onChange func([]Project)) (*Registry, error) {
-	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created}
+// Worktree (those aren't Agent worktrees); linked whether a Session, live or
+// Exited, is linked to one. onChange gets the new list after every change,
+// for pushing to tabs.
+func Open(dir string, created, linked func(path string) bool, onChange func([]Project)) (*Registry, error) {
+	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created, linked: linked}
 	var s stored
 	if _, err := toml.DecodeFile(r.file, &s); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("read %s: %w", r.file, err)
@@ -144,6 +146,59 @@ func (r *Registry) Refresh() {
 	_ = r.set(fresh, false) // returns an error only when saving
 }
 
+// Relabel recomputes each Worktree's Removal without calling git, for when
+// a Session was added or closed, and tells onChange if one changed.
+func (r *Registry) Relabel() {
+	r.change.Lock()
+	defer r.change.Unlock()
+	old := r.List()
+	fresh := make([]Project, len(old))
+	changed := false
+	for i, p := range old {
+		p.Worktrees = slices.Clone(p.Worktrees)
+		for j := range p.Worktrees {
+			w := &p.Worktrees[j]
+			if reason := r.removal(*w); reason != w.Removal {
+				w.Removal, changed = reason, true
+			}
+		}
+		fresh[i] = p
+	}
+	if changed {
+		_ = r.set(fresh, false) // returns an error only when saving
+	}
+}
+
+// removal says why fh won't remove w, or "" when it would: only a Worktree
+// fh created, with nothing on it that could be lost (#1, story 20).
+// Everything but the Session rule comes from git.
+func (r *Registry) removal(w worktree.Worktree) string {
+	switch {
+	case w.Main:
+		return "the main tree is the Project itself; fh never removes it"
+	case w.Agent:
+		return "fh never removes an Agent worktree"
+	case w.Missing:
+		return "the Worktree's folder is gone"
+	case w.Uncommitted > 0:
+		return fmt.Sprintf("it has %d uncommitted %s", w.Uncommitted, plural(w.Uncommitted, "file", "files"))
+	case w.Base == "":
+		return "no main branch to check the merge against"
+	case !w.Merged && !w.NoOwnCommits:
+		return "its branch isn't merged into " + w.Base
+	case r.linked(w.Path):
+		return "a Session is linked to it; close the Session first"
+	}
+	return ""
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // set replaces the list, saves projects.toml if save, and tells onChange.
 // The caller holds r.change.
 func (r *Registry) set(list []Project, save bool) error {
@@ -182,6 +237,9 @@ func (r *Registry) read(path string) Project {
 	// A folder that is no longer a git repository lists no Worktrees; the
 	// user sees an empty Project and can remove it.
 	if wts, err := worktree.List(path, r.created); err == nil {
+		for i := range wts {
+			wts[i].Removal = r.removal(wts[i])
+		}
 		p.Worktrees = wts
 	}
 	return p

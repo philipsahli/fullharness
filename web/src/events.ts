@@ -12,7 +12,9 @@ export type Worktree = {
   ahead: number;
   behind: number;
   base: string; // what ahead/behind compare with, e.g. "origin/main"
-  merged: boolean; // base has HEAD's work (also squash-merged); fh's own Worktrees only
+  merged: boolean; // base has the branch's own commits (also rebased or squashed); fh's Worktrees only
+  noOwnCommits: boolean; // the branch is still where it was created; fh's Worktrees only
+  removal: string; // why fh won't remove it, "" when it would
   fetchedAt: string | null; // last git fetch; null if never
 };
 

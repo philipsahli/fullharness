@@ -128,13 +128,23 @@ Each Project lists every git Worktree, with:
 
 fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. A Worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
 
-A Worktree fh created has a **Remove** button. fh asks before it runs `git worktree remove`, and it keeps the branch. The button works only when all of these hold:
+A Worktree fh created has a **Remove** button. It runs `git worktree remove` and keeps the branch. The button works only when all of these hold:
 
-- its branch is merged into the default branch, either as its own commits or as one squash commit (GitHub's **Squash and merge**);
+- its branch is merged into the default branch, or it has no commits of its own;
 - it has no uncommitted or untracked files;
 - no Session is linked to it, live or Exited. Close the Session first.
 
-Otherwise the button is greyed out and its tooltip says why. fh never removes a Worktree on its own, and never removes the main tree or an Agent worktree.
+fh counts a branch as merged when the default branch has its work in any of these forms:
+
+- the same commits, for example after a fast-forward or a merge commit;
+- copies of each commit, as GitHub's **Rebase and merge** leaves them;
+- one commit with all of the branch's changes, as GitHub's **Squash and merge** leaves it.
+
+When the button doesn't work, it's greyed out and its tooltip says why. Click it to see the reason as text.
+
+Before removing, fh asks you to confirm. The question says whether the branch is merged or has no commits of its own. It also lists the ignored files at the top of the Worktree, such as `.env` or `node_modules`, because `git worktree remove` deletes them with the folder.
+
+fh never removes a Worktree on its own, and never removes the main tree or an Agent worktree.
 
 ### Sessions
 

@@ -2,7 +2,7 @@ package app
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -14,10 +14,17 @@ import (
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
 
+type worktreeDeps struct {
+	projects *project.Registry
+	sessions *session.Manager
+	state    *state.Store
+	log      *slog.Logger
+}
+
 // registerWorktreeRoutes adds Remove Worktree. fh only removes a Worktree
 // when the user asks and confirms; nothing calls this on its own (#1,
 // stories 20 and 21).
-func registerWorktreeRoutes(srv *server.Server, reg *project.Registry, sessions *session.Manager, st *state.Store, log *slog.Logger) {
+func registerWorktreeRoutes(srv *server.Server, d worktreeDeps) {
 	srv.Handle("POST /api/worktrees/remove", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Project string `json:"project"`
@@ -28,64 +35,78 @@ func registerWorktreeRoutes(srv *server.Server, reg *project.Registry, sessions 
 			server.WriteError(w, http.StatusBadRequest, `send {"project": "…", "path": "…", "confirm": true}`)
 			return
 		}
-		// The last refresh may be 10 s old; decide on what git says now.
-		reg.Refresh()
-		p, ok := reg.Get(req.Project)
-		if !ok {
-			server.WriteError(w, http.StatusBadRequest, "no Project at "+req.Project)
-			return
-		}
-		i := slices.IndexFunc(p.Worktrees, func(wt worktree.Worktree) bool { return wt.Path == req.Path })
-		if i < 0 {
-			server.WriteError(w, http.StatusBadRequest, req.Path+" is not a Worktree of "+p.Name)
-			return
-		}
-		if status, reason := removeRefusal(p.Worktrees[i], sessions.List()); reason != "" {
+		wt, status, reason := d.find(req.Project, req.Path)
+		if reason != "" {
 			server.WriteError(w, status, reason)
 			return
 		}
-		if !req.Confirm {
-			server.WriteError(w, http.StatusConflict, "confirm to remove the Worktree")
+		if wt.Main || wt.Agent {
+			server.WriteError(w, http.StatusBadRequest, wt.Removal)
 			return
 		}
-		if err := worktree.Remove(p.Path, req.Path); err != nil {
+		// From here until the removal is done no Session can start in the
+		// Worktree, and none is linked to it.
+		release, err := d.sessions.ReserveRemoval(req.Path)
+		if errors.Is(err, session.ErrLinked) || errors.Is(err, session.ErrRemoving) {
+			server.WriteError(w, http.StatusConflict, err.Error())
+			return
+		} else if err != nil {
+			server.WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		defer release()
+		// The last refresh may be 10 s old; decide on what git says now.
+		d.projects.Refresh()
+		if wt, status, reason = d.find(req.Project, req.Path); reason != "" {
+			server.WriteError(w, status, reason)
+			return
+		}
+		if wt.Removal != "" {
+			server.WriteError(w, http.StatusConflict, wt.Removal)
+			return
+		}
+		if !req.Confirm {
+			d.askToConfirm(w, req.Path)
+			return
+		}
+		if err := worktree.Remove(req.Project, req.Path); err != nil {
 			server.WriteError(w, http.StatusConflict, err.Error())
 			return
 		}
-		if err := st.RemoveWorktree(req.Path); err != nil {
-			log.Info("forget removed worktree", "path", req.Path, "err", err)
+		if err := d.state.RemoveWorktree(req.Path); err != nil {
+			d.log.Warn("forget removed worktree", "path", req.Path, "err", err)
 		}
-		log.Info("worktree removed", "path", req.Path)
-		reg.Refresh()
+		d.log.Info("worktree removed", "path", req.Path)
+		d.projects.Refresh()
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
 
-// removeRefusal says why fh won't offer to remove wt, with the status to
-// answer, or "" when it may. web/src/Projects.tsx shows the same reasons.
-func removeRefusal(wt worktree.Worktree, sessions []session.Summary) (int, string) {
-	switch {
-	case wt.Main:
-		return http.StatusBadRequest, "the main tree is the Project itself; fh never removes it"
-	case wt.Agent:
-		return http.StatusBadRequest, "fh never removes an Agent worktree"
-	case wt.Missing:
-		return http.StatusConflict, "the Worktree's folder is gone"
-	case wt.Uncommitted > 0:
-		return http.StatusConflict, fmt.Sprintf("it has %d uncommitted %s", wt.Uncommitted, plural(wt.Uncommitted, "file", "files"))
-	case wt.Base == "":
-		return http.StatusConflict, "no main branch to check the merge against"
-	case !wt.Merged:
-		return http.StatusConflict, "its branch isn't merged into " + wt.Base
-	case slices.ContainsFunc(sessions, func(s session.Summary) bool { return s.Worktree == wt.Path }):
-		return http.StatusConflict, "a Session is linked to it; close the Session first"
+// find looks up the Worktree at path in project, or says why it can't.
+func (d worktreeDeps) find(projectPath, path string) (worktree.Worktree, int, string) {
+	p, ok := d.projects.Get(projectPath)
+	if !ok {
+		return worktree.Worktree{}, http.StatusNotFound, "no Project at " + projectPath
 	}
-	return 0, ""
+	i := slices.IndexFunc(p.Worktrees, func(wt worktree.Worktree) bool { return wt.Path == path })
+	if i < 0 {
+		return worktree.Worktree{}, http.StatusBadRequest, path + " is not a Worktree of " + p.Name
+	}
+	return p.Worktrees[i], 0, ""
 }
 
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
+// askToConfirm answers an unconfirmed removal with what it would delete
+// that git doesn't track: `git worktree remove` takes ignored files such as
+// .env or node_modules with the folder, and the confirmation names them.
+func (d worktreeDeps) askToConfirm(w http.ResponseWriter, path string) {
+	ignored, err := worktree.Ignored(path)
+	if err != nil {
+		server.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	return many
+	server.WriteJSON(w, http.StatusConflict, map[string]any{
+		"error":   "confirm to remove the Worktree",
+		"confirm": true,
+		"ignored": append([]string{}, ignored...), // [] rather than null
+	})
 }

@@ -189,7 +189,7 @@ func writeSessionError(w http.ResponseWriter, err error) {
 		server.WriteError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
 		errors.Is(err, session.ErrAnswered), errors.Is(err, session.ErrConfirm), errors.Is(err, session.ErrNoReopen),
-		errors.Is(err, session.ErrNotExited):
+		errors.Is(err, session.ErrNotExited), errors.Is(err, session.ErrRemoving), errors.Is(err, session.ErrFolderGone):
 		server.WriteError(w, http.StatusConflict, err.Error())
 	default:
 		server.WriteError(w, http.StatusInternalServerError, err.Error())
