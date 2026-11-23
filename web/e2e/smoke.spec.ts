@@ -1,4 +1,4 @@
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Fh, runFh } from "./fh";
@@ -509,6 +509,100 @@ test("Grill new idea starts a named Session, and its Spec links in one click", a
     await expect(page.getByRole("region", { name: "Feature Dark mode" })).toContainText(
       'from Idea "Dark mode"',
     );
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// startSession adds a repo as a Project and starts a Session in its main
+// tree with prompt, returning the Session's conversation region.
+async function startSession(page: Page, fh: Fh, prompt: string): Promise<Locator> {
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+  await page.getByRole("button", { name: "+ New Session" }).click();
+  const form = page.getByRole("form", { name: "New Session" });
+  await form.getByRole("radio", { name: /main/ }).check();
+  await form.getByLabel("Starting prompt (optional)").fill(prompt);
+  await form.getByRole("button", { name: "Start Session" }).click();
+  return page.getByRole("region", { name: /^Session / });
+}
+
+test("a streamed Agent reply renders as Markdown while it arrives; the user's text stays as typed", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        { say: "## Plan\n\n| step | done |\n|---" },
+        { say: "|---|\n| build | yes |\n\n- [x] tests\n- run `make`\n\n" },
+        { sleepMs: 1500 },
+        { say: "```go\nfunc main() {" }, // the fence never closes
+      ],
+    },
+  });
+  try {
+    const typed = "/plan **not bold**\n- not a list";
+    const conversation = await startSession(page, fh, typed);
+    const reply = conversation.locator(".msg.agent");
+
+    // Before the last chunk: the table is already a table.
+    await expect(reply.getByRole("heading", { name: "Plan" })).toBeVisible();
+    await expect(reply.getByRole("cell", { name: "build" })).toBeVisible();
+    await expect(reply.getByRole("checkbox")).toBeChecked();
+    await expect(reply.locator("code", { hasText: "make" })).toBeVisible();
+    await expect(reply.locator("pre")).toHaveCount(0);
+
+    await expect(reply.locator("pre code")).toHaveText("func main() {");
+    await expect(reply).not.toContainText("```");
+
+    const mine = conversation.locator(".msg.user");
+    expect(await mine.evaluate((el) => (el as HTMLElement).innerText)).toBe(typed);
+    await expect(mine.locator("*")).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("an Agent reply can't run script or load images, and only http(s) links are links", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        {
+          say:
+            "<script>window.pwned = 1</script>\n\n" +
+            '<img src="x" onerror="window.pwned = 2">\n\n' +
+            "[bad](javascript:window.pwned=3) [local](file:///etc/passwd) [docs](https://example.com/a)\n\n" +
+            "![chart](https://example.com/c.png) ![pic](javascript:window.pwned=4)",
+        },
+      ],
+    },
+  });
+  try {
+    const conversation = await startSession(page, fh, "hi");
+    const reply = conversation.locator(".msg.agent");
+    await expect(reply.getByText("docs")).toBeVisible();
+
+    await reply.getByText("bad").click();
+    await expect(reply).toContainText("<script>window.pwned = 1</script>"); // shown, not run
+    await expect(reply.locator("script, img")).toHaveCount(0);
+    expect(await page.evaluate(() => "pwned" in window)).toBe(false);
+    // An image would make the page fetch its URL unasked: it's a link instead.
+    const chart = reply.getByRole("link", { name: "chart" });
+    await expect(chart).toHaveAttribute("href", "https://example.com/c.png");
+    await expect(reply.getByText("pic")).toBeVisible();
+    await expect(reply.getByRole("link")).toHaveCount(2);
+    await expect(reply.getByText("local")).toBeVisible();
+    const docs = reply.getByRole("link", { name: "docs" });
+    await expect(docs).toHaveAttribute("href", "https://example.com/a");
+    await expect(docs).toHaveAttribute("target", "_blank");
+    await expect(docs).toHaveAttribute("rel", "noopener");
   } finally {
     await fh.dispose();
   }
