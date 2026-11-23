@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
+import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
 import { AgentMarkdown } from "./Markdown";
 import { byListOrder, projectName, tabID } from "./events";
@@ -761,7 +762,14 @@ function basename(path: string): string {
 // ToolCard is collapsed by default, so following the Agent isn't noisy. A
 // failed call opens itself, to show why; an edit's summary shows +N −M.
 function ToolCard({ tool, session }: { tool: Tool; session: string }) {
-  const output = [tool.content, tool.rawOutput].filter(Boolean).join("\n");
+  // A read's text is the file, highlighted by its extension; a failed read's
+  // text is an error message.
+  const lang =
+    tool.kind === "read" && tool.status !== "failed" ? languageOfPath(tool.paths?.[0]) : undefined;
+  const readText = lang && tool.content ? unfence(tool.content) : undefined;
+  const output = [readText === undefined && tool.content, tool.rawOutput]
+    .filter(Boolean)
+    .join("\n");
   const diffs = tool.diffs ?? [];
   return (
     <details className="toolcard" open={tool.status === "failed" || undefined}>
@@ -771,9 +779,18 @@ function ToolCard({ tool, session }: { tool: Tool; session: string }) {
         {diffs.length > 0 && <ChangeCounts files={diffs} />}
         <span className={`status ${tool.status}`}>{tool.status.replace("_", " ")}</span>
       </summary>
+      {lang && readText !== undefined && (
+        <pre>
+          <code className={`language-${lang}`}>
+            <Highlighted language={lang} text={readText} />
+          </code>
+        </pre>
+      )}
       {output && <pre>{output}</pre>}
       {diffs.length > 0 && <Diffs files={diffs} session={session} item={tool.id} />}
-      {!output && diffs.length === 0 && <p className="empty">No output yet.</p>}
+      {readText === undefined && !output && diffs.length === 0 && (
+        <p className="empty">No output yet.</p>
+      )}
     </details>
   );
 }

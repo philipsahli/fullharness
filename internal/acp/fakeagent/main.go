@@ -69,7 +69,7 @@ type toolAction struct {
 	Text      string `json:"text,omitempty"`      // text content
 	RawOutput string `json:"rawOutput,omitempty"` // raw output, as a JSON string
 	Command   string `json:"command,omitempty"`   // permission: rawInput.command
-	Path      string `json:"path,omitempty"`      // permission: a location
+	Path      string `json:"path,omitempty"`      // the tool call's location (tool, toolUpdate, permission)
 	Always    bool   `json:"always,omitempty"`    // permission: also offer allow_always
 	DiffNew   string `json:"diffNew,omitempty"`   // a diff of Path to this text
 	DiffOld   string `json:"diffOld,omitempty"`   // from this text; none means a new file
@@ -299,6 +299,9 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			if t.RawOutput != "" {
 				opts = append(opts, acp.WithStartRawOutput(t.RawOutput))
 			}
+			if t.Path != "" {
+				opts = append(opts, acp.WithStartLocations([]acp.ToolCallLocation{{Path: t.Path}}))
+			}
 			err = update(acp.StartToolCall(acp.ToolCallId(t.ID), t.Title, opts...))
 		case s.ToolUpdate != nil:
 			t := s.ToolUpdate
@@ -314,6 +317,9 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			}
 			if t.RawOutput != "" {
 				opts = append(opts, acp.WithUpdateRawOutput(t.RawOutput))
+			}
+			if t.Path != "" {
+				opts = append(opts, acp.WithUpdateLocations([]acp.ToolCallLocation{{Path: t.Path}}))
 			}
 			err = update(acp.UpdateToolCall(acp.ToolCallId(t.ID), opts...))
 		case s.Permission != nil:

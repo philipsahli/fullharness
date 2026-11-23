@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Highlighted, languageOf } from "./Code";
 
 // AgentMarkdown renders an Agent message as Markdown (GFM). Raw HTML in the
 // text shows as text, never as markup. While a message streams, text changes
@@ -20,6 +21,20 @@ const Rendered = memo(function Rendered({ text }: { text: string }) {
 });
 
 const components: Components = {
+  // A fence's info string becomes class language-<info>; inline code has
+  // none. A language fh doesn't bundle stays plain.
+  code: ({ className, children }) => {
+    const lang = languageOf(/\blanguage-(\S+)/.exec(className ?? "")?.[1]);
+    return (
+      <code className={className}>
+        {lang && typeof children === "string" ? (
+          <Highlighted language={lang} text={children} />
+        ) : (
+          children
+        )}
+      </code>
+    );
+  },
   // Only http(s) links are links, and they open in a new tab. Anything else
   // (javascript:, file:, relative paths fh can't resolve) is plain text.
   a: ({ href, children }) =>

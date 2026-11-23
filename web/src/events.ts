@@ -103,6 +103,7 @@ export type Tool = {
   content?: string; // text content; diffs are in diffs
   diffs?: DiffFile[];
   rawOutput?: string;
+  paths?: string[]; // the files it touches
 };
 
 // PermissionRequest matches internal/session.Request: one permission
