@@ -1,9 +1,11 @@
 package app_test
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +57,40 @@ func TestGrillNewIdeaStartsANamedSessionInItsOwnWorktree(t *testing.T) {
 	}
 }
 
+func TestAnIdeaSessionStartsWithTheAgentsGrillSkill(t *testing.T) {
+	f := startFhWithAgents(t, map[string]script{
+		"claude":  {"onStart": []any{commands("mattpocock-skills:grill-with-docs")}},
+		"copilot": {"onStart": []any{commands("grill-me")}},
+	}, nil)
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+	// Starting any Session of an Agent tells fh its slash commands.
+	for _, agentID := range []string{"claude", "copilot"} {
+		id := f.startSession(c, map[string]any{"project": repo, "branch": "warmup-" + agentID, "agent": agentID})
+		waitState(t, tab, id, "idle")
+	}
+
+	for name, prompt := range map[string]string{
+		"Dark mode": "",
+		"Search":    "for the docs site",
+		"Export":    "/mattpocock-skills:grill-with-docs about CSV",
+	} {
+		id := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": name, "prompt": prompt})
+		waitEnded(t, tab, id)
+		want := strings.TrimSpace("/mattpocock-skills:grill-with-docs " + strings.TrimPrefix(prompt, "/mattpocock-skills:grill-with-docs "))
+		if items := f.transcript(c, id); len(items) == 0 || items[0]["text"] != want {
+			t.Errorf("Idea %s with prompt %q: transcript %v, want it to start with %q", name, prompt, items, want)
+		}
+	}
+
+	status, body := f.post(c, "/api/sessions", map[string]any{"project": repo, "agent": "copilot", "idea": "Sync"})
+	if status != http.StatusBadRequest || !strings.Contains(fmt.Sprint(body["error"]), "/grill-with-docs") {
+		t.Errorf("Idea with an Agent without the skill: status %d (%v), want 400 naming /grill-with-docs", status, body)
+	}
+}
+
 func TestASpecThatAppearsIsSuggestedAndLinkedInOneClick(t *testing.T) {
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{{Number: 1, Title: "Spec: Login", State: "OPEN", Labels: ready}}, nil, true)
@@ -64,7 +100,7 @@ func TestASpecThatAppearsIsSuggestedAndLinkedInOneClick(t *testing.T) {
 	tab := f.connectTab(c)
 
 	id := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": "Dark mode"})
-	waitState(t, tab, id, "idle")
+	waitEnded(t, tab, id)
 	if got := asJSON(ideaByName(t, f.board(c, repo), "Dark mode")["suggest"]); got != "[]" {
 		t.Errorf("suggest before /to-spec = %s, want none: Spec #1 was there before the Idea", got)
 	}
@@ -118,7 +154,7 @@ func TestAnIdeaStartedWhileTheTrackerCantBeReadLearnsItsSpecsLater(t *testing.T)
 	tab := f.connectTab(c)
 
 	id := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": "Dark mode"})
-	waitState(t, tab, id, "idle")
+	waitEnded(t, tab, id)
 
 	// Logged in again: Spec #1 was there all along, so it's no suggestion.
 	fakeGh(t, []ghIssue{{Number: 1, Title: "Spec: Login", State: "OPEN", Labels: ready}}, nil, true)
@@ -150,9 +186,9 @@ func TestASpecLinkedToOneIdeaIsNotSuggestedToAnother(t *testing.T) {
 	f.addProject(c, repo)
 	tab := f.connectTab(c)
 	dark := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": "Dark mode"})
-	waitState(t, tab, dark, "idle")
+	waitEnded(t, tab, dark)
 	search := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": "Search"})
-	waitState(t, tab, search, "idle")
+	waitEnded(t, tab, search)
 
 	scratch(t, repo, "dark-mode/spec.md", "# Dark mode\n")
 	b := f.board(c, repo)
@@ -200,7 +236,7 @@ func TestIdeaRequestsFhRefuses(t *testing.T) {
 		t.Errorf("link a Session that's no Idea: status %d (%v), want 409", status, body)
 	}
 	idea := f.startSession(c, map[string]any{"project": repo, "agent": "claude", "idea": "Dark mode"})
-	waitState(t, tab, idea, "idle")
+	waitEnded(t, tab, idea)
 	if status, body := f.post(c, "/api/sessions/"+idea+"/link-spec", map[string]any{}); status != http.StatusBadRequest {
 		t.Errorf("link without a Spec: status %d (%v), want 400", status, body)
 	}
