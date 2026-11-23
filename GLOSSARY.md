@@ -26,6 +26,10 @@ _Avoid_: chat, run, terminal, instance
 A Session that another Session's Agent asked fullharness to start, and the user approved. The Session that asked is its **Parent Session**. A Child Session runs in its own new Worktree of the same Project and belongs to its Parent's Feature unless the user changes it.
 _Avoid_: subagent (that runs inside one Session), spawned session, sub-session
 
+**Loose Session**:
+A Session that belongs to no Feature, because it was started outside the Software factory. The user can attach it to a Feature or turn it into a new Idea; until then it stays Loose.
+_Avoid_: orphan, ad-hoc session, scratch session
+
 **Inbox**:
 The single list of everything waiting for the user's answer across all Sessions: permission requests and requests to start a Child Session.
 _Avoid_: queue, notifications, approvals
@@ -61,11 +65,11 @@ One piece of work moving through the Software factory, from Idea to Shipped; mat
 _Avoid_: effort (that is wayfinder's term), initiative, work item, epic
 
 **Idea**:
-The first Stage of a Feature, and a Feature at that Stage. Until it has a Spec, an Idea is the named Session that Grill new idea started; fh, not the Issue tracker, keeps it. Linking the Spec its grilling wrote moves the Feature on to Spec.
-_Avoid_: draft, proposal; and never call the Session itself the Idea once it has a Spec
+The first Stage of a Feature, and a Feature at that Stage. An Idea is an issue in the Issue tracker, whether or not anyone has grilled it yet. It outlives any Session that grills it. Linking the Spec its grilling wrote moves the Feature on to Spec.
+_Avoid_: draft, proposal; and never call a grilling Session the Idea
 
 **Stage**:
-Where a Feature is in the Software factory: Idea, Spec, Tickets, Implementing, Review or Shipped. A Feature is at the earliest Stage of its open Tickets, and Shipped once its Spec is closed.
+Where a Feature is in the Software factory: Idea, Spec, Tickets, Implementing, Review or Shipped. A Feature is at the earliest Stage of its open Tickets, and Shipped once its Spec is closed. With every Ticket closed but the Spec still open, it is at Review. A closed Spec means Shipped even if a Ticket is still open; that is a mistake to show, not a different Stage.
 _Avoid_: status, phase, column
 
 **Ticket**:

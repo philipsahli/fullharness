@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: three-pane app shell — rail (switch), main (Session / Factory / Inbox), detail (Worktree). Stacks to one column on phones. */
+/* Layout: three-pane app shell: rail (Features with their Sessions, Loose Sessions, Projects), main (Software factory board / Feature page / Session / Roadmap / Inbox), detail (Worktree, only beside a Session). Stacks to one column on phones. */
 :root {
   --bg: #f3f5f4;
   --surface: #ffffff;
@@ -255,28 +255,120 @@ tr:last-child td { border-bottom: 0; }
   .ibox { grid-template-columns: minmax(0,1fr); }
   .roadmap { grid-template-columns: minmax(0,1fr); }
 }
+
+/* factory-first additions: rail grouped by Feature, Feature page, PR/CI chain, Markdown, diffs, UX states */
+.rgroup { display: grid; gap: 2px; margin-bottom: 6px; }
+.rfeat { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 7px; padding: 5px 8px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-weight: 600; font-size: 13px; }
+.rfeat:hover { background: var(--sunken); }
+.rfeat[aria-current="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.rfeat small { font-weight: 500; color: var(--muted); font-size: 11px; }
+.slist .srow { padding-left: 18px; }
+.slist.loose .srow { padding-left: 8px; }
+.srow.child { padding-left: 34px; }
+.dot.starting { background: transparent; border: 2px dashed var(--working); }
+.state.starting { color: var(--working); box-shadow: inset 0 0 0 1px var(--working-soft); }
+.banner { display: flex; gap: 10px; align-items: center; padding: 7px 14px; font-size: 13px; background: var(--waiting-soft); color: var(--waiting); border-bottom: 1px solid var(--line); }
+.banner .btn { margin-left: auto; }
+.demo { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font: inherit; font-size: 12px; padding: 2px 6px; }
+
+/* Feature page */
+.fpage { display: grid; gap: 16px; padding: 16px 18px 24px; }
+.fphead { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.fphead h2 { font-family: var(--f-display); font-size: 21px; letter-spacing: -.01em; }
+.fphead .acts { margin-left: auto; }
+.ext { color: var(--accent); text-decoration: none; font-family: var(--f-mono); font-size: 12.5px; }
+.ext:hover { text-decoration: underline; }
+.stepper { display: flex; list-style: none; margin: 0; padding: 0; gap: 4px; flex-wrap: wrap; }
+.stepper li { flex: 1 1 110px; font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); display: grid; gap: 1px; }
+.stepper li small { font-family: var(--f-mono); font-size: 10.5px; }
+.stepper li.done { color: var(--good); }
+.stepper li.cur { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.card > h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; align-items: center; background: var(--bg); }
+.card > h3 .btn { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--fg); }
+.ci { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.ci.pass { color: var(--good); } .ci.fail { color: var(--bad); } .ci.run { color: var(--working); } .ci.none { color: var(--muted); font-weight: 400; }
+.chain { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.chain a { color: var(--accent); }
+.callout { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; }
+.callout .acts { margin-left: auto; }
+.fups { list-style: none; margin: 0; padding: 6px 14px 12px; display: grid; gap: 8px; }
+.fups li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fups li span { flex: 1 1 240px; }
+
+/* Markdown + diffs */
+.md { max-width: 72ch; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 8px; }
+.md h1, .md h2, .md h3, .md h4 { font-family: var(--f-display); margin: 12px 0 6px; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3, .md h4 { font-size: 14px; }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 22px; }
+.md li { margin: 2px 0; }
+.md code { background: var(--sunken); padding: 1px 4px; border-radius: 4px; }
+.md pre { background: var(--term-bg); color: var(--term-fg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0 0 8px; }
+.md pre code { background: none; padding: 0; color: inherit; }
+.md pre .lang { display: block; font-family: var(--f-body); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; opacity: .6; margin-bottom: 4px; }
+.md .kw { color: #f2a541; } .md .str { color: #7dd3a8; } .md .cm { color: #8a9a94; font-style: italic; }
+.md table { min-width: 0; width: auto; margin: 0 0 8px; font-size: 13px; }
+.md th, .md td { padding: 4px 10px; border: 1px solid var(--line); }
+.md th { text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--fg); background: var(--bg); }
+.md a { color: var(--accent); }
+.md blockquote { margin: 0 0 8px; padding: 2px 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.diff { margin: 0; font-family: var(--f-mono); font-size: 12px; border-top: 1px solid var(--line); overflow-x: auto; }
+.diff div { padding: 0 12px; white-space: pre; }
+.diff .add { background: color-mix(in srgb, var(--good) 14%, transparent); }
+.diff .del { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.diff .hunk { color: var(--muted); background: var(--sunken); }
+.files button { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; text-align: left; }
+.files button:hover { color: var(--accent); }
+.files .diff { border: 1px solid var(--line); border-radius: 6px; margin: 4px 0 6px; }
+.usage { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mhead select { border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12.5px; background: var(--bg); color: var(--fg); }
+.notice { margin: 0; padding: 10px 14px; border-radius: 8px; background: var(--sunken); font-size: 13px; display: grid; gap: 6px; max-width: 72ch; }
+.notice pre { margin: 0; font-family: var(--f-mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+
+/* loading / error */
+.skel { background: linear-gradient(90deg, var(--sunken), var(--bg), var(--sunken)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 8px; height: 64px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+.errbox { margin: 18px; border: 1px solid var(--bad); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; max-width: 64ch; }
+.errbox strong { color: var(--bad); }
+.errbox pre { margin: 0; font-family: var(--f-mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+@media (max-width: 720px) { .fphead .acts { margin-left: 0; } }
+.app { grid-template-rows: auto auto 1fr; }
+/* .msg.agent shares the class name with the Agent tag (.agent); undo the tag's box styles. */
+.msg.agent { display: block; border: 0; padding: 0; border-radius: 0; font-size: inherit; font-weight: inherit; }
+td .btn .dot { display: inline-block; margin-right: 5px; }
+td .btn { white-space: nowrap; }
 </style>
 
-<p class="mock-note"><strong>fullharness (fh) — design mockup.</strong> <span>All Projects, Sessions and issues below are example data. Click Sessions, answer the permission requests, open the Software factory and Roadmap tabs (drag cards between Now, Next and Later), or press ⌘K / Ctrl+K.</span></p>
+<p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
+  <label>Show state <select class="demo" id="demo">
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option>
+  </select></label></p>
 
 <div class="app">
   <header class="top">
     <div class="brand"><b>fh</b><span>fullharness</span></div>
     <div class="tabs" role="tablist" aria-label="Views">
-      <button class="tab" role="tab" id="tab-sessions" data-view="sessions" aria-selected="true">Sessions</button>
-      <button class="tab" role="tab" id="tab-factory" data-view="factory" aria-selected="false">Software factory</button>
+      <button class="tab" role="tab" id="tab-factory" data-view="factory" aria-selected="true">Software factory</button>
       <button class="tab" role="tab" id="tab-roadmap" data-view="roadmap" aria-selected="false">Roadmap</button>
       <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count" id="inbox-count">2</span></button>
     </div>
-    <button class="jump" id="jump-btn" type="button">Jump to a Session… <kbd>⌘K</kbd></button>
+    <button class="jump" id="jump-btn" type="button">Jump to a Feature, Ticket or Session… <kbd>⌘K</kbd></button>
   </header>
+  <div id="banner"></div>
 
-  <div class="shell" id="shell" data-view="sessions">
-    <nav class="rail" aria-label="Sessions and Projects">
+  <div class="shell" id="shell" data-view="factory">
+    <nav class="rail" aria-label="Features, Sessions and Projects">
       <section>
-        <h3><span>Sessions</span><span id="sess-sum"></span></h3>
-        <button class="addp" type="button" data-new="1" style="width:calc(100% - 16px);margin-bottom:8px">+ New Session</button>
-        <ul class="slist" id="slist"></ul>
+        <h3><span>In progress</span><span id="sess-sum"></span></h3>
+        <div id="rfeats"></div>
+      </section>
+      <section>
+        <h3><span>Loose Sessions</span></h3>
+        <ul class="slist loose" id="loose"></ul>
+        <button class="addp" type="button" data-new="1" style="width:calc(100% - 16px);margin-top:6px">+ New Session</button>
       </section>
       <section>
         <h3><span>Projects</span></h3>
@@ -292,119 +384,159 @@ tr:last-child td { border-bottom: 0; }
 <div id="overlay"></div>
 
 <script>
+const L = (...lines) => lines.join("\n");
 const AGENTS = {
   claude:   { name: "Claude Code", color: "#c96442" },
   copilot:  { name: "Copilot CLI", color: "#6e56cf" },
   opencode: { name: "OpenCode",   color: "#0e8a7a" },
 };
-const STATE_ORDER = { waiting: 0, working: 1, idle: 2, exited: 3 };
-const STATE_LABEL = { waiting: "Waiting", working: "Working", idle: "Idle", exited: "Exited" };
+const STATE_ORDER = { waiting: 0, working: 1, starting: 2, idle: 3, exited: 4 };
+const STATE_LABEL = { waiting: "Waiting", working: "Working", starting: "Starting", idle: "Idle", exited: "Exited" };
 
 const projects = [
   { id: "fh", name: "fullharness", tracker: "GitHub", worktrees: [
     { path: "fullharness", branch: "main" },
     { path: "idea/acp-inbox", branch: "idea/acp-inbox" },
-    { path: "fh-12-pty-fallback", branch: "fh-12-pty-fallback" },
-    { path: "fh-14-worktree-list", branch: "fh-14-worktree-list" },
+    { path: "10-permission-card", branch: "10-permission-card" },
+    { path: "12-pty-fallback", branch: "12-pty-fallback" },
+    { path: "14-worktree-list", branch: "14-worktree-list" },
     { path: "impl-spec-7-t13", branch: "impl-spec-7-t13", agentWt: true },
     { path: "wt-porcelain-check", branch: "wt-porcelain-check" },
   ]},
   { id: "io", name: "inventory-operator", tracker: "GitHub", worktrees: [
     { path: "inventory-operator", branch: "main" },
-    { path: "fix-reconcile-loop", branch: "fix-reconcile-loop" },
+    { path: "flaky-reconcile", branch: "flaky-reconcile" },
   ]},
   { id: "hf", name: "heroflow", tracker: "Local markdown", worktrees: [
     { path: "heroflow", branch: "main" },
     { path: "idea/onboarding", branch: "idea/onboarding" },
+    { path: "41-template-picker", branch: "41-template-picker" },
   ]},
   { id: "bt", name: "backstage-templates", tracker: null, worktrees: [ { path: "backstage-templates", branch: "main" } ] },
 ];
 
+/* Every Session belongs to the Feature (fid) and, when started from one, the Ticket it works on. Sessions with no fid are Loose. */
 let sessions = [
-  { id: "s1", title: "Inbox for permission requests", project: "fh", wt: "idea/acp-inbox", agent: "claude", state: "waiting",
-    feature: "Inbox", stage: "Idea", acp: "sess_7f3a…c21", started: "41 min ago",
-    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0005-inbox-batching.md"],["M","internal/acp/client.go"]], pr: "none" },
+  { id: "s1", title: "Grill: Inbox for permission requests", project: "fh", wt: "idea/acp-inbox", agent: "claude", state: "waiting", fid: "f-inbox",
+    acp: "sess_7f3a…c21", started: "41 min ago", mode: "default", model: "Opus 5.5", usage: "31% context · $0.42",
+    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0009-inbox-batching.md"],["M","internal/acp/client.go"]], pr: null },
     perm: { id: "p1", kind: "Run command", cmd: "go test ./internal/acp/...", why: "Run the ACP client tests after the change to permission handling." },
     msgs: [
-      { r: "user", t: "/grill-with-docs The Inbox should batch permission requests across Sessions." },
-      { r: "agent", t: ["Read GLOSSARY.md and ADRs 0001–0004 first. 'Inbox' is already defined as the list of pending permission requests across all Sessions.", "Q1 — Should Allow in the Inbox also offer \"Allow for this Session\" (remember the rule), or only one-shot answers? ➡️ One-shot only for v1."] },
+      { r: "user", t: "/grill-with-docs Idea #31: the Inbox should batch permission requests across Sessions." },
+      { r: "agent", t: L("Read `GLOSSARY.md` and ADRs 0001–0008 first. **Inbox** is already defined as the list of pending requests across all Sessions.", "", "❓ **Q1 – Remembered rules?** Should Allow in the Inbox also offer *Allow for this Session*?", "", "➡️ One-shot answers only for now.") },
       { r: "user", t: "yes. also write the ADR and add a quick test for the request queue." },
-      { r: "tool", k: "Edit", d: "GLOSSARY.md", s: "ok", out: "+ **Inbox**: …one-shot answers only; no remembered rules in v1." },
-      { r: "tool", k: "Write", d: "docs/adr/0005-inbox-batching.md", s: "ok", out: "# Inbox answers are one-shot in v1\n…" },
-      { r: "tool", k: "Edit", d: "internal/acp/client.go", s: "ok", out: "@@ func (c *Client) onRequestPermission\n+ c.inbox.Push(req)" },
+      { r: "tool", k: "Edit", d: "GLOSSARY.md", s: "ok", diff: L("@@ ## Sessions", " **Inbox**:", "-The single list of everything waiting for the user's answer.", "+The single list of everything waiting for the user's answer.", "+Answers are one-shot: no remembered rules.") },
+      { r: "tool", k: "Edit", d: "internal/acp/client.go", s: "ok", diff: L("@@ func (c *Client) onRequestPermission", "-\treturn c.ask(req)", "+\tc.inbox.Push(req)", "+\treturn <-req.Answer") },
       { r: "perm" },
-      { r: "tool", k: "fh", d: "start_session(copilot, inbox-ui-sketch, \"Sketch the Inbox list…\")", s: "run", st: "pending approval", out: "id: req_51\nstatus: pending approval (waiting in your Inbox)" },
+      { r: "tool", k: "fh", d: "start_session(copilot, inbox-ui-sketch, \"Sketch the Inbox list…\")", s: "run", st: "Pending approval", out: "id: req_51\nstatus: pending approval (waiting in your Inbox)" },
     ] },
-  { id: "s3", title: "#14 List all git worktrees", project: "fh", wt: "fh-14-worktree-list", agent: "opencode", state: "waiting",
-    feature: "Worktree view", stage: "Implementing", ticket: { n: 14, title: "List every git worktree, mark Agent worktrees" }, acp: "ses_02be…91d", started: "12 min ago",
-    git: { ahead: 1, behind: 2, files: [["M","internal/worktree/list.go"],["A","internal/worktree/list_test.go"]], pr: "none" },
+  { id: "s3", title: "#14 List all git worktrees", project: "fh", wt: "14-worktree-list", agent: "opencode", state: "waiting", fid: "f-wt", ticket: 14,
+    acp: "ses_02be…91d", started: "12 min ago", mode: "build", model: "GPT-6", usage: "18% context",
+    git: { ahead: 1, behind: 2, files: [["M","internal/worktree/list.go"],["A","internal/worktree/list_test.go"]], pr: null },
     perm: { id: "p2", kind: "Edit file", cmd: "internal/worktree/list.go  (+38 −4)", why: "Parse `git worktree list --porcelain` and mark worktrees not created by fullharness." },
     msgs: [
       { r: "user", t: "/implement #14" },
-      { r: "agent", t: ["Ticket #14: list every git worktree of a Project; worktrees fullharness didn't create are Agent worktrees (read-only). Starting with a failing test."] },
+      { r: "agent", t: L("Ticket #14: list every git worktree of a Project. Worktrees fullharness didn't create are **Agent worktrees** (read-only).", "", "Plan:", "1. Write a failing test against a temp repo with 3 worktrees", "2. Parse `--porcelain` output", "3. Mark Agent worktrees") },
       { r: "tool", k: "Write", d: "internal/worktree/list_test.go", s: "ok", out: "func TestListMarksAgentWorktrees(t *testing.T) { … }" },
       { r: "tool", k: "Run", d: "go test ./internal/worktree/", s: "ok", out: "--- FAIL: TestListMarksAgentWorktrees (0.01s)\n    list_test.go:31: got 0 worktrees, want 3" },
       { r: "perm" },
     ] },
-  { id: "s6", parent: "s3", title: "Check porcelain output across git versions", project: "fh", wt: "wt-porcelain-check", agent: "claude", state: "idle",
-    feature: "Worktree view", stage: "Implementing", acp: "sess_44d0…a17", started: "9 min ago",
-    git: { ahead: 0, behind: 0, files: [], pr: "none" },
+  { id: "s6", parent: "s3", title: "Check porcelain output across git versions", project: "fh", wt: "wt-porcelain-check", agent: "claude", state: "idle", fid: "f-wt",
+    acp: "sess_44d0…a17", started: "9 min ago", mode: "default", model: "Sonnet 5.5", usage: "6% context · $0.03",
+    git: { ahead: 0, behind: 0, files: [], pr: null },
     msgs: [
       { r: "user", t: "Started by OpenCode (#14): Check whether `git worktree list --porcelain` output differs between git 2.39 and 2.54. Report differences only." },
-      { r: "tool", k: "Run", d: "git --version && git worktree list --porcelain", s: "ok", out: "git version 2.54.0\nworktree /Users/…/fullharness\nHEAD 35d72ae…\nbranch refs/heads/main" },
-      { r: "agent", t: ["No format differences that affect parsing: 2.54 adds a `locked` reason line, which the parser should skip if unknown."] },
+      { r: "agent", t: L("No differences that affect parsing.", "", "| git | Extra line | Parser |", "|---|---|---|", "| 2.39 | — | ok |", "| 2.54 | `locked <reason>` | skip unknown keys |") },
     ] },
-  { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "fh-12-pty-fallback", agent: "copilot", state: "working", view: "terminal",
-    feature: "ACP session view", stage: "Implementing", ticket: { n: 12, title: "Terminal fallback when an Agent can't speak ACP" }, acp: "— (terminal fallback)", started: "26 min ago",
-    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: "none" },
+  { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "12-pty-fallback", agent: "copilot", state: "working", view: "terminal", fid: "f-acp", ticket: 12,
+    acp: "— (terminal fallback)", started: "26 min ago",
+    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: null },
     msgs: [] },
-  { id: "s4", title: "Reconcile loop retries forever", project: "io", wt: "fix-reconcile-loop", agent: "claude", state: "idle",
-    feature: null, stage: null, acp: "sess_c019…e4a", started: "2 h ago",
-    git: { ahead: 2, behind: 0, files: [], pr: "#88 open" },
+  { id: "s10", title: "#10 Permission request card", project: "fh", wt: "10-permission-card", agent: "claude", state: "idle", fid: "f-acp", ticket: 10,
+    acp: "sess_19aa…f02", started: "3 h ago", mode: "default", model: "Opus 5.5", usage: "54% context · $1.87",
+    git: { ahead: 3, behind: 0, files: [], pr: { n: 21, ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
     msgs: [
-      { r: "user", t: "/diagnosing-bugs reconcile loop never backs off when the CRD is missing" },
-      { r: "tool", k: "Run", d: "go test ./controllers/ -run TestReconcileMissingCRD", s: "ok", out: "ok  	inventory-operator/controllers	0.42s" },
-      { r: "agent", t: ["Fixed: the controller now returns RequeueAfter with exponential backoff (5s → 5m) instead of an immediate requeue. Regression test added; PR #88 opened."] },
+      { r: "user", t: "/implement #10" },
+      { r: "tool", k: "Edit", d: "web/src/Sessions.tsx", s: "ok", diff: L("@@ function PermissionCard", "+  <div className=\"acts\">", "+    <button onClick={allow}>Allow</button>", "+    <button onClick={deny}>Deny</button>", "+  </div>") },
+      { r: "agent", t: L("Done. PR [#21](#) is open and `make check` passes locally.", "", "```go", "// Answer settles one pending request; a second answer is a no-op.", "func (m *Manager) Answer(id string, ok bool) error {", "\tif m.settled(id) {", "\t\treturn nil", "\t}", "\treturn m.send(id, ok)", "}", "```") },
     ] },
-  { id: "s5", title: "Onboarding flow idea", project: "hf", wt: "idea/onboarding", agent: "opencode", state: "exited",
-    feature: "Onboarding", stage: "Idea", acp: "ses_9d41…07b", started: "yesterday",
-    git: { ahead: 1, behind: 5, files: [["M","GLOSSARY.md"]], pr: "none" },
+  { id: "s7", title: "/to-tickets Spec #15", project: "fh", wt: "fullharness", agent: "claude", state: "starting", fid: "f-board",
+    acp: "—", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: "/to-tickets #15" }] },
+  { id: "s4", title: "Why does TestReconcile flake?", project: "io", wt: "flaky-reconcile", agent: "claude", state: "waiting", turnDone: true,
+    acp: "sess_c019…e4a", started: "2 h ago", mode: "plan", model: "Opus 5.5", usage: "22% context · $0.61",
+    git: { ahead: 0, behind: 0, files: [], pr: null },
     msgs: [
-      { r: "user", t: "/grill-with-docs first-run onboarding for heroflow" },
-      { r: "agent", t: ["Recorded 'Hero' and 'Flow' in GLOSSARY.md. Next round: does onboarding create a sample Flow, or start empty?"] },
+      { r: "user", t: "/diagnosing-bugs TestReconcileMissingCRD fails about 1 in 20 runs" },
+      { r: "tool", k: "Run", d: "go test ./controllers/ -run TestReconcileMissingCRD -count=200", s: "ok", out: "--- FAIL: TestReconcileMissingCRD (0.02s) ×9\nok  \tinventory-operator/controllers\t4.12s" },
+      { r: "agent", t: L("## Finding", "", "The test reads the requeue delay before the controller has written it. 9 of 200 runs fail.", "", "| Runs | Fails | With `-race` |", "|---:|---:|---|", "| 200 | 9 | data race in `backoff.Next` |", "", "### Fix options", "- Wait on the `Requeued` event instead of sleeping", "- Guard `backoff.next` with the reconciler's mutex", "", "Which one should I do? This is not part of a Feature yet.") },
     ] },
+  { id: "s5", title: "Grill: Onboarding flow", project: "hf", wt: "idea/onboarding", agent: "opencode", state: "exited", exit: "fh quit", canReopen: true, fid: "f-hf1",
+    acp: "ses_9d41…07b", started: "yesterday", git: { ahead: 1, behind: 5, files: [["M","GLOSSARY.md"]], pr: null },
+    msgs: [
+      { r: "user", t: "/grill-with-docs Idea: first-run onboarding for heroflow" },
+      { r: "agent", t: "Recorded **Hero** and **Flow** in `GLOSSARY.md`. Next round: does onboarding create a sample Flow, or start empty?" },
+    ] },
+  { id: "s8", title: "#41 Template picker", project: "hf", wt: "41-template-picker", agent: "copilot", state: "exited", exit: "Agent crashed", canReopen: false, fid: "f-hf2", ticket: 41,
+    acp: "ses_31c0…be2", started: "1 h ago", git: { ahead: 2, behind: 0, files: [["M","src/templates/picker.ts"]], pr: null },
+    stderr: ["Error: session/load not supported by this Copilot CLI version", "    at AcpServer.load (dist/acp.js:212:11)"],
+    msgs: [{ r: "user", t: "/implement #41" }, { r: "agent", t: "Added the picker component; tests next." }] },
 ];
+
+const SPEC_ACP = L("## Problem", "Agents that speak ACP show up as raw terminals. You can't answer a permission request without reading TUI output.", "",
+  "## Solution", "Render each Session as a conversation: messages, tool calls as cards, and permission requests you answer with **Allow** or **Deny**.", "",
+  "## User stories", "1. As a developer, I see each tool call as a card I can expand", "2. As a developer, I answer a permission request without switching windows", "", "## Out of scope", "- Remembered permission rules (see ADR 0009)");
+const SPEC_BOARD = L("## Problem", "Features move through the Software factory, but their Stage is only visible by reading issues.", "",
+  "## Solution", "A board with one column per Stage, derived from the Issue tracker on every read.", "", "## Testing decisions", "_Empty: needs a decision before /to-tickets._");
 
 const factory = {
   fh: [
-    { id: "f-inbox", name: "Inbox", stage: "Idea", ref: "Session · idea/acp-inbox", next: "Write spec", skill: "/to-spec" },
-    { id: "f-board", name: "Software factory board", stage: "Spec", ref: "Spec #15", next: "Make tickets", skill: "/to-tickets" },
-    { id: "f-acp", name: "ACP session view", stage: "Tickets", ref: "Spec #7 · 6 Tickets", next: "Implement spec", skill: "/implement-spec",
-      bd: { shipped: 2, review: 1, implementing: 1, todo: 2 },
+    { id: "f-diff", name: "Worktree panel with diffs", stage: "Idea", ref: "Idea #45", trackerIdea: true, next: "Grill", skill: "/grill-with-docs",
+      body: L("Show changed files and diffs next to the conversation, so you can review an Agent's work without a terminal.", "", "_Filed from the Retro of Release pipeline._") },
+    { id: "f-inbox", name: "Inbox for permission requests", stage: "Idea", ref: "Idea #31", trackerIdea: true, next: "Open grilling Session", skill: "",
+      body: "Batch permission requests across Sessions into one list.", suggest: "Spec #32 appeared after this grilling started" },
+    { id: "f-board", name: "Software factory board", stage: "Spec", ref: "Spec #15", next: "Make tickets", skill: "/to-tickets", spec: SPEC_BOARD },
+    { id: "f-acp", name: "ACP session view", stage: "Tickets", ref: "Spec #7", next: "Implement spec", skill: "/implement-spec", spec: SPEC_ACP,
       tickets: [
-        { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", note: "PR #16 merged" },
-        { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", note: "PR #18 merged" },
-        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", note: "PR #21 open" },
-        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", note: "Session · Copilot CLI", sid: "s2" },
-        { n: 11, t: "Reopen a Session via session/load", stage: "Startable", note: "no open blockers" },
-        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Blocked", note: "blocked by #11", label: "needs-info" },
+        { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
+        { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
+        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
+        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", sid: "s2" },
+        { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
+        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", note: "blocked by #11" },
       ] },
-    { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3 · 3 Tickets", next: "Open Session", skill: "",
-      bd: { shipped: 2, implementing: 1 } },
-    { id: "f-clean", name: "Worktree removal offer", stage: "Review", ref: "Spec #4 · PR #20", next: "Open PR", skill: "" ,
-      bd: { review: 2 } },
-    { id: "f-rel", name: "Release pipeline", stage: "Shipped", ref: "Spec #1 · closed", next: "Retro", skill: "/retro", bd: { shipped: 4 } },
+    { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3", next: "Open Session", skill: "",
+      tickets: [
+        { n: 5, t: "Show Worktrees under each Project", stage: "Shipped", pr: { n: 9, state: "merged" } },
+        { n: 6, t: "Ahead/behind against the base branch", stage: "Shipped", pr: { n: 11, state: "merged" } },
+        { n: 14, t: "List every git worktree, mark Agent worktrees", stage: "Implementing", sid: "s3" },
+      ] },
+    { id: "f-clean", name: "Worktree removal offer", stage: "Review", ref: "Spec #4", next: "Review all", skill: "/code-review",
+      tickets: [
+        { n: 19, t: "Offer Remove once the branch is merged", stage: "Review", pr: { n: 20, state: "open", ci: "fail", checks: "e2e (macos) failed", review: "No review" } },
+        { n: 22, t: "List ignored files before removing", stage: "Shipped", pr: { n: 23, state: "merged" } },
+      ] },
+    { id: "f-rel", name: "Release pipeline", stage: "Shipped", ref: "Spec #1", next: "Retro", skill: "/retro", retroDone: true,
+      tickets: [ { n: 2, t: "goreleaser config", stage: "Shipped", pr: { n: 3, state: "merged" } }, { n: 4, t: "Homebrew tap", stage: "Shipped", pr: { n: 6, state: "merged" } } ],
+      followups: [
+        { t: "Worktree panel with diffs: reviewing PRs meant leaving fh every time", filed: "Idea #45" },
+        { t: "Show CI checks on the board: three merges waited on a red macOS job nobody saw", filed: null },
+        { t: "fh never runs git fetch, so merged Worktrees look unmerged", filed: null },
+      ] },
   ],
   io: [
-    { id: "f-io1", name: "Backoff for missing CRDs", stage: "Review", ref: "Spec #87 · PR #88", next: "Open PR", skill: "", bd: { review: 1 } },
+    { id: "f-io1", name: "Backoff for missing CRDs", stage: "Review", ref: "Spec #87", next: "Close Spec", skill: "", allClosed: true,
+      tickets: [ { n: 89, t: "Requeue with exponential backoff", stage: "Shipped", pr: { n: 88, state: "merged" } } ] },
+    { id: "f-io3", name: "Cluster labels", stage: "Shipped", ref: "Spec #91", next: "Retro", skill: "/retro", closedEarly: 93, retroDone: true,
+      tickets: [ { n: 92, t: "Read labels from the cluster API", stage: "Shipped", pr: { n: 94, state: "merged" } }, { n: 93, t: "Filter inventory by label", stage: "Implementing", note: "Spec closed by `Closes #91` in PR #94" } ] },
     { id: "f-io2", name: "Multi-cluster inventory", stage: "Spec", ref: "Spec #90", next: "Make tickets", skill: "/to-tickets" },
   ],
   hf: [
-    { id: "f-hf1", name: "Onboarding", stage: "Idea", ref: "Session · idea/onboarding", next: "Write spec", skill: "/to-spec" },
-    { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/ · 4 issues", next: "Implement spec", skill: "/implement-spec", bd: { shipped: 1, todo: 3 } },
+    { id: "f-hf1", name: "Onboarding", stage: "Idea", ref: "ideas/onboarding.md", trackerIdea: true, next: "Open grilling Session", skill: "", body: "First-run onboarding: sample Flow or empty start?" },
+    { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/", next: "Implement spec", skill: "/implement-spec",
+      tickets: [ { n: 40, t: "Template file format", stage: "Shipped" }, { n: 41, t: "Template picker", stage: "Implementing", sid: "s8" }, { n: 42, t: "Preview a template", stage: "Startable" }, { n: 43, t: "Share a template", stage: "Startable" } ] },
   ],
 };
-/* Child Session requests made through fh's MCP tool start_session; always need approval in the Inbox. */
+/* Child Session requests made through fh's MCP tool start_session (ADR 0006); always need approval in the Inbox. */
 const spawns = [
   { id: "r1", parent: "s1", agent: "copilot", branch: "inbox-ui-sketch", prompt: "Sketch the Inbox list UI in the web app: one row per pending request, Allow and Deny on each.", answer: null },
 ];
@@ -418,13 +550,13 @@ const CHECKS = [
   "No file paths or code blocks (warning only)",
 ];
 const RD = {
-  "f-acp":   { checks: [1,1,1,1,0,1,"warn"], notes: { 4: "#13 is labelled needs-info", 6: "#12 has a code block (from prototype/acp-agents)" }, assess: "Stale", assessNote: "Assessment said Ready on Nov 19. Ticket #13 changed after that." },
-  "f-board": { checks: [1,0,1,1,1,0,1], notes: { 1: "no Tickets yet: run /to-tickets" }, assess: null },
+  "f-acp":   { checks: [1,1,1,1,0,1,"warn"], notes: { 4: "#13 is labelled needs-info", 6: "#12 has a code block" }, assess: "Stale", assessNote: "Assessment said Ready on Nov 19. Ticket #13 changed after that." },
+  "f-board": { checks: [0,0,1,1,1,0,1], notes: { 0: "Testing decisions is empty", 1: "no Tickets yet: run /to-tickets" }, assess: null },
   "f-wt":    { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 12)." },
   "f-clean": { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 15)." },
   "f-rel":   { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 2)." },
   "f-io1":   { checks: [1,1,1,1,1,1,1], assess: null },
-  "f-io2":   { checks: [0,0,1,1,1,0,1], notes: { 0: "Testing Decisions is empty" }, assess: null },
+  "f-io2":   { checks: [0,0,1,1,1,0,1], notes: { 0: "Testing decisions is empty" }, assess: null },
   "f-hf2":   { checks: [1,1,1,1,1,1,1], assess: "Ready", assessNote: "Assessment: Ready (Nov 20), appended to spec.md." },
 };
 const verdict = id => RD[id] ? (RD[id].checks.some(c => c === 0) ? "Not ready" : "Ready") : null;
@@ -434,67 +566,111 @@ function rdBadge(id) {
   const v = verdict(id), n = failing(id).length;
   return `<span class="badges"><span class="rdy ${v === "Ready" ? "ready" : "notready"}">${v}${n ? ` · ${n} failing` : ""}</span>${r.assess === "Stale" ? '<span class="rdy stale">Assessment stale</span>' : ""}</span>`;
 }
-/* Roadmap group lives on the Spec (roadmap:* label / Roadmap: line); order inside a group is fh-local. Shipped Features drop off. */
+/* Roadmap group lives on the Spec or Idea issue (roadmap:* label, ADR 0005/0008); order inside a group is fh-local. Shipped Features drop off. */
 const roadmap = {
   now:   [["fh","f-acp"],["fh","f-wt"],["fh","f-clean"],["io","f-io1"]],
-  next:  [["fh","f-board"],["hf","f-hf2"]],
+  next:  [["fh","f-board"],["hf","f-hf2"],["fh","f-diff"]],
   later: [["io","f-io2"],["fh","f-inbox"],["hf","f-hf1"]],
 };
 const STAGES = [["Idea","/grill-with-docs"],["Spec","/to-spec"],["Tickets","/to-tickets"],["Implementing","/implement"],["Review","/code-review"],["Shipped","/retro"]];
 const BD_COLORS = { shipped: "var(--good)", review: "var(--accent)", implementing: "var(--working)", todo: "var(--idle)" };
 
-const ui = { view: "sessions", current: "s1", factoryProject: "fh", feature: "f-acp", rmProject: "" };
+const ui = { view: "factory", current: "s1", factoryProject: "fh", feature: "f-acp", rmProject: "", demo: "", open: {} };
 const $ = (s, r = document) => r.querySelector(s);
 const proj = id => projects.find(p => p.id === id);
 const sess = id => sessions.find(s => s.id === id);
+const allFeats = () => Object.entries(factory).flatMap(([pid, fs]) => fs.map(f => ({ pid, f })));
+const feat = id => allFeats().find(x => x.f.id === id);
+const featSessions = fid => sessions.filter(s => s.fid === fid);
 const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
+const sorted = list => [...list].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
 
-function sorted() { return [...sessions].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]); }
+/* ---------- Markdown: headings, lists, tables, quotes, fenced code with highlighting, inline code/bold/italic/links. Raw HTML is escaped, never rendered. ---------- */
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function inline(s) {
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])_([^_]+)_/g, "$1<em>$2</em>").replace(/(^|[\s(])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+}
+function highlight(code) {
+  return esc(code).replace(/(\/\/[^\n]*|#[^\n]*)|("(?:[^"\\\n]|\\.)*")|\b(func|return|if|else|for|range|const|let|var|package|import|type|struct|nil)\b/g,
+    (m, c, s, k) => c ? `<span class="cm">${c}</span>` : s ? `<span class="str">${s}</span>` : `<span class="kw">${k}</span>`);
+}
+function md(src) {
+  const lines = String(src).split("\n"), out = [];
+  for (let i = 0; i < lines.length;) {
+    const l = lines[i];
+    if (/^```/.test(l)) { const lang = l.slice(3).trim(), buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++;
+      out.push(`<pre>${lang ? `<span class="lang">${esc(lang)}</span>` : ""}<code>${highlight(buf.join("\n"))}</code></pre>`); continue; }
+    if (/^\|/.test(l)) { const rows = []; while (i < lines.length && /^\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = r => r.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const body = rows.slice(2).map(r => `<tr>${cells(r).map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("");
+      out.push(`<table><thead><tr>${cells(rows[0]).map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`); continue; }
+    const h = l.match(/^(#{1,4}) (.*)/); if (h) { out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); i++; continue; }
+    if (/^[-*] /.test(l) || /^\d+\. /.test(l)) { const ol = /^\d/.test(l), items = [];
+      while (i < lines.length && (ol ? /^\d+\. /.test(lines[i]) : /^[-*] /.test(lines[i]))) items.push(lines[i++].replace(/^([-*]|\d+\.) /, ""));
+      out.push(`<${ol ? "ol" : "ul"}>${items.map(t => `<li>${inline(t)}</li>`).join("")}</${ol ? "ol" : "ul"}>`); continue; }
+    if (/^> /.test(l)) { const q = []; while (i < lines.length && /^> /.test(lines[i])) q.push(lines[i++].slice(2)); out.push(`<blockquote>${inline(q.join(" "))}</blockquote>`); continue; }
+    if (!l.trim()) { i++; continue; }
+    const p = []; while (i < lines.length && lines[i].trim() && !/^(```|\||#{1,4} |[-*] |\d+\. |> )/.test(lines[i])) p.push(lines[i++]);
+    out.push(`<p>${inline(p.join(" "))}</p>`);
+  }
+  return `<div class="md">${out.join("")}</div>`;
+}
+const diffView = d => `<div class="diff">${d.split("\n").map(l => `<div class="${l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : ""}">${esc(l) || " "}</div>`).join("")}</div>`;
 
+/* ---------- rail ---------- */
+function sRow(s, child) {
+  const cur = ui.view === "sessions" && ui.current === s.id;
+  return `<li><button class="srow${child ? " child" : ""}" data-sid="${s.id}" aria-current="${cur}">
+    <span class="dot ${s.state}"></span><span class="t">${esc(s.title)}</span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
+    <span class="s">${child ? `Child Session · ${AGENTS[s.agent].name}` : `${s.ticket ? `#${s.ticket} · ` : ""}${AGENTS[s.agent].name}`}</span></button></li>`;
+}
+const sTree = list => sorted(list.filter(s => !s.parent)).map(s => sRow(s) + sorted(sessions.filter(c => c.parent === s.id)).map(c => sRow(c, true)).join("")).join("");
 function renderRail() {
   const waiting = sessions.filter(s => s.state === "waiting").length;
-  $("#sess-sum").textContent = `${sessions.length} · ${waiting} waiting`;
-  const row = (s, child) => `
-    <li><button class="srow${child ? " child" : ""}" data-sid="${s.id}" aria-current="${ui.view === "sessions" && ui.current === s.id}">
-      <span class="dot ${s.state}"></span><span class="t">${s.title}</span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
-      <span class="s">${child ? `Child Session · ${AGENTS[s.agent].name}` : `${proj(s.project).name} · ${AGENTS[s.agent].name}`}</span>
-    </button></li>`;
-  $("#slist").innerHTML = sorted().filter(s => !s.parent).map(s => row(s) + sorted().filter(c => c.parent === s.id).map(c => row(c, true)).join("")).join("");
+  $("#sess-sum").textContent = `${sessions.length} Sessions · ${waiting} waiting`;
+  const fids = [...new Set(sorted(sessions).filter(s => s.fid).map(s => s.fid))];
+  $("#rfeats").innerHTML = fids.map(fid => { const { pid, f } = feat(fid);
+    return `<div class="rgroup"><button class="rfeat" data-feat="${fid}" aria-current="${ui.view === "feature" && ui.feature === fid}">${esc(f.name)}<small>${proj(pid).name} · ${f.stage}</small></button>
+      <ul class="slist">${sTree(featSessions(fid))}</ul></div>`; }).join("");
+  const loose = sessions.filter(s => !s.fid);
+  $("#loose").innerHTML = loose.length ? sTree(loose) : `<li class="hint" style="padding:0 8px">None. Sessions started outside a Feature land here.</li>`;
   $("#ptree").innerHTML = projects.map(p => `
     <li class="proj"><div>${p.name}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
         const s = sessions.find(x => x.project === p.id && x.wt === w.path);
-        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span>${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
+        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span title="${p.name}.worktrees/${w.path}">${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
       }).join("")}</ul></li>`).join("");
   const c = $("#inbox-count");
   const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length;
   c.textContent = pending; pending ? c.removeAttribute("data-zero") : c.setAttribute("data-zero", "");
 }
 
+/* ---------- Session view ---------- */
 function permCard(s) {
   const p = s.perm;
-  if (p.answer) return `<div class="resolved">${p.kind}: <code>${p.cmd}</code> — ${p.answer}</div>`;
+  if (p.answer) return `<div class="resolved">${p.kind}: <code>${esc(p.cmd)}</code> — ${p.answer}</div>`;
   return `<div class="perm" role="group" aria-label="Permission request">
     <div class="q">${AGENTS[s.agent].name} asks to ${p.kind.toLowerCase()}</div>
-    <code>${p.cmd}</code><div>${p.why}</div>
-    <div class="acts"><button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button></div>
+    <code>${esc(p.cmd)}</code>${md(p.why)}
+    <div class="acts"><button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-allow-always="${s.id}">Always allow</button><button class="btn" data-deny="${s.id}">Deny</button></div>
   </div>`;
 }
-
 function renderMsgs(s) {
+  if (s.state === "starting") return `<div class="skel" style="max-width:60ch"></div><p class="hint">Starting ${AGENTS[s.agent].name}… The first message is sent once it is ready.</p>`;
   if (!s.msgs.length) return `<p class="empty-note">No messages yet.</p>`;
   return s.msgs.map(m => {
-    if (m.r === "user") return `<div class="msg user">${m.t}</div>`;
-    if (m.r === "agent") return `<div class="msg agent"><div class="who">${AGENTS[s.agent].name}</div>${m.t.map(p => `<p>${p}</p>`).join("")}</div>`;
-    if (m.r === "tool") return `<details class="tool"><summary><span class="k">${m.k}</span><code>${m.d}</code><span class="${m.s === "ok" ? "ok" : "run"}">${m.st || (m.s === "ok" ? "done" : "running…")}</span></summary><pre>${m.out}</pre></details>`;
+    if (m.r === "user") return `<div class="msg user">${inline(m.t)}</div>`;
+    if (m.r === "agent") return `<div class="msg agent"><div class="who">${AGENTS[s.agent].name}</div>${md(m.t)}</div>`;
+    if (m.r === "tool") return `<details class="tool"${m.diff ? " open" : ""}><summary><span class="k">${m.k}</span><code>${esc(m.d)}</code><span class="${m.s === "ok" ? "ok" : "run"}">${m.st || (m.s === "ok" ? "Done" : "Running…")}</span></summary>${m.diff ? diffView(m.diff) : `<pre>${esc(m.out)}</pre>`}</details>`;
     if (m.r === "perm") return permCard(s);
     return "";
   }).join("");
 }
-
 const TERM = `╭──────────────────────────────────────────────────────────╮
 │ GitHub Copilot CLI 1.0.109                               │
-│ ~/work/fullharness.worktrees/fh-12-pty-fallback          │
+│ ~/work/fullharness.worktrees/12-pty-fallback             │
 ╰──────────────────────────────────────────────────────────╯
 
 > /implement #12
@@ -507,131 +683,162 @@ const TERM = `╭─────────────────────
 
 ● Wiring resize events from xterm.js to the PTY (TIOCSWINSZ)…
   ⠼ Thinking`;
-
-function renderMain() {
-  const main = $("#main"), detail = $("#detail");
-  if (ui.view === "sessions") {
-    const s = sess(ui.current), p = proj(s.project);
-    const v = s.view || "chat";
-    main.innerHTML = `
-      <div class="mhead">
-        <div style="display:grid;gap:2px;min-width:0">
-          <span class="crumb">${p.name} / ${s.wt}</span>
-          <h2>${s.title}</h2>
-        </div>
-        ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
-        <div class="seg" role="group" aria-label="Session view">
-          <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
-          <button type="button" data-viewmode="terminal" aria-pressed="${v === "terminal"}">Terminal</button>
-        </div>
+function composer(s) {
+  const a = AGENTS[s.agent].name;
+  if (s.state === "exited" && s.canReopen) return `<div class="composer"><span class="crumb" style="flex:1">Exited: ${s.exit}. ${a} supports session/load, so the history comes back.</span><button class="btn" data-closesess="${s.id}">Close Session</button><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`;
+  if (s.state === "exited") return `<div class="composer" style="display:grid;gap:8px;align-items:stretch">
+      <div class="notice"><strong>Exited: ${s.exit}. This Session can't be reopened.</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
+      <span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span></div>
+      <div class="acts" style="justify-content:flex-end">${s.ticket ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
+  if (s.state === "starting") return `<div class="composer"><input type="text" disabled placeholder="Starting ${a}…" aria-label="Message"><button class="btn primary" disabled>Send</button></div>`;
+  const hint = s.turnDone ? `<span class="crumb">${a} finished its turn and is waiting for your reply.</span>` : "";
+  return `<form class="composer" data-send="${s.id}" style="flex-wrap:wrap">${hint ? `<div style="flex:1 1 100%">${hint}</div>` : ""}<input id="composer-input" type="text" placeholder="Message ${a}… (/ for skills)" aria-label="Message">
+    ${s.state === "working" ? `<button class="btn" type="button" data-toast="Turn cancelled">Cancel turn</button>` : ""}<button class="btn primary" type="submit">Send</button></form>`;
+}
+function prLine(pr) {
+  if (!pr) return `<dd><span class="ci none">No PR yet</span></dd>`;
+  if (pr.state === "merged") return `<dd><a class="ext" href="#">#${pr.n} ↗</a> · merged</dd>`;
+  return `<dd><a class="ext" href="#">#${pr.n} ↗</a> · <span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : pr.ci === "fail" ? "✗" : "●"} ${pr.checks}</span> · ${pr.review}</dd>`;
+}
+const FAKE_DIFF = { "internal/worktree/list.go": L("@@ func List(dir string) ([]Worktree, error)", "-\tout, err := git(dir, \"worktree\", \"list\")", "+\tout, err := git(dir, \"worktree\", \"list\", \"--porcelain\")", "+\tfor _, block := range strings.Split(out, \"\\n\\n\") {") };
+function renderSession() {
+  const s = sess(ui.current), p = proj(s.project), v = s.view || "chat", fx = s.fid && feat(s.fid);
+  const crumb = fx ? `<button class="btn small" data-feat="${s.fid}">${esc(fx.f.name)}</button>${s.ticket ? ` / Ticket #${s.ticket}` : ""}` : `${p.name} / Loose Session`;
+  const controls = s.mode ? `<select aria-label="Mode"><option>${s.mode}</option><option>plan</option><option>auto-accept edits</option></select><select aria-label="Model"><option>${s.model}</option></select><span class="usage">${s.usage}</span>` : "";
+  $("#main").innerHTML = `
+    <div class="mhead">
+      <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2></div>
+      ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}${s.exit ? ` · ${s.exit}` : ""}</span>
+      <div class="seg" role="group" aria-label="Session view">
+        <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
+        <button type="button" data-viewmode="terminal" aria-pressed="${v === "terminal"}">Terminal</button>
       </div>
-      ${v === "terminal"
-        ? `${s.id === "s2" ? `<div class="fallback-note">Terminal fallback: this Session was started in the Agent's own TUI. Waiting is detected from output silence.</div>` : ""}<pre class="term" aria-label="Terminal">${s.id === "s2" ? TERM : "$ " + AGENTS[s.agent].name.toLowerCase().split(" ")[0] + "\n(terminal view of the same Session)"}</pre>`
-        : `<div class="chat" id="chat">${renderMsgs(s)}</div>`}
-      ${s.state === "exited"
-        ? `<div class="composer"><span class="crumb" style="flex:1">This Session ended when fullharness quit. ${AGENTS[s.agent].name} supports session/load.</span><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`
-        : `<form class="composer" data-send="${s.id}"><input id="composer-input" type="text" placeholder="Message ${AGENTS[s.agent].name}… (/ for skills)" aria-label="Message"><button class="btn primary" type="submit">Send</button></form>`}`;
-    const files = s.git.files.length
-      ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</li>`).join("")}</ul>`
-      : `<p class="hint">No uncommitted changes.</p>`;
-    detail.innerHTML = `
-      <section><h3>Worktree</h3>
-        <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
-        <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
-        <dt>PR</dt><dd>${s.git.pr}</dd></dl></section>
-      <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
-      ${s.ticket ? `<section><h3>Ticket</h3><div class="ticketcard"><span class="mono">#${s.ticket.n}</span><strong>${s.ticket.title}</strong><span class="crumb">Feature: ${s.feature} · Stage: ${s.stage}</span></div></section>`
-        : s.feature ? `<section><h3>Feature</h3><div class="ticketcard"><strong>${s.feature}</strong><span class="crumb">Stage: ${s.stage}. Run /to-spec here and fh offers to link the new Spec.</span></div></section>` : ""}
-      ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${sess(s.parent).title}</button><p class="hint">Started this Session through fh's start_session tool, with your approval. Feature inherited from the Parent.</p></section>`
-        : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${k.title}</button></p>`).join("")}</section>` : ""}
-      <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
-        <p class="hint" style="margin-top:10px"><button class="btn small" disabled>Remove Worktree</button></p>
-        <p class="hint">Offered once the branch is merged, has no uncommitted changes and no live Session.</p></section>`;
-    const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
-  } else if (ui.view === "factory") {
-    const p = proj(ui.factoryProject);
-    const chips = projects.map(x => `<button class="pchip" data-fproj="${x.id}" aria-pressed="${x.id === p.id}">${x.name}<small>${x.tracker ?? "set up tracker"}</small></button>`).join("");
-    if (!p.tracker) {
-      main.innerHTML = `<div class="fhead">${chips}</div>
-        <div class="setup"><h3 style="font-family:var(--f-display)">${p.name} has no Issue tracker yet</h3>
-        <p style="margin:0">fh reads <code>docs/agents/issue-tracker.md</code> to find this Project's Specs and Tickets. It isn't there.</p>
-        <div class="acts"><button class="btn primary" data-toast="Session started: /setup-matt-pocock-skills in ${p.name}">Set up tracker</button></div>
-        <p class="hint" style="margin:0">Starts a Session that runs <code>/setup-matt-pocock-skills</code>.</p></div>`;
-    } else {
-      const feats = factory[p.id] || [];
-      const cols = STAGES.map(([st, skill]) => {
-        const fs = feats.filter(f => f.stage === st);
-        return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${fs.map(f => featCard(f)).join("") || ""}</div></div>`;
-      }).join("");
-      const f = feats.find(x => x.id === ui.feature);
-      main.innerHTML = `<div class="fhead">${chips}<button class="btn primary" data-grill="1">Grill new idea</button></div>
-        <div class="board-wrap"><div class="board">${cols}</div></div>
-        ${f ? featDetail(f) : `<p class="empty-note">Select a Feature to see its Tickets.</p>`}`;
-    }
-  } else if (ui.view === "roadmap") {
-    main.innerHTML = renderRoadmap();
-  } else {
-    const pend = sessions.filter(s => s.perm);
-    main.innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request and Child Session request across all Sessions, oldest first.</span></div>
-      <div class="inbox">${spawns.map(r => { const par = sess(r.parent); return `
-        <div class="ibox"><div>
-          <div class="meta">${agentTag(par.agent)}<span>${proj(par.project).name} / ${par.wt}</span><button class="btn small" data-open="${par.id}">Open Session</button></div>
-          <div style="margin-top:6px"><strong>Start a Child Session</strong> — ${AGENTS[par.agent].name} wants to start ${AGENTS[r.agent].name} in a new Worktree <span class="mono">${r.branch}</span>. Auto-approve never covers this.</div><code>${r.prompt}</code></div>
-          <div class="acts">${r.answer ? `<span class="resolved">${r.answer}</span>` : `<button class="btn primary" data-spallow="${r.id}">Allow</button><button class="btn" data-spdeny="${r.id}">Deny</button>`}</div>
-        </div>`; }).join("")}${pend.map(s => `
-        <div class="ibox"><div>
-          <div class="meta">${agentTag(s.agent)}<span>${proj(s.project).name} / ${s.wt}</span><button class="btn small" data-open="${s.id}">Open Session</button></div>
-          <div style="margin-top:6px"><strong>${s.perm.kind}</strong> — ${s.perm.why}</div><code>${s.perm.cmd}</code></div>
-          <div class="acts">${s.perm.answer ? `<span class="resolved">${s.perm.answer}</span>` : `<button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button>`}</div>
-        </div>`).join("")}
-        ${pend.every(s => s.perm.answer) && spawns.every(r => r.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a macOS notification.</p>` : ""}</div>`;
-  }
-  $("#shell").dataset.view = ui.view;
-  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === ui.view));
-  renderRail();
+      ${s.state !== "exited" ? `<button class="btn small" data-closesess="${s.id}">Close Session</button>` : ""}
+    </div>
+    ${controls && v === "chat" ? `<div class="mhead" style="padding-block:6px;gap:8px">${controls}</div>` : ""}
+    ${v === "terminal"
+      ? `${s.id === "s2" ? `<div class="fallback-note">Terminal fallback: this Session runs in the Agent's own TUI. Waiting is detected from output silence.</div>` : ""}<pre class="term" aria-label="Terminal">${s.id === "s2" ? TERM : "$ " + AGENTS[s.agent].name.toLowerCase().split(" ")[0] + "\n(terminal view of the same Session)"}</pre>`
+      : `<div class="chat" id="chat">${renderMsgs(s)}</div>`}
+    ${composer(s)}`;
+  const files = s.git.files.length
+    ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><button data-diff="${f}" aria-expanded="${!!ui.open[f]}"><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</button>${ui.open[f] ? diffView(FAKE_DIFF[f] || L("@@ " + f, "+ (example diff)")) : ""}</li>`).join("")}</ul><p class="hint">Click a file to see its diff.</p>`
+    : `<p class="hint">No uncommitted changes.</p>`;
+  const tk = fx && s.ticket ? (fx.f.tickets || []).find(t => t.n === s.ticket) : null;
+  const pr = s.git.pr;
+  $("#detail").innerHTML = `
+    <section><h3>Worktree</h3>
+      <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
+      <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
+      <dt>PR</dt>${prLine(pr)}</dl>
+      ${pr && pr.ci === "pass" && pr.state !== "merged" ? `<p class="hint"><button class="btn small primary" data-merge="${s.fid}:${s.ticket}">Merge #${pr.n}</button> <button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button></p>` : ""}</section>
+    <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
+    ${fx ? `<section><h3>${tk ? "Ticket" : "Feature"}</h3><div class="ticketcard">${tk ? `<span class="mono">#${tk.n}</span><strong>${esc(tk.t)}</strong>` : `<strong>${esc(fx.f.name)}</strong>`}<span class="crumb">${esc(fx.f.name)} · Stage: ${tk ? tk.stage : fx.f.stage}</span><button class="btn small" data-feat="${s.fid}" style="justify-self:start">Open Feature</button></div></section>`
+      : `<section><h3>Feature</h3><p class="hint" style="margin:0 0 6px">Not part of a Feature.</p><button class="btn small" data-toast="Pick a Feature, or file this as a new Idea">Attach to a Feature…</button></section>`}
+    ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${esc(sess(s.parent).title)}</button></section>`
+      : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${esc(k.title)}</button></p>`).join("")}</section>` : ""}
+    <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
+      <p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
+      <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p></section>`;
+  const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
 }
 
-function bar(bd) {
-  if (!bd) return "";
-  const total = Object.values(bd).reduce((a, b) => a + b, 0);
-  const parts = Object.entries(bd).map(([k, v]) => `<span style="width:${v / total * 100}%;background:${BD_COLORS[k]}"></span>`).join("");
-  const txt = Object.entries(bd).map(([k, v]) => `${v} ${k}`).join(" · ");
-  return `<div class="bar" aria-hidden="true">${parts}</div><div class="bd">${txt}</div>`;
+/* ---------- Software factory board ---------- */
+function bd(f) {
+  if (!f.tickets) return null;
+  const c = { shipped: 0, review: 0, implementing: 0, todo: 0 };
+  f.tickets.forEach(t => { const k = t.stage.toLowerCase(); c[k in c ? k : "todo"]++; });
+  Object.keys(c).forEach(k => c[k] || delete c[k]); return c;
+}
+function bar(b) {
+  if (!b) return "";
+  const total = Object.values(b).reduce((a, x) => a + x, 0);
+  return `<div class="bar" aria-hidden="true">${Object.entries(b).map(([k, v]) => `<span style="width:${v / total * 100}%;background:${BD_COLORS[k]}"></span>`).join("")}</div><div class="bd">${Object.entries(b).map(([k, v]) => `${v} ${k}`).join(" · ")}</div>`;
+}
+function sessSummary(fid) {
+  const ss = featSessions(fid).filter(s => s.state !== "exited"); if (!ss.length) return "";
+  const w = ss.filter(s => s.state === "waiting").length;
+  return `<span class="bd">${ss.map(s => `<span class="dot ${s.state}" style="display:inline-block;margin-right:3px"></span>`).join("")} ${ss.length} Session${ss.length > 1 ? "s" : ""}${w ? ` · ${w} waiting` : ""}</span>`;
 }
 function featCard(f) {
-  return `<button class="fcard" data-feat="${f.id}" aria-pressed="${ui.feature === f.id}">
-    <span class="n">${f.name}</span><span class="ref">${f.ref}</span>${rdBadge(f.id)}${bar(f.bd)}
-    <span class="next">${f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>`;
+  const early = f.closedEarly ? `<span class="warn">Spec closed, #${f.closedEarly} still open</span>` : "";
+  const ci = (f.tickets || []).some(t => t.pr && t.pr.ci === "fail") ? `<span class="ci fail">✗ checks failing</span>` : "";
+  return `<button class="fcard" data-feat="${f.id}">
+    <span class="n">${esc(f.name)}</span><span class="ref">${f.ref}${f.trackerIdea && !featSessions(f.id).length ? " · not grilled yet" : ""}</span>${rdBadge(f.id)}${bar(bd(f))}${sessSummary(f.id)}${ci}${early}
+    <span class="next">${f.allClosed ? "Close Spec to ship" : f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>`;
 }
-function featDetail(f) {
-  const rows = (f.tickets || []).map(t => {
-    const cls = t.stage.toLowerCase();
-    const act = t.stage === "Startable" ? `<button class="btn primary small" data-start="${t.n}">Start Session</button>`
-      : t.sid ? `<button class="btn small" data-open="${t.sid}">Open Session</button>` : "";
-    return `<tr><td class="mono">#${t.n}</td><td>${t.t}</td><td><span class="lbl">${t.label || "ready-for-agent"}</span></td><td><span class="stage ${cls}">${t.stage === "Startable" ? "Startable" : t.stage}</span></td><td class="crumb">${t.note}</td><td>${act}</td></tr>`;
+function renderFactory() {
+  const p = proj(ui.factoryProject);
+  const chips = projects.map(x => `<button class="pchip" data-fproj="${x.id}" aria-pressed="${x.id === p.id}">${x.name}<small>${x.tracker ?? "set up tracker"}</small></button>`).join("");
+  const head = `<div class="fhead">${chips}<button class="btn" data-fileidea="1" style="margin-left:auto">File an Idea</button><button class="btn primary" data-grill="1" style="margin-left:0">Grill new idea</button></div>`;
+  if (ui.demo === "loading") return $("#main").innerHTML = head + `<div class="board-wrap"><div class="board">${STAGES.map(([st]) => `<div class="col"><h4><span>${st}</span></h4><div class="col-body"><div class="skel"></div></div></div>`).join("")}</div></div><p class="empty-note" role="status">Reading Issues from GitHub…</p>`;
+  if (ui.demo === "error") return $("#main").innerHTML = head + `<div class="errbox" role="alert"><strong>Couldn't read ${p.name}'s Issue tracker</strong>
+    <pre>gh: HTTP 401: Bad credentials (https://api.github.com/graphql)</pre>
+    <span>Log in again with <code>gh auth login</code> in a terminal, then retry. The board shows the last good read from 6 min ago until then.</span>
+    <div class="acts"><button class="btn primary" data-demo-clear="1">Retry</button><button class="btn" data-demo-clear="1">Show last good read</button></div></div>`;
+  if (!p.tracker) return $("#main").innerHTML = head.replace(/<button class="btn"[^]*$/, "</div>") + `
+    <div class="setup"><h3 style="font-family:var(--f-display)">${p.name} has no Issue tracker yet</h3>
+    <p style="margin:0">fh reads <code>docs/agents/issue-tracker.md</code> to find this Project's Specs, Tickets and Ideas. It isn't there.</p>
+    <div class="acts"><button class="btn primary" data-toast="Session started: /setup-matt-pocock-skills in ${p.name}">Set up tracker</button></div>
+    <p class="hint" style="margin:0">Starts a Session that runs <code>/setup-matt-pocock-skills</code>.</p></div>`;
+  const feats = factory[p.id] || [];
+  const cols = STAGES.map(([st, skill]) => {
+    const fs = feats.filter(f => f.stage === st);
+    return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${fs.map(featCard).join("") || `<p class="hint" style="margin:4px">—</p>`}</div></div>`;
   }).join("");
-  const r = RD[f.id], v = verdict(f.id);
-  const gate = f.skill === "/implement-spec" && v === "Not ready";
-  const mainBtn = f.skill
-    ? (gate ? `<button class="btn primary" data-confirm="${f.id}">${f.next} · Not ready</button>` : `<button class="btn primary" data-toast="Session started: ${f.skill} for ${f.name}">${f.next}</button>`)
-    : `<button class="btn">${f.next}</button>`;
-  const checks = r ? `<ul class="checks" aria-label="Readiness checks">${CHECKS.map((c, i) => {
-      const st = r.checks[i], cls = st === 1 ? "c-ok" : st === 0 ? "c-bad" : "c-warn", g = st === 1 ? "✓" : st === 0 ? "✗" : "!";
-      const note = r.notes && r.notes[i] ? ` <small>· ${r.notes[i]}</small>` : "";
-      return `<li><span class="${cls}" aria-label="${st === 1 ? "passes" : st === 0 ? "fails" : "warning"}">${g}</span><span>${c}${note}</span></li>`; }).join("")}</ul>
-    <div class="assess"><strong>Readiness: ${v}</strong><span class="crumb">${r.assessNote || "No Assessment yet."}</span><button class="btn small" data-toast="Session started: /plan-readiness for ${f.name}">${r.assess ? "Assess again" : "Assess plan"}</button></div>` : "";
-  return `<section class="fdetail"><header><h3>${f.name}</h3><span class="crumb">${f.ref} · Stage: ${f.stage}${f.tickets ? " (earliest open Ticket)" : ""}</span>${rdBadge(f.id)}
-    <div class="acts">${mainBtn}</div></header>${checks}
-    ${rows ? `<div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Label</th><th>Stage</th><th>Notes</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : `<p class="empty-note">Ticket list loads from the Issue tracker for this Feature.</p>`}</section>`;
+  $("#main").innerHTML = head + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
 }
 
+/* ---------- Feature page ---------- */
+function ticketRow(fid, t) {
+  const s = t.sid && sess(t.sid), pr = t.pr;
+  const sessCell = s ? `<button class="btn small" data-open="${s.id}"><span class="dot ${s.state}" style="display:inline-block;margin-right:5px"></span>${STATE_LABEL[s.state]}</button>` : `<span class="chain">—</span>`;
+  const prCell = pr ? `<a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${pr.state}</span>` : `<span class="chain">—</span>`;
+  const ciCell = pr && pr.state === "open" ? `<span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : "✗"} ${pr.checks}</span>` : `<span class="chain">${pr ? "merged" : "—"}</span>`;
+  let act = "";
+  if (t.stage === "Startable") act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
+  else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
+  else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
+  else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
+  return `<tr><td class="mono">#${t.n}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note)}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+}
+function renderFeature() {
+  const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
+  const si = STAGES.findIndex(([st]) => st === f.stage);
+  const stepper = `<ol class="stepper" aria-label="Stage">${STAGES.map(([st, sk], i) => `<li class="${i < si ? "done" : i === si ? "cur" : ""}" ${i === si ? 'aria-current="step"' : ""}>${i < si ? "✓ " : ""}${st}<small>${sk}</small></li>`).join("")}</ol>`;
+  const live = featSessions(f.id);
+  let mainBtn;
+  if (f.stage === "Idea") mainBtn = live.length ? `<button class="btn primary" data-open="${live[0].id}">Open grilling Session</button>` : `<button class="btn primary" data-grillidea="${f.id}">Grill</button>`;
+  else if (f.allClosed) mainBtn = `<button class="btn primary" data-closespec="${f.id}">Close ${f.ref} → Shipped</button>`;
+  else if (f.skill === "/implement-spec" && v === "Not ready") mainBtn = `<button class="btn primary" data-confirm="${f.id}">${f.next} · Not ready</button>`;
+  else if (f.skill) mainBtn = `<button class="btn primary" data-toast="Session started: ${f.skill} for ${f.name}">${f.next}</button>`;
+  else mainBtn = live[0] ? `<button class="btn primary" data-open="${live[0].id}">${f.next}</button>` : "";
+  const callout = f.closedEarly ? `<div class="callout" style="border-color:var(--waiting);background:var(--waiting-soft)"><span><strong>${f.ref} is closed, but #${f.closedEarly} is still open.</strong> The Feature counts as Shipped. Reopen the Spec if #${f.closedEarly} is still wanted.</span><div class="acts"><button class="btn primary" data-reopenspec="${f.id}">Reopen ${f.ref}</button></div></div>`
+    : f.allClosed ? `<div class="callout"><span><strong>All Tickets are closed.</strong> Close ${f.ref} to mark this Feature Shipped. fh writes this to the tracker (ADR 0008).</span><div class="acts"><button class="btn primary" data-closespec="${f.id}">Close ${f.ref}</button></div></div>`
+    : f.stage === "Shipped" && !f.retroDone ? `<div class="callout"><span><strong>Shipped.</strong> Run a Retro to capture what to change next. Its follow-ups come back here as Ideas.</span><div class="acts"><button class="btn primary" data-retro="${f.id}">Start Retro</button></div></div>`
+    : f.suggest ? `<div class="callout"><span><strong>${f.suggest}.</strong> Link it to move this Idea on to Spec; fh closes ${f.ref} with “Continued in Spec #32”.</span><div class="acts"><button class="btn primary" data-toast="Spec #32 linked · ${f.ref} closed · ${esc(f.name)} moved to Spec">Link Spec #32</button></div></div>` : "";
+  const tickets = f.tickets ? `<section class="card"><h3><span>Tickets · ${f.tickets.length}</span><span class="chain" style="text-transform:none;letter-spacing:0">Ticket → Session → PR → checks → review → merge</span></h3>
+      <div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Stage</th><th>Session</th><th>PR</th><th>Checks</th><th>Review</th><th></th></tr></thead><tbody>${f.tickets.map(t => ticketRow(f.id, t)).join("")}</tbody></table></div></section>`
+    : f.stage === "Spec" ? `<section class="card"><h3>Tickets</h3><p class="empty-note">No Tickets yet. <strong>Make tickets</strong> runs <code>/to-tickets</code> on ${f.ref}.</p></section>` : "";
+  const checks = r ? `<section class="card"><h3><span>Readiness: ${v}</span>${rdBadge(f.id)}</h3><ul class="checks" aria-label="Readiness checks">${CHECKS.map((c, i) => {
+      const st = r.checks[i], cls = st === 1 ? "c-ok" : st === 0 ? "c-bad" : "c-warn", g = st === 1 ? "✓" : st === 0 ? "✗" : "!";
+      return `<li><span class="${cls}" aria-label="${st === 1 ? "passes" : st === 0 ? "fails" : "warning"}">${g}</span><span>${c}${r.notes && r.notes[i] ? ` <small>· ${r.notes[i]}</small>` : ""}</span></li>`; }).join("")}</ul>
+    <div class="assess" style="border-bottom:0"><span class="crumb">${r.assessNote || "No Assessment yet."}</span><button class="btn small" data-toast="Session started: /plan-readiness for ${f.name}">${r.assess ? "Assess again" : "Assess plan"}</button></div></section>` : "";
+  const body = f.spec || f.body;
+  const doc = body ? `<section class="card"><h3><span>${f.spec ? "Spec" : "Idea"} · ${f.ref}</span><a class="ext" href="#">Open in ${p.tracker === "GitHub" ? "GitHub" : "editor"} ↗</a></h3><div style="padding:12px 14px">${md(body)}</div></section>` : "";
+  const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
+  $("#main").innerHTML = `<div class="fpage">
+    <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
+    <div class="fphead"><h2>${esc(f.name)}</h2><a class="ext" href="#">${f.ref} ↗</a><span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
+    ${stepper}${callout}${tickets}${fups}${checks}${doc}</div>`;
+}
+
+/* ---------- Roadmap ---------- */
 function renderRoadmap() {
   const groups = [["now","Now"],["next","Next"],["later","Later"]], filt = ui.rmProject;
   const chips = `<button class="pchip" data-rmproj="" aria-pressed="${!filt}">All Projects</button>` +
     projects.filter(p => p.tracker).map(p => `<button class="pchip" data-rmproj="${p.id}" aria-pressed="${filt === p.id}">${p.name}<small>${p.tracker}</small></button>`).join("");
-  return `<div class="mhead"><h2>Roadmap</h2><span class="crumb">Drag Features between groups. The group is saved on the Spec as a roadmap:* label; Ideas stay in fh until they have a Spec. Shipped Features drop off.</span></div>
-    <div class="fhead">${chips}</div>
+  $("#main").innerHTML = `<div class="mhead"><h2>Roadmap</h2><span class="crumb">Rank Features and Ideas across all Projects. Drag between groups; the group is saved on the Spec or Idea issue as a roadmap:* label. Shipped Features drop off.</span></div>
+    <div class="fhead">${chips}<button class="btn" data-fileidea="1" style="margin-left:auto">File an Idea</button></div>
     <div class="roadmap">${groups.map(([g, label], gi) => {
       const items = roadmap[g].filter(([p]) => !filt || p === filt);
       return `<section class="rcol" data-group="${g}"><h4><span>${label}</span><span class="bd">${items.length}</span></h4><ol class="rlist">${items.map(([p, f]) => rCard(p, f, g, gi)).join("")}</ol></section>`;
@@ -639,13 +846,14 @@ function renderRoadmap() {
 }
 function rCard(pid, fid, g, gi) {
   const f = factory[pid].find(x => x.id === fid);
-  const live = sessions.find(s => s.project === pid && s.feature === f.name && s.state !== "exited");
+  const live = featSessions(fid).find(s => s.state !== "exited");
   const warn = live && g !== "now" ? `<span class="warn">Session running outside Now</span>` : "";
+  const grill = f.trackerIdea && !featSessions(fid).length ? `<button class="btn small" data-grillidea="${fid}">Grill</button>` : "";
   return `<li class="rcard" draggable="true" data-rm="${pid}:${fid}">
-    <div class="rtop"><span class="n">${f.name}</span><span class="stage">${f.stage}</span></div>
+    <div class="rtop"><span class="n">${esc(f.name)}</span><span class="stage">${f.stage}</span></div>
     <span class="ref">${proj(pid).name} · ${f.ref}</span>
     <div class="rmeta">${rdBadge(fid) || '<span class="bd">Idea · no readiness yet</span>'}${warn}</div>
-    <div class="rmove"><button class="btn small" data-mv="${pid}:${fid}:-1" ${gi === 0 ? "disabled" : ""} aria-label="Move ${f.name} to the previous group">←</button><button class="btn small" data-mv="${pid}:${fid}:1" ${gi === 2 ? "disabled" : ""} aria-label="Move ${f.name} to the next group">→</button></div>
+    <div class="rmove">${grill}<button class="btn small" data-feat="${fid}">Open</button><button class="btn small" data-mv="${pid}:${fid}:-1" ${gi === 0 ? "disabled" : ""} aria-label="Move ${f.name} to the previous group">←</button><button class="btn small" data-mv="${pid}:${fid}:1" ${gi === 2 ? "disabled" : ""} aria-label="Move ${f.name} to the next group">→</button></div>
   </li>`;
 }
 const GROUPS = ["now", "next", "later"], GROUP_LABEL = { now: "Now", next: "Next", later: "Later" };
@@ -653,78 +861,106 @@ function moveFeature(key, toGroup, beforeKey) {
   const [pid, fid] = key.split(":");
   const from = GROUPS.find(g => roadmap[g].some(([p, f]) => p === pid && f === fid));
   roadmap[from] = roadmap[from].filter(([p, f]) => !(p === pid && f === fid));
-  const list = roadmap[toGroup];
-  const idx = beforeKey ? list.findIndex(([p, f]) => `${p}:${f}` === beforeKey) : -1;
+  const list = roadmap[toGroup], idx = beforeKey ? list.findIndex(([p, f]) => `${p}:${f}` === beforeKey) : -1;
   idx >= 0 ? list.splice(idx, 0, [pid, fid]) : list.push([pid, fid]);
   const f = factory[pid].find(x => x.id === fid);
-  if (from !== toGroup) toast(f.stage === "Idea" ? `${f.name} moved to ${GROUP_LABEL[toGroup]} (kept in fh until it has a Spec)` : `${f.name} moved to ${GROUP_LABEL[toGroup]} · label roadmap:${toGroup} set on ${f.ref.split(" ·")[0]}`);
-  renderMain();
-}
-function openConfirm(fid) {
-  const f = factory.fh.concat(factory.io, factory.hf).find(x => x.id === fid);
-  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="Plan not ready">
-    <form id="confirm-form"><h3>${f.name} is not ready</h3>
-      <p style="margin:0">${failing(fid).length} readiness check${failing(fid).length > 1 ? "s fail" : " fails"}. /implement-spec works unattended, so gaps in the plan turn into guesses in the code.</p>
-      <ul class="fails">${failing(fid).map(i => `<li>${CHECKS[i]}${RD[fid].notes?.[i] ? ` <span class="crumb">· ${RD[fid].notes[i]}</span>` : ""}</li>`).join("")}</ul>
-      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start anyway</button></div>
-    </form></div></div>`;
-  $("#confirm-form").addEventListener("submit", e => { e.preventDefault(); closeOverlay(); toast(`Session started: /implement-spec for ${f.name}`); });
+  if (from !== toGroup) toast(`${f.name} moved to ${GROUP_LABEL[toGroup]} · label roadmap:${toGroup} set on ${f.ref}`);
+  render();
 }
 
-/* actions */
-function answer(id, ok) {
-  const s = sess(id);
-  s.perm.answer = ok ? "Allowed" : "Denied";
-  s.state = ok ? "working" : "idle";
-  toast(`${ok ? "Allowed" : "Denied"} for ${s.title}`);
-  renderMain();
+/* ---------- Inbox ---------- */
+function renderInbox() {
+  const pend = sessions.filter(s => s.perm);
+  $("#main").innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request and Child Session request across all Sessions, oldest first.</span></div>
+    <div class="inbox">${spawns.map(r => { const par = sess(r.parent); return `
+      <div class="ibox"><div>
+        <div class="meta">${agentTag(par.agent)}<span>${esc(feat(par.fid).f.name)}</span><button class="btn small" data-open="${par.id}">Open Session</button></div>
+        <div style="margin-top:6px"><strong>Start a Child Session</strong> — ${AGENTS[par.agent].name} wants to start ${AGENTS[r.agent].name} in a new Worktree <span class="mono">${r.branch}</span>. Auto-approve never covers this.</div><code>${esc(r.prompt)}</code></div>
+        <div class="acts">${r.answer ? `<span class="resolved">${r.answer}</span>` : `<button class="btn primary" data-spallow="${r.id}">Allow</button><button class="btn" data-spdeny="${r.id}">Deny</button>`}</div>
+      </div>`; }).join("")}${pend.map(s => { const fx = s.fid && feat(s.fid); return `
+      <div class="ibox"><div>
+        <div class="meta">${agentTag(s.agent)}<span>${fx ? esc(fx.f.name) : "Loose"}${s.ticket ? ` · #${s.ticket}` : ""}</span><button class="btn small" data-open="${s.id}">Open Session</button></div>
+        <div style="margin-top:6px"><strong>${s.perm.kind}</strong> — ${inline(s.perm.why)}</div><code>${esc(s.perm.cmd)}</code></div>
+        <div class="acts">${s.perm.answer ? `<span class="resolved">${s.perm.answer}</span>` : `<button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button>`}</div>
+      </div>`; }).join("")}
+      ${pend.every(s => s.perm.answer) && spawns.every(r => r.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a desktop notification.</p>` : ""}</div>`;
 }
+
+/* ---------- shell ---------- */
+function render() {
+  const banner = { lost: ["Connection to fh lost. Reconnecting…", ""], restarted: ["fh restarted. This tab shows old data.", `<button class="btn small" data-demo-clear="1">Reload</button>`] }[ui.demo];
+  $("#banner").innerHTML = banner ? `<div class="banner" role="status">${banner[0]}${banner[1]}</div>` : "";
+  ({ factory: renderFactory, feature: renderFeature, sessions: renderSession, roadmap: renderRoadmap, inbox: renderInbox })[ui.view]();
+  $("#shell").dataset.view = ui.view;
+  const tab = ui.view === "feature" ? "factory" : ui.view;
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === tab));
+  renderRail();
+}
+
+/* ---------- actions ---------- */
 let toastTimer;
 function toast(t) {
   let el = $(".toast"); if (!el) { el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); document.body.append(el); }
-  el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 2600);
+  el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 2800);
 }
-
+/* In-app confirmation; replaces window.confirm so focus, wording and the action's consequences are under fh's control. */
+function confirmModal(title, bodyHtml, actionLabel, onOk, danger) {
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <form id="cf-form"><h3>${title}</h3>${bodyHtml}
+      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary"${danger ? ' style="background:var(--bad);border-color:var(--bad)"' : ""}>${actionLabel}</button></div>
+    </form></div></div>`;
+  $("#cf-form button[type=submit]").focus();
+  $("#cf-form").addEventListener("submit", e => { e.preventDefault(); closeOverlay(); onOk(); });
+}
+function answer(id, ok, always) {
+  const s = sess(id);
+  s.perm.answer = ok ? (always ? "Always allowed" : "Allowed") : "Denied";
+  s.state = ok ? "working" : "idle";
+  toast(`${s.perm.answer} for ${s.title}`); render();
+}
 function openPalette() {
-  const ov = $("#overlay");
-  ov.innerHTML = `<div class="scrim" data-close="1"><div class="palette" role="dialog" aria-label="Jump to a Session">
-    <input id="pal-q" type="text" placeholder="Jump to a Session, Project or Ticket…" autocomplete="off"><ul id="pal-list"></ul></div></div>`;
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="palette" role="dialog" aria-modal="true" aria-label="Jump">
+    <input id="pal-q" type="text" placeholder="Jump to a Feature, Ticket or Session…" autocomplete="off" role="combobox" aria-controls="pal-list" aria-expanded="true"><ul id="pal-list" role="listbox"></ul></div></div>`;
   let hl = 0;
-  const draw = () => {
+  const items = () => {
     const q = $("#pal-q").value.toLowerCase();
-    const list = sorted().filter(s => (s.title + proj(s.project).name + s.wt + AGENTS[s.agent].name).toLowerCase().includes(q));
-    hl = Math.min(hl, Math.max(0, list.length - 1));
-    const newItem = !q || "new session".includes(q) ? `<li><button data-new="1"><span></span><span><strong>+ New Session…</strong> <span class="crumb">· any Project, Worktree and Agent</span></span><span></span></button></li>` : "";
-    $("#pal-list").innerHTML = newItem + list.map((s, i) => `<li><button class="${i === hl ? "hl" : ""}" data-open="${s.id}"><span class="dot ${s.state}"></span><span>${s.title} <span class="crumb">· ${proj(s.project).name}</span></span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span></button></li>`).join("") || `<li class="empty-note">No Session matches.</li>`;
+    const fs = allFeats().map(({ pid, f }) => ({ kind: "feat", id: f.id, label: f.name, sub: `${proj(pid).name} · ${f.ref} · ${f.stage}` }));
+    const ts = allFeats().flatMap(({ f }) => (f.tickets || []).map(t => ({ kind: "feat", id: f.id, label: `#${t.n} ${t.t}`, sub: `Ticket · ${f.name} · ${t.stage}` })));
+    const ss = sorted(sessions).map(s => ({ kind: "sess", id: s.id, label: s.title, sub: `Session · ${STATE_LABEL[s.state]}`, state: s.state }));
+    return [...ss, ...fs, ...ts].filter(x => (x.label + x.sub).toLowerCase().includes(q)).slice(0, 12);
+  };
+  const draw = () => {
+    const list = items(); hl = Math.min(hl, Math.max(0, list.length - 1));
+    $("#pal-list").innerHTML = list.map((x, i) => `<li role="option" id="pal-${i}" aria-selected="${i === hl}"><button class="${i === hl ? "hl" : ""}" ${x.kind === "sess" ? `data-open="${x.id}"` : `data-feat="${x.id}"`}><span class="dot ${x.state || ""}" ${x.state ? "" : 'style="opacity:0"'}></span><span>${esc(x.label)} <span class="crumb">· ${esc(x.sub)}</span></span><span></span></button></li>`).join("") || `<li class="empty-note">Nothing matches.</li>`;
+    $("#pal-q").setAttribute("aria-activedescendant", `pal-${hl}`);
+    $("#pal-" + hl)?.scrollIntoView({ block: "nearest" });
     return list;
   };
   draw();
   const q = $("#pal-q"); q.focus();
   q.addEventListener("input", () => { hl = 0; draw(); });
   q.addEventListener("keydown", e => {
-    const list = draw();
+    const list = items();
     if (e.key === "ArrowDown") { hl = Math.min(hl + 1, list.length - 1); draw(); e.preventDefault(); }
     if (e.key === "ArrowUp") { hl = Math.max(hl - 1, 0); draw(); e.preventDefault(); }
-    if (e.key === "Enter" && list[hl]) { go(list[hl].id); }
+    if (e.key === "Enter" && list[hl]) { const x = list[hl]; closeOverlay(); x.kind === "sess" ? go(x.id) : openFeature(x.id); }
+    if (e.key === "Tab") e.preventDefault(); /* focus stays in the switcher until Escape */
   });
 }
-function openNew(pid = ui.view === "sessions" ? sess(ui.current).project : "fh") {
+function openNew(pid = ui.view === "sessions" ? sess(ui.current).project : ui.factoryProject) {
   const p = proj(pid);
   const wts = p.worktrees.map(w => {
     const taken = sessions.find(s => s.project === p.id && s.wt === w.path);
     const why = w.agentWt ? "Agent worktree" : taken ? `has a Session (${STATE_LABEL[taken.state]})` : "";
-    return `<label class="${why ? "dis" : ""}"><input type="radio" name="wt" value="${w.path}" ${why ? "disabled" : ""}><span class="mono">${w.path}</span>${why ? `<small>· ${why}</small>` : ""}</label>`;
+    return `<label class="${why ? "dis" : ""}"><input type="radio" name="wt" value="${w.path}" ${why ? "disabled" : ""}><span class="mono">${p.name}.worktrees/${w.path}</span>${why ? `<small>· ${why}</small>` : ""}</label>`;
   }).join("");
-  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="New Session">
-    <form id="new-form"><h3>New Session</h3>
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="New Session">
+    <form id="new-form"><h3>New Session</h3><p class="crumb" style="margin:-8px 0 0">Starts a Loose Session. To work on a Ticket, start it from the Feature page instead.</p>
       <label class="field"><span>Project</span><select id="nw-proj">${projects.map(x => `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.name}</option>`).join("")}</select></label>
       <div class="field"><span>Worktree</span><div class="radios stack">
-        <label><input type="radio" name="wt" value="__new" checked>New Worktree on branch <input type="text" id="nw-branch" value="quick-${sessions.length + 1}" aria-label="Branch name"></label>
-        ${wts}
-      </div><small class="crumb">One Session per Worktree. New Worktrees go to ${p.name}.worktrees/.</small></div>
-      <div class="field"><span>Agent</span><div class="radios">
-        ${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" id="nw-ag-${k}" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}
-      </div></div>
+        <label><input type="radio" name="wt" value="__new" checked>New Worktree on branch <input type="text" id="nw-branch" value="quick-${sessions.length + 1}" aria-label="Branch name"></label>${wts}
+      </div><small class="crumb">One Session per Worktree.</small></div>
+      <div class="field"><span>Agent</span><div class="radios">${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}</div></div>
       <label class="field"><span>Starting prompt (optional)</span><input type="text" id="nw-prompt" placeholder="A message, or a skill such as /diagnosing-bugs"></label>
       <label class="toggle"><input type="checkbox" id="nw-auto"><span>Auto-approve in this Session<small>Off by default. Permission requests then go to the Inbox.</small></span></label>
       <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
@@ -735,78 +971,97 @@ function openNew(pid = ui.view === "sessions" ? sess(ui.current).project : "fh")
     const fd = new FormData(e.target), agent = fd.get("agent"), choice = fd.get("wt");
     const branch = choice === "__new" ? ($("#nw-branch").value.trim() || `quick-${sessions.length + 1}`) : choice;
     if (choice === "__new") p.worktrees.push({ path: branch, branch });
-    const prompt = $("#nw-prompt").value.trim().replace(/</g, "&lt;");
-    const id = "n" + Date.now();
+    const prompt = $("#nw-prompt").value.trim(), id = "n" + Date.now();
     sessions.push({ id, title: prompt ? (prompt.length > 44 ? prompt.slice(0, 44) + "…" : prompt) : "New Session", project: p.id, wt: branch, agent,
-      state: prompt ? "working" : "idle", feature: null, stage: null, acp: "sess_new…", started: "just now",
-      git: { ahead: 0, behind: 0, files: [], pr: "none" }, msgs: prompt ? [{ r: "user", t: prompt }] : [] });
-    closeOverlay(); toast(`Session started: ${AGENTS[agent].name} in ${p.name} / ${branch}`); go(id);
+      state: "starting", acp: "—", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: prompt ? [{ r: "user", t: prompt }] : [] });
+    closeOverlay(); toast(`Starting ${AGENTS[agent].name} in ${p.name} / ${branch}`); go(id);
   });
 }
-function closeOverlay() { $("#overlay").innerHTML = ""; }
-function go(id) { ui.view = "sessions"; ui.current = id; closeOverlay(); renderMain(); }
-
-function openStart(n) {
-  const f = factory.fh.find(x => x.id === "f-acp"), t = f.tickets.find(x => x.n === n);
-  const branch = `fh-${n}-reopen-session`;
-  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-label="Start Session">
-    <form id="start-form"><h3>Start Session from #${n}</h3><p class="crumb" style="margin:-8px 0 0">${t.t}</p>
-      <div class="field"><span>Agent</span><div class="radios">
-        ${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" id="ag-${k}" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}
-      </div></div>
-      <div class="field"><span>New Worktree</span><input type="text" id="st-wt" value="fullharness.worktrees/${branch}"></div>
+function openStart(fid, n) {
+  const { pid, f } = feat(fid), t = f.tickets.find(x => x.n === n), p = proj(pid);
+  const branch = `${n}-${t.t.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24).replace(/-$/, "")}`;
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="Start Session">
+    <form id="start-form"><h3>Start Session on #${n}</h3><p class="crumb" style="margin:-8px 0 0">${esc(t.t)} · ${esc(f.name)}</p>
+      <div class="field"><span>Agent</span><div class="radios">${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}</div></div>
+      <div class="field"><span>New Worktree</span><input type="text" id="st-wt" value="${p.name}.worktrees/${branch}"></div>
       <div class="field"><span>Starting prompt</span><input type="text" id="st-prompt" value="/implement #${n}"></div>
-      <label class="toggle"><input type="checkbox" id="st-auto"><span>Auto-approve in this Session<small>Off by default. When on, the Agent's own auto-approve mode is used and nothing reaches the Inbox.</small></span></label>
+      <label class="toggle"><input type="checkbox" id="st-auto"><span>Auto-approve in this Session<small>Off by default. When on, nothing from this Session reaches the Inbox.</small></span></label>
       <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
     </form></div></div>`;
   $("#start-form").addEventListener("submit", e => {
     e.preventDefault();
-    const agent = new FormData(e.target).get("agent");
-    const id = "s" + (sessions.length + 10);
-    projects[0].worktrees.push({ path: branch, branch });
-    sessions.push({ id, title: `#${n} Reopen a Session via session/load`, project: "fh", wt: branch, agent, state: "working",
-      feature: "ACP session view", stage: "Implementing", ticket: { n, title: t.t }, acp: "sess_new…", started: "just now",
-      git: { ahead: 0, behind: 0, files: [], pr: "none" },
-      msgs: [{ r: "user", t: $("#st-prompt").value }, { r: "tool", k: "Read", d: `issue #${n}`, s: "run", out: "…" }] });
-    t.stage = "Implementing"; t.note = `Session · ${AGENTS[agent].name}`; t.sid = id;
-    f.bd = { shipped: 2, review: 1, implementing: 2, todo: 1 };
+    const agent = new FormData(e.target).get("agent"), id = "t" + Date.now();
+    p.worktrees.push({ path: branch, branch });
+    sessions.push({ id, title: `#${n} ${t.t}`, project: pid, wt: branch, agent, state: "starting", fid, ticket: n, acp: "—", started: "just now",
+      git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: $("#st-prompt").value }] });
+    t.stage = "Implementing"; t.sid = id;
     closeOverlay(); toast(`Session started in ${branch}`); go(id);
   });
 }
+function closeOverlay() { $("#overlay").innerHTML = ""; }
+function go(id) { ui.view = "sessions"; ui.current = id; closeOverlay(); render(); }
+function openFeature(id) { ui.view = "feature"; ui.feature = id; ui.factoryProject = feat(id).pid; closeOverlay(); render(); }
+function ticketOf(key) { const [fid, n] = key.split(":"); return { f: feat(fid).f, t: feat(fid).f.tickets.find(x => x.n === +n) }; }
 
 document.addEventListener("click", e => {
-  const b = e.target.closest("button, .scrim");
+  const b = e.target.closest("button, .scrim, a.ext");
   if (!b) return;
+  if (b.matches("a.ext")) { e.preventDefault(); return toast("Opens the issue or PR in the browser"); }
   if (b.classList.contains("scrim") && e.target !== b) return;
   const d = b.dataset;
   if (d.close) return closeOverlay();
-  if (d.sid) { ui.view = "sessions"; ui.current = d.sid; return renderMain(); }
+  if (d.sid) return go(d.sid);
   if (d.open) return go(d.open);
-  if (b.classList.contains("tab")) { ui.view = d.view; return renderMain(); }
+  if (d.feat) return openFeature(d.feat);
+  if (d.tabgo) { ui.view = d.tabgo; return render(); }
+  if (b.classList.contains("tab")) { ui.view = d.view; return render(); }
   if (d.allow) return answer(d.allow, true);
+  if (d.allowAlways) return answer(d.allowAlways, true, true);
   if (d.deny) return answer(d.deny, false);
-  if (d.viewmode) { sess(ui.current).view = d.viewmode; return renderMain(); }
-  if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.msgs.push({ r: "agent", t: ["Session reopened via session/load. History restored."] }); toast("Session reopened"); return renderMain(); }
-  if (d.fproj) { ui.factoryProject = d.fproj; ui.feature = (factory[d.fproj] || [])[0]?.id; return renderMain(); }
-  if (d.feat) { ui.feature = d.feat; return renderMain(); }
-  if (d.start) return openStart(+d.start);
-  if (d.new) return openNew();
+  if (d.viewmode) { sess(ui.current).view = d.viewmode; return render(); }
+  if (d.diff) { ui.open[d.diff] = !ui.open[d.diff]; return render(); }
+  if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.exit = null; s.msgs.push({ r: "agent", t: "Session reopened via `session/load`. History restored." }); toast("Session reopened"); return render(); }
+  if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}The Worktree <span class="mono">${s.wt}</span> and its commits stay; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
+      () => { sessions = sessions.filter(x => x.id !== s.id); toast(`Closed ${s.title}`); ui.view = s.fid ? "feature" : "factory"; if (s.fid) ui.feature = s.fid; render(); }, true); }
+  if (d.rmwt) { const s = sess(d.rmwt); return confirmModal("Remove Worktree?", `<p style="margin:0">Closes the Session and deletes <span class="mono">${s.wt}</span>. The branch is merged, so nothing is lost. Ignored files deleted with it: <span class="mono">.env.local</span></p>`, "Remove Worktree", () => toast(`Removed ${s.wt}`), true); }
+  if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }
+  if (d.start) { const [fid, n] = d.start.split(":"); return openStart(fid, +n); }
+  if (d.merge) { const { f, t } = ticketOf(d.merge); const pr = t.pr;
+    return confirmModal(`Merge PR #${pr.n}?`, `<p style="margin:0">fh runs <code>gh pr merge ${pr.n}</code> with the repo's default merge method. Checks: ${pr.checks}. Review: ${pr.review}. Merging closes #${t.n}.</p>`, "Merge",
+      () => { pr.state = "merged"; t.stage = "Shipped"; const s = t.sid && sess(t.sid); if (s) s.git.pr.state = "merged";
+        if (f.tickets.every(x => x.stage === "Shipped")) { f.allClosed = true; f.stage = "Review"; }
+        toast(`PR #${pr.n} merged · #${t.n} closed`); render(); }); }
+  if (d.closespec) { const { f } = feat(d.closespec);
+    return confirmModal(`Close ${f.ref}?`, `<p style="margin:0">Marks <strong>${esc(f.name)}</strong> Shipped. fh closes the issue with a comment listing the merged PRs, then offers a Retro.</p>`, `Close ${f.ref}`,
+      () => { f.allClosed = false; f.stage = "Shipped"; f.retroDone = false; toast(`${f.ref} closed · ${f.name} Shipped`); render(); }); }
+  if (d.reopenspec) { const { f } = feat(d.reopenspec);
+    return confirmModal(`Reopen ${f.ref}?`, `<p style="margin:0">${esc(f.name)} moves back to the earliest Stage of its open Tickets.</p>`, `Reopen ${f.ref}`,
+      () => { f.closedEarly = null; f.stage = "Implementing"; toast(`${f.ref} reopened`); render(); }); }
+  if (d.retro) { const { f } = feat(d.retro); f.retroDone = true; f.followups = [{ t: "Backoff limits should be configurable per CRD", filed: null }]; toast(`Session started: /retro for ${f.name}`); return render(); }
+  if (d.fileup) { const [fid, i] = d.fileup.split(":"); const x = feat(fid).f.followups[+i]; x.filed = `Idea #${67 + +i}`; toast(`Issue ${x.filed} created · label idea`); return render(); }
+  if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "blocked by #11 · Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
   if (d.spallow || d.spdeny) {
     const r = spawns.find(x => x.id === (d.spallow || d.spdeny)), par = sess(r.parent), msg = par.msgs.find(m => m.k === "fh");
-    if (d.spdeny) { r.answer = "Denied"; if (msg) { msg.st = "denied"; msg.s = "ok"; } toast("Child Session denied"); return renderMain(); }
-    r.answer = "Allowed";
-    proj(par.project).worktrees.push({ path: r.branch, branch: r.branch });
-    const id = "c" + Date.now();
-    sessions.push({ id, parent: par.id, title: "Sketch the Inbox list UI", project: par.project, wt: r.branch, agent: r.agent, state: "working",
-      feature: par.feature, stage: par.stage, acp: "sess_new…", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: "none" },
-      msgs: [{ r: "user", t: `Started by ${AGENTS[par.agent].name}: ${r.prompt}` }] });
-    if (msg) { msg.st = "running"; msg.s = "ok"; msg.out = "id: req_51\nstatus: Working"; }
-    toast(`Child Session started: ${AGENTS[r.agent].name} in ${r.branch}`); return renderMain();
+    if (d.spdeny) { r.answer = "Denied"; if (msg) { msg.st = "Denied"; msg.s = "ok"; } toast("Child Session denied"); return render(); }
+    r.answer = "Allowed"; proj(par.project).worktrees.push({ path: r.branch, branch: r.branch });
+    sessions.push({ id: "c" + Date.now(), parent: par.id, title: "Sketch the Inbox list UI", project: par.project, wt: r.branch, agent: r.agent, state: "working", fid: par.fid,
+      acp: "sess_new…", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: `Started by ${AGENTS[par.agent].name}: ${r.prompt}` }] });
+    if (msg) { msg.st = "Running"; msg.s = "ok"; msg.out = "id: req_51\nstatus: Working"; }
+    toast(`Child Session started: ${AGENTS[r.agent].name} in ${r.branch}`); return render();
   }
-  if (d.confirm) return openConfirm(d.confirm);
-  if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return renderMain(); }
-  if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
+  if (d.confirm) { const { f } = feat(d.confirm);
+    return confirmModal(`${esc(f.name)} is not ready`, `<p style="margin:0">${failing(f.id).length} readiness check${failing(f.id).length > 1 ? "s fail" : " fails"}. /implement-spec works unattended, so gaps in the plan turn into guesses in the code.</p><ul class="fails">${failing(f.id).map(i => `<li>${CHECKS[i]}${RD[f.id].notes?.[i] ? ` <span class="crumb">· ${RD[f.id].notes[i]}</span>` : ""}</li>`).join("")}</ul>`,
+      "Start anyway", () => toast(`Session started: /implement-spec for ${f.name}`)); }
+  if (d.grillidea) { const { pid, f } = feat(d.grillidea); const id = "g" + Date.now(), slug = f.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 20);
+    proj(pid).worktrees.push({ path: `idea/${slug}`, branch: `idea/${slug}` });
+    sessions.push({ id, title: `Grill: ${f.name}`, project: pid, wt: `idea/${slug}`, agent: "claude", state: "starting", fid: f.id, acp: "—", started: "just now", git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: `/grill-with-docs ${f.ref}: ${f.name}` }] });
+    toast(`Grilling ${f.ref} · fh links the Session on the issue`); return go(id); }
+  if (d.fileidea) return confirmModal("File an Idea", `<label class="field"><span>Project</span><select>${projects.filter(p => p.tracker).map(p => `<option>${p.name}</option>`).join("")}</select></label><label class="field"><span>Title</span><input type="text" value="Idea: " aria-label="Title"></label><p class="hint" style="margin:0">Creates an issue labelled idea. Grill it later from the board or the Roadmap.</p>`, "File Idea", () => toast("Issue #67 created · label idea"));
   if (d.grill) return toast("New Worktree idea/… created; Session started with /grill-with-docs");
+  if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return render(); }
+  if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
+  if (d.demoClear) { ui.demo = ""; $("#demo").value = ""; return render(); }
+  if (d.new) return openNew();
   if (d.toast) return toast(d.toast);
   if (b.id === "jump-btn") return openPalette();
 });
@@ -814,16 +1069,22 @@ document.addEventListener("submit", e => {
   const f = e.target.closest("[data-send]"); if (!f) return;
   e.preventDefault();
   const inp = $("#composer-input"), v = inp.value.trim(); if (!v) return;
-  const s = sess(f.dataset.send); s.msgs.push({ r: "user", t: v.replace(/</g, "&lt;") }); s.state = "working"; renderMain();
+  const s = sess(f.dataset.send); s.msgs.push({ r: "user", t: v }); s.state = "working"; s.turnDone = false; render();
 });
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); }
   if (e.key === "Escape") closeOverlay();
+  const tab = e.target.closest?.(".tab");
+  if (tab && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+    const tabs = [...document.querySelectorAll(".tab")], i = tabs.indexOf(tab), n = tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+    ui.view = n.dataset.view; render(); n.focus(); e.preventDefault();
+  }
 });
+$("#demo").addEventListener("change", e => { ui.demo = e.target.value; if (ui.demo === "loading" || ui.demo === "error") ui.view = "factory"; render(); });
 let dragKey = null;
 document.addEventListener("dragstart", e => { const c = e.target.closest?.(".rcard"); if (!c) return; dragKey = c.dataset.rm; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragKey); } catch (_) {} });
 document.addEventListener("dragend", () => { dragKey = null; document.querySelectorAll(".dragging, .over").forEach(el => el.classList.remove("dragging", "over")); });
 document.addEventListener("dragover", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); document.querySelectorAll(".rcol.over").forEach(el => el !== col && el.classList.remove("over")); col.classList.add("over"); });
 document.addEventListener("drop", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); const before = e.target.closest(".rcard"); const k = dragKey; dragKey = null; moveFeature(k, col.dataset.group, before && before.dataset.rm !== k ? before.dataset.rm : null); });
-renderMain();
+render();
 </script>
