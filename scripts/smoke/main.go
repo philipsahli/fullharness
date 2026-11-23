@@ -252,7 +252,7 @@ func (r *agentRun) setAsking(s acp.Session) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if a.Mode.Ask != "" {
-		if !slices.Contains(s.Modes, a.Mode.Ask) {
+		if !s.HasMode(a.Mode.Ask) {
 			return fmt.Errorf("mode %q not offered (offered: %v)", a.Mode.Ask, s.Modes)
 		}
 		if err := r.proc.SetMode(ctx, s.ID, a.Mode.Ask); err != nil {
@@ -260,10 +260,10 @@ func (r *agentRun) setAsking(s acp.Session) error {
 		}
 	}
 	if a.Option != "" {
-		if !slices.Contains(s.Options[a.Option], a.Value.Ask) {
-			return fmt.Errorf("option %s=%s not offered (offered: %v)", a.Option, a.Value.Ask, s.Options[a.Option])
+		if !acp.HasValue(s.Options, a.Option, a.Value.Ask) {
+			return fmt.Errorf("option %s=%s not offered (offered: %v)", a.Option, a.Value.Ask, s.Options)
 		}
-		if err := r.proc.SetOption(ctx, s.ID, a.Option, a.Value.Ask); err != nil {
+		if _, err := r.proc.SetOption(ctx, s.ID, a.Option, a.Value.Ask); err != nil {
 			return fmt.Errorf("set option %s: %w", a.Option, err)
 		}
 	}
