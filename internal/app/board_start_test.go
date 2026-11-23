@@ -194,3 +194,36 @@ func TestALinkWithoutAFeatureIsRefused(t *testing.T) {
 		t.Errorf("status %d (%v), want 400 asking for the Feature", status, body)
 	}
 }
+
+func TestALocalTicketsSessionLinksByFolderAndNumberUntilClosed(t *testing.T) {
+	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
+	scratch(t, repo, "login/spec.md", "# Login\n")
+	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
+	scratch(t, repo, "export/spec.md", "# Export\n")
+	scratch(t, repo, "export/issues/01-csv.md", ticket("01", "CSV", "ready-for-agent", "None"))
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+
+	id := f.startSession(c, map[string]any{"project": repo, "branch": "01-form", "agent": "claude",
+		"link": map[string]any{"feature": "login", "ticket": "01"}})
+	waitState(t, tab, id, "idle")
+
+	b := f.board(c, repo)
+	if s := ticketByNumber(t, featureByID(t, b, "login"), "01")["stage"]; s != "implementing" {
+		t.Errorf("login 01 = %v, want Implementing: its Session is linked", s)
+	}
+	if s := ticketByNumber(t, featureByID(t, b, "export"), "01")["stage"]; s != "tickets" {
+		t.Errorf("export 01 = %v, want Tickets: local numbers restart per folder", s)
+	}
+
+	// Closing removes the Session from fh, and with it the link: an
+	// abandoned start leaves the Ticket Startable again.
+	if status, body := f.post(c, "/api/sessions/"+id+"/close", map[string]any{"confirm": true}); status != http.StatusNoContent {
+		t.Fatalf("close: status %d (%v)", status, body)
+	}
+	if tk := ticketByNumber(t, featureByID(t, f.board(c, repo), "login"), "01"); tk["startable"] != true {
+		t.Errorf("login 01 after Close = %v, want Startable again", tk)
+	}
+}

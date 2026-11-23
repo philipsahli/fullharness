@@ -28,7 +28,7 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, links f
 			return
 		}
 		board := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
-		tracker.MarkLinked(board.Features, links(p.Path))
+		tracker.Derive(board.Features, links(p.Path))
 		server.WriteJSON(w, http.StatusOK, board)
 	})
 }

@@ -64,6 +64,7 @@ var (
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
 // only when open and labelled ready-for-agent. Wayfinder issues are left out.
 // aheadBranches are the Project's branches with commits ahead of its base.
+// Stages are left to Derive.
 func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 	byNum := map[int]Issue{}
 	for _, i := range issues {
@@ -105,7 +106,6 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 		features = append(features, f)
 	}
 	slices.SortFunc(features, func(a, b Feature) int { return atoi(a.ID) - atoi(b.ID) })
-	Derive(features)
 	return features
 }
 

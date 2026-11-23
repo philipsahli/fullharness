@@ -55,9 +55,13 @@ export function SessionList(props: {
   );
 }
 
-// linkText names a Session's Feature and Ticket, e.g. "Ticket 42 of Spec 1".
+// linkText names a Session's Feature and Ticket the way its tracker does:
+// "Ticket #42 of Spec #1" on GitHub, whose Specs are numbered, or "Ticket
+// 01 of Spec login" for a local .scratch folder.
 function linkText(l: Link): string {
-  return l.ticket ? `Ticket ${l.ticket} of Spec ${l.feature}` : `Spec ${l.feature}`;
+  const hash = /^\d+$/.test(l.feature) ? "#" : "";
+  const spec = `Spec ${hash}${l.feature}`;
+  return l.ticket ? `Ticket ${hash}${l.ticket} of ${spec}` : spec;
 }
 
 const stateNames: Record<SessionState, string> = {
@@ -118,20 +122,22 @@ export function NewSession(props: {
   const { from } = props;
   const usable = props.projects.filter((p) => !p.missing);
   const [project, setProject] = useState(from?.project ?? usable[0]?.path ?? "");
-  const [worktree, setWorktree] = useState(() => {
-    // The prefilled Worktree only if it's free: a Session may already run
-    // in the main tree.
-    const w = from?.worktree;
-    return w && !props.sessions.some((s) => s.worktree === w && s.state !== "exited") ? w : "";
-  }); // "" means a new Worktree
+  // The prefilled Worktree (the main tree) may already have a live Session;
+  // then the dialog offers a new Worktree instead, and says why.
+  const [prefillBusy] = useState(
+    () =>
+      !!from?.worktree &&
+      props.sessions.some((s) => s.worktree === from.worktree && s.state !== "exited"),
+  );
+  const [worktree, setWorktree] = useState(prefillBusy ? "" : (from?.worktree ?? "")); // "" means a new Worktree
   const [branch, setBranch] = useState(from?.branch ?? "");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
   const [autoApprove, setAutoApprove] = useState(false);
   const [error, setError] = useState("");
-  // Agents to warn about in this dialog, fixed when it opens.
-  const [warn] = useState(() => new Set(warnedUnknown));
+  // Agents already warned about before this dialog opened.
+  const [alreadyWarned] = useState(() => new Set(warnedUnknown));
 
   useEffect(() => {
     const url = from ? `/api/agents?skill=${encodeURIComponent(from.skill)}` : "/api/agents";
@@ -143,7 +149,8 @@ export function NewSession(props: {
       setAgent(first?.id ?? "");
       if (from) {
         setPrompt(startPrompt(from, first));
-        all.filter((a) => a.commandsUnknown).forEach((a) => warnedUnknown.add(a.id));
+        // Only Agents that show the warning: a missing CLI hides it.
+        all.filter((a) => a.commandsUnknown && !a.missing).forEach((a) => warnedUnknown.add(a.id));
       }
     });
   }, [from]);
@@ -223,6 +230,11 @@ export function NewSession(props: {
       </label>
       <fieldset>
         <legend>Worktree</legend>
+        {prefillBusy && (
+          <p className="why">
+            The main tree already has a Session, so this one needs a new Worktree: name its branch.
+          </p>
+        )}
         <label className="choice">
           <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
           New Worktree on branch
@@ -265,7 +277,7 @@ export function NewSession(props: {
               />
               {a.name}
               {why && <span className="why">{why}</span>}
-              {!why && a.commandsUnknown && !warn.has(a.id) && (
+              {!why && a.commandsUnknown && !alreadyWarned.has(a.id) && (
                 <span className="why">
                   fh doesn't know {a.name}'s slash commands yet, so it can't tell whether{" "}
                   <code>/{from?.skill}</code> is installed

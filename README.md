@@ -229,7 +229,7 @@ Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
 
 #### Starting Sessions from the board
 
-Each button opens the Start dialog, prefilled with a Worktree, an Agent and a starting prompt that runs one of [Matt Pocock's skills](https://github.com/mattpocock/skills). Change anything before you click **Start Session**.
+Each button opens New Session, prefilled with a Worktree, an Agent and a starting prompt that runs one of [Matt Pocock's skills](https://github.com/mattpocock/skills). Change anything before you click **Start Session**.
 
 | Button | Where | Skill | Worktree |
 | --- | --- | --- | --- |
@@ -240,11 +240,11 @@ Each button opens the Start dialog, prefilled with a Worktree, an Agent and a st
 | **Write spec** | the board header | `to-spec` | the main tree |
 | **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
 
-A Session started from a Ticket or Feature shows that link in its header, and the Ticket counts as Implementing.
+A Session started from a Ticket or Feature shows that link in its header, and the Ticket counts as Implementing, also once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
 
 Each Agent names skills its own way, so fh looks for the skill among the slash commands the Agent last reported: by its exact name, or as `<plugin>:<name>` (Claude Code lists plugin skills as `mattpocock-skills:implement`).
 
-- An Agent without the skill is greyed out, with a note such as "`/implement` isn't installed for Copilot CLI".
+- An Agent without the skill is greyed out in New Session, with a note such as "`/implement` isn't installed for Copilot CLI".
 - fh learns an Agent's slash commands from its first Session and keeps them across restarts. Until then the Agent can still be picked, and the dialog warns once that fh can't tell whether the skill is installed.
 
 Copilot CLI and OpenCode see Matt's skills only once they're installed where those Agents look for skills, `~/.agents/skills`:
@@ -253,6 +253,7 @@ Copilot CLI and OpenCode see Matt's skills only once they're installed where tho
 git clone https://github.com/mattpocock/skills.git ~/src/mattpocock-skills
 mkdir -p ~/.agents/skills
 ln -s ~/src/mattpocock-skills/skills/engineering/* ~/.agents/skills/
+ls ~/.agents/skills   # code-review  implement  implement-spec  …  to-spec  to-tickets
 # then start a new Session of that Agent, so fh learns its commands
 ```
 

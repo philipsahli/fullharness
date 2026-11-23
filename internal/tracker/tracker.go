@@ -71,7 +71,7 @@ type Ticket struct {
 	// skill's prompt names the Ticket, e.g. "#42" (#13).
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
-	// Inputs to the Stage, filled by the adapter or Link:
+	// Inputs to the Stage, filled by the adapter, and by Derive from links:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
 	OpenPR      bool `json:"-"` // a linked PR is open
 	Linked      bool `json:"-"` // a Session (live or Exited) was started from it
@@ -116,8 +116,10 @@ func Detect(repo string) (kind, name string) {
 	return KindNone, ""
 }
 
-// Derive sets every Ticket's and Feature's Stage, Startable and breakdown.
-// It is the one place these rules live (#11), for every tracker:
+// Derive sets every Ticket's and Feature's Stage, Startable and breakdown,
+// after the adapter read the tracker; links are the Project's Sessions
+// started from the board. It is the one place these rules live (#11), for
+// every tracker:
 //   - Ticket: closed → Shipped; an open linked PR → Review; a branch ahead
 //     or a linked Session → Implementing; else Tickets.
 //   - Startable: at the Tickets Stage (open, not started), labelled
@@ -125,10 +127,13 @@ func Detect(repo string) (kind, name string) {
 //     Tickets that belong to a Spec.
 //   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
-func Derive(features []Feature) {
+func Derive(features []Feature, links []Link) {
 	for i := range features {
 		f := &features[i]
-		f.Note = "" // Derive runs again after Link; the note is its own output
+		for j := range f.Tickets {
+			t := &f.Tickets[j]
+			t.Linked = slices.ContainsFunc(links, func(l Link) bool { return l.Feature == f.ID && l.Ticket == t.Number })
+		}
 		// Blockers match Tickets by numeric value: "5" and "05" are the same
 		// Ticket, whatever width a folder uses.
 		byValue := map[int]Ticket{}
@@ -194,20 +199,6 @@ func Derive(features []Feature) {
 type Link struct {
 	Feature string `json:"feature"`
 	Ticket  string `json:"ticket,omitempty"`
-}
-
-// MarkLinked marks the Tickets that links name and derives the Stages again:
-// a Ticket a Session was started from is Implementing even before its
-// branch has commits, and stays so once that Session is Exited (#13).
-func MarkLinked(features []Feature, links []Link) {
-	for i := range features {
-		f := &features[i]
-		for j := range f.Tickets {
-			t := &f.Tickets[j]
-			t.Linked = slices.ContainsFunc(links, func(l Link) bool { return l.Feature == f.ID && l.Ticket == t.Number })
-		}
-	}
-	Derive(features)
 }
 
 // maxSlug bounds the slug part of a branch fh names after a title.
