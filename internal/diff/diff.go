@@ -51,6 +51,17 @@ type Line struct {
 // but any other whitespace change shows, including a missing newline at the
 // end.
 func Lines(path, oldText, newText string) File {
+	return lines(path, oldText, newText, MaxChanged)
+}
+
+// Full is Lines without the cut, for Show full diff.
+func Full(path, oldText, newText string) File {
+	return lines(path, oldText, newText, -1)
+}
+
+// lines diffs oldText against newText, stopping after limit changed lines;
+// a negative limit means no cut.
+func lines(path, oldText, newText string, limit int) File {
 	a, b := split(oldText), split(newText)
 	ops := script(a, b)
 	f := File{Path: path}
@@ -62,7 +73,7 @@ func Lines(path, oldText, newText string) File {
 			f.Removed++
 		}
 	}
-	f.Hunks, f.Truncated = hunks(ops)
+	f.Hunks, f.Truncated = hunks(ops, limit)
 	return f
 }
 
@@ -204,8 +215,8 @@ func replaceAll(a, b []string, off int) []edit {
 }
 
 // hunks groups the edit script into hunks with contextLines of context around each
-// change, stopping after MaxChanged changed lines.
-func hunks(ops []edit) ([]Hunk, bool) {
+// change, stopping after limit changed lines (never, if limit is negative).
+func hunks(ops []edit, limit int) ([]Hunk, bool) {
 	out := []Hunk{}
 	changed := 0
 	for i := 0; i < len(ops); {
@@ -213,7 +224,7 @@ func hunks(ops []edit) ([]Hunk, bool) {
 			i++
 			continue
 		}
-		if changed == MaxChanged {
+		if changed == limit {
 			return out, true // a hunk here would hold only context
 		}
 		// A hunk starts contextLines before this change and runs until a gap
@@ -223,7 +234,7 @@ func hunks(ops []edit) ([]Hunk, bool) {
 		cut := false
 		for end < len(ops) {
 			if ops[end].op != ' ' {
-				if changed == MaxChanged {
+				if changed == limit {
 					cut = true
 					break
 				}

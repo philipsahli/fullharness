@@ -170,8 +170,9 @@ type Request struct {
 	Paths        []string    `json:"paths,omitempty"`
 	Content      string      `json:"content,omitempty"` // text content, plain
 	Diffs        []diff.File `json:"diffs,omitempty"`   // the edits the tool call would make
-	Always       bool        `json:"always"`            // the Agent offers "always allow"
-	Status       string      `json:"status"`            // StatusPending until settled
+	fullDiffs    []diff.File // Diffs uncut, kept only when one is cut; see Manager.FullDiffs
+	Always       bool        `json:"always"` // the Agent offers "always allow"
+	Status       string      `json:"status"` // StatusPending until settled
 	CreatedAt    time.Time   `json:"createdAt"`
 }
 
@@ -181,8 +182,9 @@ type Tool struct {
 	Title     string      `json:"title"`
 	Kind      string      `json:"kind"`
 	Status    string      `json:"status"`
-	Content   string      `json:"content,omitempty"`   // text content, plain
-	Diffs     []diff.File `json:"diffs,omitempty"`     // the edits the tool call makes
+	Content   string      `json:"content,omitempty"` // text content, plain
+	Diffs     []diff.File `json:"diffs,omitempty"`   // the edits the tool call makes
+	fullDiffs []diff.File // Diffs uncut, kept only when one is cut; see Manager.FullDiffs
 	RawOutput string      `json:"rawOutput,omitempty"` // raw output, plain
 }
 
@@ -200,6 +202,7 @@ var (
 	ErrWorktreeUse = errors.New("this Worktree already has a Session")
 	ErrAnswered    = errors.New("this request was already answered")
 	ErrNoRequest   = errors.New("no such permission request")
+	ErrNoItem      = errors.New("no such tool call or permission request in this Session")
 	ErrChoice      = errors.New("the Agent doesn't offer that choice")
 	ErrConfirm     = errors.New("the Session's Agent is running; confirm to stop it and close the Session")
 	ErrNoReopen    = errors.New("this Agent can't reopen Sessions (no session/load)")
@@ -656,6 +659,35 @@ func (m *Manager) Get(id string) (Detail, error) {
 	defer s.mu.Unlock()
 	// summaryLocked, not s.sum: it fills the derived fields (canReopen).
 	return Detail{Summary: s.summaryLocked(), Transcript: append([]Item{}, s.transcript...)}, nil
+}
+
+// FullDiffs returns the uncut diffs of a tool card or permission request in
+// a Session, by its ID, for Show full diff. The transcript only carries
+// diffs cut at diff.MaxChanged lines, so a large edit doesn't go to every
+// tab on every update.
+func (m *Manager) FullDiffs(id, item string) ([]diff.File, error) {
+	s, err := m.find(id)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pick := func(cut, full []diff.File) []diff.File {
+		if full != nil {
+			return full
+		}
+		return append([]diff.File{}, cut...) // never nil: the API sends []
+	}
+	if i, ok := s.tools[item]; ok {
+		t := s.transcript[i].Tool
+		return pick(t.Diffs, t.fullDiffs), nil
+	}
+	for _, it := range s.transcript {
+		if p := it.Permission; p != nil && p.ID == item {
+			return pick(p.Diffs, p.fullDiffs), nil
+		}
+	}
+	return nil, ErrNoItem
 }
 
 // Prompt sends text as the next turn. Sending is only allowed while Idle,
@@ -1130,7 +1162,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 			if t.Status == "" {
 				t.Status = "pending"
 			}
-			t.Content, t.Diffs = toolContent(tc.Content)
+			t.Content, t.Diffs, t.fullDiffs = toolContent(tc.Content)
 			t.RawOutput = rawText(tc.RawOutput)
 		})
 	case u.ToolCallUpdate != nil:
@@ -1146,7 +1178,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 				t.Status = string(v)
 			}
 			if v, ok := tu.Content.Value(); ok {
-				t.Content, t.Diffs = toolContent(v)
+				t.Content, t.Diffs, t.fullDiffs = toolContent(v)
 			}
 			if v, ok := tu.RawOutput.Value(); ok {
 				t.RawOutput = rawText(v)
@@ -1236,7 +1268,7 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 		}
 	}
 	if cs, ok := tc.Content.Value(); ok {
-		req.Content, req.Diffs = toolContent(cs)
+		req.Content, req.Diffs, req.fullDiffs = toolContent(cs)
 	}
 	p := &pending{options: map[string]sdk.PermissionOptionId{}, answer: make(chan sdk.PermissionOptionId, 1)}
 	for _, o := range r.Options {
@@ -1580,10 +1612,14 @@ func (s *session) waitingForLocked() string {
 }
 
 // toolContent splits a tool call's content into its text, joined, and its
-// diffs as line diffs. No old text means a new file.
-func toolContent(cs []sdk.ToolCallContent) (string, []diff.File) {
+// diffs as line diffs. No old text means a new file. When any diff is cut,
+// full holds them all uncut; otherwise it is nil, so only large edits are
+// kept twice.
+func toolContent(cs []sdk.ToolCallContent) (text string, files, full []diff.File) {
 	var parts []string
-	var files []diff.File
+	type change struct{ path, old, new string }
+	var changes []change
+	cut := false
 	for _, c := range cs {
 		switch {
 		case c.Content != nil && c.Content.Content.Text != nil:
@@ -1593,10 +1629,18 @@ func toolContent(cs []sdk.ToolCallContent) (string, []diff.File) {
 			if c.Diff.OldText != nil {
 				old = *c.Diff.OldText
 			}
-			files = append(files, diff.Lines(c.Diff.Path, old, c.Diff.NewText))
+			f := diff.Lines(c.Diff.Path, old, c.Diff.NewText)
+			files = append(files, f)
+			changes = append(changes, change{c.Diff.Path, old, c.Diff.NewText})
+			cut = cut || f.Truncated
 		}
 	}
-	return strings.Join(parts, "\n"), files
+	if cut {
+		for _, c := range changes {
+			full = append(full, diff.Full(c.path, c.old, c.new))
+		}
+	}
+	return strings.Join(parts, "\n"), files, full
 }
 
 // rawText shows raw output as plain text: a JSON string unquoted, anything

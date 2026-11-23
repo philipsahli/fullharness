@@ -10,6 +10,7 @@
   --waiting: #b45309;
   --waiting-soft: #fdecd3;
   --bad: #b91c1c;
+  --good: #15803d;
   --f-body: system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -26,6 +27,7 @@
     --waiting: #f2a541;
     --waiting-soft: #3a2a12;
     --bad: #f87171;
+    --good: #4ade80;
     color-scheme: dark;
   }
 }
@@ -40,6 +42,7 @@
   --waiting: #f2a541;
   --waiting-soft: #3a2a12;
   --bad: #f87171;
+  --good: #4ade80;
   color-scheme: dark;
 }
 
@@ -682,7 +685,7 @@ button:disabled {
   color: var(--muted);
 }
 .toolcard .status.completed {
-  color: #15803d;
+  color: var(--good);
 }
 .toolcard .status.failed {
   color: var(--bad);
@@ -766,6 +769,62 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Diffs in tool and permission cards; colours as in the mockup's .diff */
+.changes {
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
+.changes .added {
+  color: var(--good);
+}
+.changes .removed {
+  color: var(--bad);
+}
+.diff {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 6px 0 0;
+  overflow-x: auto;
+  background: var(--surface);
+  /* Every row as wide as the longest, so colours reach across when scrolled. */
+  display: grid;
+  grid-template-columns: minmax(100%, max-content);
+}
+.diff > div {
+  padding: 0 10px;
+  white-space: pre;
+}
+.diff .diffhead {
+  display: flex;
+  gap: 8px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: normal;
+}
+.diff .diffhead .path {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.diff .hunk,
+.diff .nonl {
+  color: var(--muted);
+  background: var(--sunken);
+}
+.diff .add {
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+}
+.diff .del {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+.diff .cut {
+  padding: 3px 10px;
+  color: var(--muted);
+  white-space: normal;
+  border-top: 1px solid var(--line);
 }
 
 /* Permission cards and the Inbox */

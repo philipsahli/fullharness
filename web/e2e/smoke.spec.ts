@@ -607,3 +607,120 @@ test("an Agent reply can't run script or load images, and only http(s) links are
     await fh.dispose();
   }
 });
+
+// numbered is n lines "line 1" to "line n".
+function numbered(n: number): string {
+  return Array.from({ length: n }, (_, i) => `line ${i + 1}\n`).join("");
+}
+
+test("an edit tool card shows +N −M collapsed and its diff opened; a failed call opens itself; a cut diff shows in full on request", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        {
+          tool: {
+            id: "t1",
+            title: "Edit notes.md",
+            kind: "edit",
+            status: "completed",
+            path: "notes.md",
+            diffOld: "a\nb\nc\n",
+            diffNew: "a\nB\nc\nd\n",
+          },
+        },
+        {
+          tool: { id: "t2", title: "go vet", kind: "execute", status: "failed", text: "vet: boom" },
+        },
+        {
+          tool: {
+            id: "t3",
+            title: "Write big.txt",
+            kind: "edit",
+            status: "in_progress",
+            path: "big.txt",
+            diffNew: numbered(400),
+          },
+        },
+        { say: "done" },
+        { sleepMs: 3000 },
+        // Re-sends the card with the same diffs: the full diff must stay.
+        { toolUpdate: { id: "t3", status: "completed" } },
+      ],
+    },
+  });
+  try {
+    const conversation = await startSession(page, fh, "edit");
+    await expect(conversation.locator(".msg.agent")).toHaveText("done");
+
+    const edit = conversation.locator("details.toolcard", { hasText: "Edit notes.md" });
+    await expect(edit.locator("summary")).toContainText("+2 −1");
+    await expect(edit).not.toHaveAttribute("open");
+    await edit.locator("summary").click();
+    const diff = edit.getByRole("group", { name: "Diff of notes.md" });
+    await expect(diff.locator(".hunk")).toHaveText("@@ -1,3 +1,4 @@");
+    await expect(diff.locator(".del")).toHaveText(["-b"]);
+    await expect(diff.locator(".add")).toHaveText(["+B", "+d"]);
+    await expect(diff.locator(".ctx")).toHaveText([" a", " c"]);
+
+    const failed = conversation.locator("details.toolcard", { hasText: "go vet" });
+    await expect(failed).toHaveAttribute("open");
+    await expect(failed).toContainText("vet: boom");
+
+    const big = conversation.locator("details.toolcard", { hasText: "Write big.txt" });
+    await expect(big.locator("summary")).toContainText("+400 −0");
+    await big.locator("summary").click();
+    const bigDiff = big.getByRole("group", { name: "Diff of big.txt" });
+    await expect(bigDiff.locator(".add")).toHaveCount(300);
+    await expect(bigDiff).toContainText("Showing 300 of 400 changed lines");
+    await big.getByRole("button", { name: "Show full diff" }).click();
+    await expect(bigDiff.locator(".add")).toHaveCount(400);
+    await expect(bigDiff.locator(".add").last()).toHaveText("+line 400");
+    await expect(big.getByRole("button", { name: "Show full diff" })).toHaveCount(0);
+    await expect(big.locator(".status")).toHaveText("completed");
+    await expect(bigDiff.locator(".add")).toHaveCount(400);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a permission request to edit a file shows its diff in the Session and in the Inbox", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        {
+          permission: {
+            id: "t1",
+            title: "Edit main.go",
+            kind: "edit",
+            path: "main.go",
+            diffOld: "package main\nfunc old() {}\n",
+            diffNew: "package main\nfunc new() {}\n",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const conversation = await startSession(page, fh, "edit");
+    const expectDiff = async (card: Locator) => {
+      await expect(card).toContainText("+1 −1");
+      const diff = card.getByRole("group", { name: "Diff of main.go" });
+      await expect(diff.locator(".del")).toHaveText(["-func old() {}"]);
+      await expect(diff.locator(".add")).toHaveText(["+func new() {}"]);
+    };
+
+    await expectDiff(conversation.getByRole("group", { name: "Permission: Edit main.go" }));
+    await page.getByRole("tab", { name: /Inbox/ }).click();
+    await expectDiff(
+      page
+        .getByRole("region", { name: "Inbox" })
+        .getByRole("group", { name: "Permission: Edit main.go" }),
+    );
+  } finally {
+    await fh.dispose();
+  }
+});

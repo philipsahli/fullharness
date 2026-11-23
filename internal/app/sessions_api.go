@@ -107,6 +107,17 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		server.WriteJSON(w, http.StatusOK, det)
 	})
 
+	// Show full diff: a tool card's or permission request's diffs without
+	// the cut at diff.MaxChanged lines.
+	srv.Handle("GET /api/sessions/{id}/diffs/{item}", func(w http.ResponseWriter, r *http.Request) {
+		files, err := d.sessions.FullDiffs(r.PathValue("id"), r.PathValue("item"))
+		if err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		server.WriteJSON(w, http.StatusOK, files)
+	})
+
 	srv.Handle("POST /api/sessions/{id}/prompt", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Text string `json:"text"`
@@ -240,7 +251,7 @@ func writeSessionError(w http.ResponseWriter, err error) {
 	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice),
 		errors.Is(err, session.ErrNotOffered):
 		server.WriteError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest):
+	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest), errors.Is(err, session.ErrNoItem):
 		server.WriteError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
 		errors.Is(err, session.ErrAnswered), errors.Is(err, session.ErrConfirm), errors.Is(err, session.ErrNoReopen),
