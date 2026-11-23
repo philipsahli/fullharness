@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import type { Project, Worktree } from "./events";
+import { LinkOrText } from "./LinkOrText";
 
 // Suggestion matches internal/project.Suggestion.
 type Suggestion = { path: string; name: string };
@@ -42,7 +43,9 @@ function ProjectItem({ project }: { project: Project }) {
   return (
     <li className="proj">
       <div>
-        <span title={project.path}>{project.name}</span>
+        <LinkOrText url={project.url} title={project.path}>
+          {project.name}
+        </LinkOrText>
         <button
           type="button"
           className="link"

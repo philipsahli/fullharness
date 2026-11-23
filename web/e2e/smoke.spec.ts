@@ -2,7 +2,7 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Fh, runFh } from "./fh";
-import { tempFolder, tempRepo, tempRepoWith } from "./repo";
+import { tempFolder, tempRepo, tempRepoWith, withOrigin } from "./repo";
 
 // Browser smoke tests (ADR 0007): the UI logic no Go test can reach.
 const test = base.extend<{ fh: Fh }>({
@@ -54,6 +54,31 @@ test("adding a Project shows its main tree, and a non-repo shows why not", async
   const shop = projects.getByRole("listitem").filter({ hasText: "shop" }).first();
   await expect(shop).toContainText("main");
   await expect(shop).toContainText("main tree");
+});
+
+test("a Project on GitHub links its name to the repo; one without a GitHub remote is plain text", async ({
+  page,
+  fh,
+}) => {
+  await page.goto(fh.launchURL);
+  const projects = page.getByRole("region", { name: "Projects" });
+  const add = async (repo: string) => {
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+  };
+
+  await add(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+  await add(withOrigin(tempRepo("tools"), "git@gitlab.com:someone/tools.git"));
+
+  const shop = projects.getByRole("link", { name: "shop", exact: true });
+  await expect(shop).toHaveAttribute("href", "https://github.com/someone/shop");
+  await expect(shop).toHaveAttribute("target", "_blank");
+  await expect(shop).toHaveAttribute("rel", "noopener");
+  await shop.focus();
+  await expect(shop).toBeFocused(); // reachable with the keyboard
+  await expect(projects.getByText("tools", { exact: true })).toBeVisible();
+  await expect(projects.getByRole("link")).toHaveCount(1);
 });
 
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {

@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/philipsahli/fullharness/internal/fileutil"
+	"github.com/philipsahli/fullharness/internal/gitremote"
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
 
@@ -30,7 +31,10 @@ type Project struct {
 	// Missing means the folder is gone (moved, deleted, unmounted). The
 	// Project stays listed, with no Worktrees and no git calls, until it
 	// comes back or the user removes it; fh never removes it on its own.
-	Missing   bool                `json:"missing"`
+	Missing bool `json:"missing"`
+	// URL is the repo's GitHub page, from its origin remote; empty when
+	// origin is missing or not on GitHub, and the UI shows plain text.
+	URL       string              `json:"url,omitempty"`
 	Worktrees []worktree.Worktree `json:"worktrees"`
 }
 
@@ -241,6 +245,9 @@ func (r *Registry) read(path string) Project {
 			wts[i].Removal = r.removal(wts[i])
 		}
 		p.Worktrees = wts
+	}
+	if g, ok := gitremote.ParseGitHub(worktree.Origin(path)); ok {
+		p.URL = g.URL()
 	}
 	return p
 }

@@ -82,9 +82,15 @@ button {
   color: inherit;
   cursor: pointer;
 }
-button:focus-visible {
+button:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Links: Agent Markdown and the server's urls (#86). --accent is set for
+   light and dark. */
+a {
+  color: var(--accent);
 }
 code {
   font-family: var(--f-mono);
@@ -616,9 +622,6 @@ button:disabled {
 }
 .msg.agent li.task-list-item input {
   margin: 0 6px 0 -18px;
-}
-.msg.agent a {
-  color: var(--accent);
 }
 .msg.agent code {
   font-family: var(--f-mono);

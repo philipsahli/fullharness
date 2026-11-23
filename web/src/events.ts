@@ -25,6 +25,7 @@ export type Project = {
   path: string;
   name: string;
   missing: boolean; // folder not found
+  url?: string; // the repo's GitHub page; absent when origin isn't on GitHub
   worktrees: Worktree[];
 };
 

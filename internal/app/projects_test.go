@@ -195,3 +195,41 @@ func TestAddProjectRejectsABareRepositoryAndSaysWhy(t *testing.T) {
 		t.Errorf("error %q, want it to say the repository is bare", msg)
 	}
 }
+
+func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	for name, origin := range map[string]string{
+		"ssh":    "git@github.com:someone/ssh-shop.git",
+		"https":  "https://github.com/someone/https-shop",
+		"gitlab": "git@gitlab.com:someone/shop.git",
+		"none":   "",
+	} {
+		repo := newRepo(t, parent, name)
+		if origin != "" {
+			git(t, repo, "remote", "add", "origin", origin)
+		}
+		if status, body := f.post(c, "/api/projects", map[string]string{"path": repo}); status != http.StatusCreated {
+			t.Fatalf("add %s: status %d (%v)", name, status, body)
+		}
+	}
+	want := map[string]any{
+		"ssh":    "https://github.com/someone/ssh-shop",
+		"https":  "https://github.com/someone/https-shop",
+		"gitlab": nil,
+		"none":   nil,
+	}
+
+	ps := projects(t, f.state(c))
+
+	if len(ps) != len(want) {
+		t.Fatalf("got %d projects, want %d", len(ps), len(want))
+	}
+	for _, p := range ps {
+		name, _ := p["name"].(string)
+		if p["url"] != want[name] {
+			t.Errorf("%s: url = %v, want %v", name, p["url"], want[name])
+		}
+	}
+}
