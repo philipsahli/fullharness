@@ -198,6 +198,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	registerBoardRoutes(srv, reg, sessions.Links)
+	registerWorktreeRoutes(srv, reg, sessions, st, log)
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,

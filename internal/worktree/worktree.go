@@ -1,5 +1,6 @@
 // Package worktree reads a Project's git Worktrees by running git and parsing
-// its porcelain output. It never changes a repo.
+// its porcelain output. Only Create and Remove change a repo, and only when
+// the user asked.
 package worktree
 
 import (
@@ -34,6 +35,10 @@ type Worktree struct {
 	Ahead  int    `json:"ahead"`
 	Behind int    `json:"behind"`
 	Base   string `json:"base"` // empty when no default branch was found
+	// Merged means Base already has everything on HEAD: HEAD is part of
+	// Base, or a squash commit on Base carries the same change. Read only
+	// for Worktrees fh created, the only ones it offers to remove.
+	Merged bool `json:"merged"`
 	// FetchedAt is the last `git fetch` in this repo, nil if never.
 	FetchedAt *time.Time `json:"fetchedAt"`
 }
@@ -81,6 +86,9 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 			w.Uncommitted, _ = uncommitted(w.Path)
 			if base != "" {
 				w.Ahead, w.Behind, _ = aheadBehind(w.Path, base)
+				if !w.Main && !w.Agent {
+					w.Merged = w.Ahead == 0 || squashMerged(w.Path, base)
+				}
 			}
 		})
 	}
@@ -149,10 +157,77 @@ func aheadBehind(dir, base string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
+// squashMerged reports whether a commit on base since HEAD branched off has
+// the same patch as all of HEAD's work together, which is what a squash
+// merge (GitHub's "Squash and merge") leaves behind. HEAD stays ahead of
+// base after one, so ahead/behind alone never sees it. Patch IDs are
+// compared without writing to the repo; a squash commit that also changed
+// other files, or resolved a conflict, doesn't match.
+func squashMerged(dir, base string) bool {
+	out, err := run(dir, "rev-parse", "HEAD", base)
+	if err != nil {
+		return false
+	}
+	key := strings.Join(strings.Fields(string(out)), " ")
+	if v, ok := squashCache.Load(key); ok {
+		return v.(bool)
+	}
+	merged := squashMergedUncached(dir, base)
+	squashCache.Store(key, merged)
+	return merged
+}
+
+// squashCache holds squashMerged's answer per HEAD and base commit pair,
+// which can't change, so a refresh repeats the patch comparison only when
+// either side moved.
+var squashCache sync.Map
+
+func squashMergedUncached(dir, base string) bool {
+	mb, err := run(dir, "merge-base", base, "HEAD")
+	if err != nil {
+		return false
+	}
+	fork := strings.TrimSpace(string(mb))
+	diff, err := run(dir, "diff", fork, "HEAD")
+	if err != nil || len(diff) == 0 {
+		return false
+	}
+	own, err := runIn(dir, diff, "patch-id", "--stable")
+	if err != nil {
+		return false
+	}
+	id, _, _ := strings.Cut(strings.TrimSpace(string(own)), " ")
+	if id == "" {
+		return false
+	}
+	log, err := run(dir, "log", "-p", "--no-merges", "--format=commit %H", fork+".."+base)
+	if err != nil {
+		return false
+	}
+	theirs, err := runIn(dir, log, "patch-id", "--stable")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(theirs), "\n") {
+		if other, _, _ := strings.Cut(line, " "); other == id {
+			return true
+		}
+	}
+	return false
+}
+
 // run runs git in dir and returns stdout. The error carries git's stderr.
 func run(dir string, args ...string) ([]byte, error) {
+	return runIn(dir, nil, args...)
+}
+
+// runIn is run with stdin, for git commands that read a patch.
+func runIn(dir string, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	// Background reads like `git status` may otherwise refresh .git/index,
 	// writing to the user's repo and contending for its lock with the
 	// user's own git commands; fh only reads.
@@ -264,4 +339,12 @@ func BranchesAhead(repo string) []string {
 		}
 	}
 	return ahead
+}
+
+// Remove runs `git worktree remove` on the Worktree at path, without
+// --force, so git itself refuses one with uncommitted or untracked files
+// even if they appeared after fh's checks. The branch stays.
+func Remove(repo, path string) error {
+	_, err := run(repo, "worktree", "remove", path)
+	return err
 }

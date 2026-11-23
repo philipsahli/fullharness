@@ -12,6 +12,7 @@ export type Worktree = {
   ahead: number;
   behind: number;
   base: string; // what ahead/behind compare with, e.g. "origin/main"
+  merged: boolean; // base has HEAD's work (also squash-merged); fh's own Worktrees only
   fetchedAt: string | null; // last git fetch; null if never
 };
 

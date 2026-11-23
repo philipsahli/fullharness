@@ -128,6 +128,14 @@ Each Project lists every git Worktree, with:
 
 fh never runs `git fetch`, so ahead/behind is as fresh as your last fetch. A Worktree's tooltip shows when that was. The list refreshes every 10 seconds while a tab is open, or right away with **Refresh**.
 
+A Worktree fh created has a **Remove** button. fh asks before it runs `git worktree remove`, and it keeps the branch. The button works only when all of these hold:
+
+- its branch is merged into the default branch, either as its own commits or as one squash commit (GitHub's **Squash and merge**);
+- it has no uncommitted or untracked files;
+- no Session is linked to it, live or Exited. Close the Session first.
+
+Otherwise the button is greyed out and its tooltip says why. fh never removes a Worktree on its own, and never removes the main tree or an Agent worktree.
+
 ### Sessions
 
 Start one with **+ New Session** in the left rail. Pick:
