@@ -616,6 +616,70 @@ button:disabled {
   flex: 1;
   resize: vertical;
 }
+/* The "/" list opens above the composer, over the conversation. */
+.composer {
+  position: relative;
+}
+.slash {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0 0 4px;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+}
+.slash li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.slash li[aria-selected="true"] {
+  background: var(--sunken);
+}
+.slash .hint {
+  color: var(--muted);
+  font-family: var(--f-mono);
+  font-size: 12px;
+}
+.slash .desc {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.settings {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.settings label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.settings select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
 .main {
   display: flex;
   flex-direction: column;

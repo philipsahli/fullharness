@@ -24,12 +24,19 @@ import (
 
 // action is one step. Exactly one field is set.
 type action struct {
-	Say        string      `json:"say,omitempty"`        // an agent message chunk
-	SayMode    bool        `json:"sayMode,omitempty"`    // say the current session mode id
-	SayEnv     string      `json:"sayEnv,omitempty"`     // say "NAME=value" for an environment variable
-	SayPID     bool        `json:"sayPid,omitempty"`     // say "pid=N"
-	SayConfig  string      `json:"sayConfig,omitempty"`  // say "<id>=<value>" for a config option
-	Title      string      `json:"title,omitempty"`      // a session_info_update with this title
+	Say        string `json:"say,omitempty"`        // an agent message chunk
+	SayMode    bool   `json:"sayMode,omitempty"`    // say the current session mode id
+	SayEnv     string `json:"sayEnv,omitempty"`     // say "NAME=value" for an environment variable
+	SayPID     bool   `json:"sayPid,omitempty"`     // say "pid=N"
+	SayConfig  string `json:"sayConfig,omitempty"`  // say "<id>=<value>" for a config option
+	Title      string `json:"title,omitempty"`      // a session_info_update with this title
+	SwitchMode string `json:"switchMode,omitempty"` // change the mode and send current_mode_update
+	Usage      *struct {
+		Used     int64   `json:"used"`
+		Size     int64   `json:"size"`
+		Cost     float64 `json:"cost,omitempty"` // left out of the update when 0
+		Currency string  `json:"currency,omitempty"`
+	} `json:"usage,omitempty"` // a usage_update
 	Commands   []string    `json:"commands,omitempty"`   // an available_commands_update with these names
 	Tool       *toolAction `json:"tool,omitempty"`       // a tool_call
 	ToolUpdate *toolAction `json:"toolUpdate,omitempty"` // a tool_call_update
@@ -77,6 +84,9 @@ type script struct {
 	RejectAlwaysFirst bool `json:"rejectAlwaysFirst"`
 	// AllowAll offers Copilot's "allow_all" select config option (on/off).
 	AllowAll bool `json:"allowAll"`
+	// Models offers a "model" select config option (sonnet, opus), like
+	// Claude Code's adapter.
+	Models bool `json:"models"`
 	// InitAuthError fails initialize with "authentication required".
 	InitAuthError bool `json:"initAuthError"`
 	// EndAfterCancel ends a cancelled turn with end_turn instead of
@@ -107,7 +117,7 @@ func main() {
 	}
 	// Start like a user's own permissive settings, which fh must override:
 	// Claude Code's mode "auto" (the spike saw it), Copilot's allow_all on.
-	a := &agent{script: s, mode: "auto", config: map[string]string{"allow_all": "on"}}
+	a := &agent{script: s, mode: "auto", config: map[string]string{"allow_all": "on", "model": "sonnet"}}
 	a.conn = acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	<-a.conn.Done()
 }
@@ -128,7 +138,7 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 	if _, err := a.run(ctx, id, a.script.OnStart); err != nil {
 		return acp.NewSessionResponse{}, err
 	}
-	modes := []acp.SessionMode{{Id: "default", Name: "Manual"}, {Id: "auto", Name: "Auto"}}
+	modes := []acp.SessionMode{{Id: "default", Name: "Manual"}, {Id: "auto", Name: "Auto"}, {Id: "plan", Name: "Plan"}}
 	if a.script.NoDefaultMode {
 		modes = modes[1:]
 	}
@@ -136,15 +146,35 @@ func (a *agent) NewSession(ctx context.Context, p acp.NewSessionRequest) (acp.Ne
 		SessionId: id,
 		Modes:     &acp.SessionModeState{CurrentModeId: acp.SessionModeId(a.mode), AvailableModes: modes},
 	}
+	resp.ConfigOptions = a.configOptions()
+	return resp, nil
+}
+
+// configOptions are the select config options the script asks for, with
+// their current values.
+func (a *agent) configOptions() []acp.SessionConfigOption {
+	sel := func(id, name string, category *acp.SessionConfigOptionCategory, values ...string) acp.SessionConfigOption {
+		var opts acp.SessionConfigSelectOptionsUngrouped
+		for _, v := range values {
+			opts = append(opts, acp.SessionConfigSelectOption{Value: acp.SessionConfigValueId(v), Name: v})
+		}
+		return acp.SessionConfigOption{Select: &acp.SessionConfigOptionSelect{
+			Type: "select", Id: acp.SessionConfigId(id), Name: name, Category: category,
+			CurrentValue: acp.SessionConfigValueId(a.config[id]),
+			Options:      acp.SessionConfigSelectOptions{Ungrouped: &opts},
+		}}
+	}
+	var out []acp.SessionConfigOption
 	if a.script.AllowAll {
 		// Starts "on", like a user whose own Copilot setting allows all:
 		// fh has to switch it off explicitly.
-		resp.ConfigOptions = []acp.SessionConfigOption{{Select: &acp.SessionConfigOptionSelect{
-			Type: "select", Id: "allow_all", Name: "Allow All", CurrentValue: acp.SessionConfigValueId(a.config["allow_all"]),
-			Options: acp.SessionConfigSelectOptions{Ungrouped: &acp.SessionConfigSelectOptionsUngrouped{{Value: "on", Name: "On"}, {Value: "off", Name: "Off"}}},
-		}}}
+		out = append(out, sel("allow_all", "Allow All", nil, "on", "off"))
 	}
-	return resp, nil
+	if a.script.Models {
+		model := acp.SessionConfigOptionCategoryModel
+		out = append(out, sel("model", "Model", &model, "sonnet", "opus"))
+	}
+	return out
 }
 
 // LoadSession replays the scripted history, then answers like session/new.
@@ -222,6 +252,17 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			err = update(acp.SessionUpdate{SessionInfoUpdate: &acp.SessionSessionInfoUpdate{
 				SessionUpdate: "session_info_update", Title: acp.PatchSet(s.Title),
 			}})
+		case s.SwitchMode != "":
+			a.mode = s.SwitchMode
+			err = update(acp.SessionUpdate{CurrentModeUpdate: &acp.SessionCurrentModeUpdate{
+				SessionUpdate: "current_mode_update", CurrentModeId: acp.SessionModeId(s.SwitchMode),
+			}})
+		case s.Usage != nil:
+			u := &acp.SessionUsageUpdate{SessionUpdate: "usage_update", Used: s.Usage.Used, Size: s.Usage.Size}
+			if s.Usage.Cost != 0 {
+				u.Cost = &acp.Cost{Amount: s.Usage.Cost, Currency: s.Usage.Currency}
+			}
+			err = update(acp.SessionUpdate{UsageUpdate: u})
 		case s.Commands != nil:
 			var cmds []acp.AvailableCommand
 			for _, name := range s.Commands {
@@ -392,7 +433,7 @@ func (a *agent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfig
 	if v := p.ValueId; v != nil {
 		a.config[string(v.ConfigId)] = string(v.Value)
 	}
-	return acp.SetSessionConfigOptionResponse{}, nil
+	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptions()}, nil
 }
 func (a *agent) UnstableAuthStatus(context.Context, acp.UnstableAuthStatusRequest) (acp.UnstableAuthStatusResponse, error) {
 	return acp.UnstableAuthStatusResponse{}, nil

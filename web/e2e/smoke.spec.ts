@@ -127,6 +127,51 @@ test("a New Session in a Project's main tree streams the Agent's reply and its t
   }
 });
 
+test("typing / lists the Agent's slash commands; the model and usage show in the header", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      models: true,
+      onStart: [{ commands: ["grill-me", "mattpocock-skills:tdd"] }],
+      prompts: { hello: [{ usage: { used: 53000, size: 200000, cost: 0.42, currency: "USD" } }] },
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("hello");
+    await form.getByRole("button", { name: "Start Session" }).click();
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.getByText("context 53k / 200k (27%) · $0.42")).toBeVisible();
+
+    const message = conversation.getByLabel("Message");
+    await message.fill("/");
+    const list = conversation.getByRole("listbox", { name: "Slash commands" });
+    await expect(list.getByRole("option")).toHaveCount(2);
+    await message.fill("/td"); // a plugin's skill matches by its own name
+    await expect(list.getByRole("option")).toHaveText([
+      "/mattpocock-skills:tdd" + "fake mattpocock-skills:tdd",
+    ]);
+    await message.press("Enter");
+    await expect(message).toHaveValue("/mattpocock-skills:tdd ");
+    await expect(list).toHaveCount(0);
+
+    await conversation.getByLabel("Model").selectOption("opus");
+    await expect(conversation.getByLabel("Model")).toHaveValue("opus");
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a permission request answered in the Inbox is answered in its Session too", async ({
   page,
 }) => {
