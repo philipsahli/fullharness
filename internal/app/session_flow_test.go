@@ -7,10 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/philipsahli/fullharness/internal/diff"
 )
 
 // newSessionIn adds a fresh repo as a Project, connects a tab and starts a
@@ -117,6 +120,40 @@ func TestToolCallsShowStatusAndOutput(t *testing.T) {
 	if tool == nil || tool["title"] != "ls" || tool["kind"] != "execute" || tool["status"] != "completed" ||
 		tool["content"] != "a.txt" || tool["rawOutput"] != "a.txt\n" {
 		t.Errorf("tool card = %v", tool)
+	}
+}
+
+func TestAnEditToolCallCarriesAStructuredDiff(t *testing.T) {
+	f := startFhWithAgent(t, script{"default": []any{
+		map[string]any{"tool": map[string]any{"id": "t1", "title": "Write notes.md", "kind": "edit", "status": "pending",
+			"path": "notes.md", "diffNew": "one\ntwo\n"}},
+		map[string]any{"toolUpdate": map[string]any{"id": "t1", "status": "completed",
+			"path": "notes.md", "diffOld": "one\ntwo\n", "diffNew": "one\n"}},
+	}})
+	c, _, id, _ := newSessionIn(t, f, "")
+	tab := f.connectTab(c)
+	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "write"})
+	waitTurn(t, tab, id)
+
+	var tool map[string]any
+	for _, it := range f.transcript(c, id) {
+		if it["type"] == "tool" {
+			tool = it["tool"].(map[string]any)
+		}
+	}
+	if tool == nil {
+		t.Fatal("no tool card")
+	}
+	// The update's diff replaces the start's.
+	want := []diff.File{{Path: "notes.md", Removed: 1, Hunks: []diff.Hunk{{
+		OldStart: 1, OldLines: 2, NewStart: 1, NewLines: 1,
+		Lines: []diff.Line{{Op: " ", Text: "one"}, {Op: "-", Text: "two"}},
+	}}}}
+	if got := diffs(t, tool); !reflect.DeepEqual(got, want) {
+		t.Errorf("diffs = %+v, want %+v", got, want)
+	}
+	if _, ok := tool["content"]; ok {
+		t.Errorf("content = %q, want none: the diff isn't repeated as text", tool["content"])
 	}
 }
 

@@ -77,12 +77,31 @@ export type Usage = {
   cost?: { amount: number; currency: string };
 };
 
+// DiffFile matches internal/diff.File: a line diff of one file, as unified
+// hunks with 3 lines of context.
+export type DiffFile = {
+  path: string;
+  added: number; // every added line, also when the hunks are cut
+  removed: number;
+  hunks: DiffHunk[];
+  truncated?: boolean; // the hunks stop after 300 changed lines
+};
+
+export type DiffHunk = {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: { op: " " | "-" | "+"; text: string }[];
+};
+
 export type Tool = {
   id: string;
   title: string;
   kind: string;
   status: string; // pending, in_progress, completed, failed
-  content?: string;
+  content?: string; // text content; diffs are in diffs
+  diffs?: DiffFile[];
   rawOutput?: string;
 };
 
@@ -97,7 +116,8 @@ export type PermissionRequest = {
   kind: string;
   command?: string;
   paths?: string[];
-  content?: string;
+  content?: string; // text content; diffs are in diffs
+  diffs?: DiffFile[];
   always: boolean; // the Agent offers "always allow"
   status: "pending" | "allowed" | "denied" | "always" | "cancelled" | "exited";
   createdAt: string;

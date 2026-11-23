@@ -1,12 +1,15 @@
 package app_test
 
 import (
+	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/philipsahli/fullharness/internal/diff"
 )
 
 // askScript makes the fake agent request permission on any prompt, then
@@ -238,16 +241,37 @@ func TestAutoApproveStartsTheAgentInAutoMode(t *testing.T) {
 	}
 }
 
-func TestAPermissionCardShowsTheDiffAsPlainText(t *testing.T) {
+func TestAPermissionRequestCarriesTheEditAsAStructuredDiff(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"permission": map[string]any{
-		"id": "t1", "title": "Edit main.go", "kind": "edit", "path": "main.go", "diffNew": "new line\n",
+		"id": "t1", "title": "Edit main.go", "kind": "edit", "path": "main.go", "text": "tidy main",
+		"diffOld": "a\nb\nc\n", "diffNew": "a\nB\nc\nd\n",
 	}}}})
-	_, _, _, req := askAndWait(t, f)
+	c, _, id, inboxReq := askAndWait(t, f)
 
-	content, _ := req["content"].(string)
-	for _, want := range []string{"main.go", "-old line", "+new line"} {
-		if !strings.Contains(content, want) {
-			t.Errorf("content = %q, want it to contain %q", content, want)
+	want := []diff.File{{Path: "main.go", Added: 2, Removed: 1, Hunks: []diff.Hunk{{
+		OldStart: 1, OldLines: 3, NewStart: 1, NewLines: 4,
+		Lines: []diff.Line{{Op: " ", Text: "a"}, {Op: "-", Text: "b"}, {Op: "+", Text: "B"}, {Op: " ", Text: "c"}, {Op: "+", Text: "d"}},
+	}}}}
+	for where, req := range map[string]map[string]any{"Inbox": inboxReq, "transcript": permissionItem(t, f, c, id)} {
+		if got := diffs(t, req); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s diffs = %+v, want %+v", where, got, want)
+		}
+		if req["content"] != "tidy main" {
+			t.Errorf("%s content = %q, want only the text content", where, req["content"])
 		}
 	}
+}
+
+// diffs decodes the "diffs" of a tool card or permission request.
+func diffs(t *testing.T, m map[string]any) []diff.File {
+	t.Helper()
+	raw, err := json.Marshal(m["diffs"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files []diff.File
+	if err := json.Unmarshal(raw, &files); err != nil {
+		t.Fatalf("diffs %s: %v", raw, err)
+	}
+	return files
 }

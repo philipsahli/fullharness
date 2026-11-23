@@ -3,6 +3,7 @@ import { command, get } from "./api";
 import { byListOrder, projectName, tabID } from "./events";
 import type {
   Command,
+  DiffFile,
   Item,
   Link,
   PermissionRequest,
@@ -706,6 +707,7 @@ export function PermissionCard({
         <p className="paths">{request.paths.join(", ")}</p>
       )}
       {request.content && <pre>{request.content}</pre>}
+      {request.diffs && request.diffs.length > 0 && <pre>{diffText(request.diffs)}</pre>}
       {pending ? (
         <div className="row">
           <button type="button" className="allow" onClick={() => void answer("allow")}>
@@ -749,9 +751,26 @@ function basename(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
 }
 
+// diffText shows diffs as unified diff text, until #85 renders them.
+function diffText(files: DiffFile[]): string {
+  return files
+    .map((f) => {
+      const hunks = f.hunks.map(
+        (h) =>
+          `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n` +
+          h.lines.map((l) => l.op + l.text).join("\n"),
+      );
+      const cut = f.truncated ? [`… cut; ${f.added + f.removed} lines changed in all`] : [];
+      return [`${f.path} +${f.added} −${f.removed}`, ...hunks, ...cut].join("\n");
+    })
+    .join("\n");
+}
+
 // ToolCard is collapsed by default, so following the Agent isn't noisy.
 function ToolCard({ tool }: { tool: Tool }) {
-  const output = [tool.content, tool.rawOutput].filter(Boolean).join("\n");
+  const output = [tool.content, tool.diffs && diffText(tool.diffs), tool.rawOutput]
+    .filter(Boolean)
+    .join("\n");
   return (
     <details className="toolcard">
       <summary>

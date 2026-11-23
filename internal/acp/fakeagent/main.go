@@ -71,7 +71,24 @@ type toolAction struct {
 	Command   string `json:"command,omitempty"`   // permission: rawInput.command
 	Path      string `json:"path,omitempty"`      // permission: a location
 	Always    bool   `json:"always,omitempty"`    // permission: also offer allow_always
-	DiffNew   string `json:"diffNew,omitempty"`   // permission: a diff of Path to this text
+	DiffNew   string `json:"diffNew,omitempty"`   // a diff of Path to this text
+	DiffOld   string `json:"diffOld,omitempty"`   // from this text; none means a new file
+}
+
+// content is the action's text and diff content, either of which may be
+// missing.
+func (t *toolAction) content() []acp.ToolCallContent {
+	var content []acp.ToolCallContent
+	if t.Text != "" {
+		content = append(content, acp.ToolContent(acp.TextBlock(t.Text)))
+	}
+	switch {
+	case t.DiffNew != "" && t.DiffOld != "":
+		content = append(content, acp.ToolDiffContent(t.Path, t.DiffNew, t.DiffOld))
+	case t.DiffNew != "":
+		content = append(content, acp.ToolDiffContent(t.Path, t.DiffNew))
+	}
+	return content
 }
 
 type script struct {
@@ -276,8 +293,8 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 		case s.Tool != nil:
 			t := s.Tool
 			opts := []acp.ToolCallStartOpt{acp.WithStartKind(acp.ToolKind(t.Kind)), acp.WithStartStatus(acp.ToolCallStatus(t.Status))}
-			if t.Text != "" {
-				opts = append(opts, acp.WithStartContent([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Text))}))
+			if c := t.content(); len(c) > 0 {
+				opts = append(opts, acp.WithStartContent(c))
 			}
 			if t.RawOutput != "" {
 				opts = append(opts, acp.WithStartRawOutput(t.RawOutput))
@@ -292,8 +309,8 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			if t.Status != "" {
 				opts = append(opts, acp.WithUpdateStatus(acp.ToolCallStatus(t.Status)))
 			}
-			if t.Text != "" {
-				opts = append(opts, acp.WithUpdateContent([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock(t.Text))}))
+			if c := t.content(); len(c) > 0 {
+				opts = append(opts, acp.WithUpdateContent(c))
 			}
 			if t.RawOutput != "" {
 				opts = append(opts, acp.WithUpdateRawOutput(t.RawOutput))
@@ -309,14 +326,7 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			if t.Path != "" {
 				tc.Locations = acp.PatchSet([]acp.ToolCallLocation{{Path: t.Path}})
 			}
-			var content []acp.ToolCallContent
-			if t.Text != "" {
-				content = append(content, acp.ToolContent(acp.TextBlock(t.Text)))
-			}
-			if t.DiffNew != "" {
-				content = append(content, acp.ToolDiffContent(t.Path, t.DiffNew, "old line\n"))
-			}
-			if len(content) > 0 {
+			if content := t.content(); len(content) > 0 {
 				tc.Content = acp.PatchSet(content)
 			}
 			resp, perr := a.conn.RequestPermission(ctx, acp.RequestPermissionRequest{
