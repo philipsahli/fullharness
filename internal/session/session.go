@@ -87,7 +87,9 @@ type Summary struct {
 	// AgentName is the Agent's display name, e.g. "Claude Code".
 	AgentName string `json:"agentName"`
 	State     string `json:"state"`
-	// AutoApprove is set when the Session started in the Agent's auto mode.
+	// AutoApprove is set while the Agent acts without asking first: started
+	// with auto-approve, or switched to the Agent's auto mode or option
+	// later (syncAutoLocked).
 	AutoApprove bool `json:"autoApprove"`
 	// Waiting says why a Waiting Session waits: "permission" (a request is
 	// open) or "turn" (a turn ended that nobody has looked at yet).
@@ -1089,10 +1091,36 @@ func (s *session) change(fn func(*Summary)) {
 }
 
 // changeSettings is change for the mode or options, which are saved so
-// Reopen can set them again.
+// Reopen can set them again, and which decide auto-approve.
 func (s *session) changeSettings(fn func(*Summary)) {
-	s.change(fn)
+	s.change(func(sum *Summary) {
+		fn(sum)
+		s.syncAutoLocked()
+	})
 	s.m.persist()
+}
+
+// syncAutoLocked makes AutoApprove say whether the Agent asks first, after
+// the mode or the asking option changed in the Session (spec #1, story
+// 40): the auto value turns it on, any other value off. Before the Session
+// is ready, setAsking hasn't run yet and AutoApprove is what it will
+// apply, so it stays. The caller holds s.mu.
+func (s *session) syncAutoLocked() {
+	a := s.def.Asking
+	if !s.ready {
+		return
+	}
+	if a.Mode.Auto != "" && s.sum.Mode != "" {
+		s.sum.AutoApprove = s.sum.Mode == a.Mode.Auto
+	}
+	if a.Option == "" {
+		return
+	}
+	for _, o := range s.sum.Options {
+		if o.ID == a.Option {
+			s.sum.AutoApprove = o.Value == a.Value.Auto
+		}
+	}
 }
 
 // live finds Session id with its running Agent and ACP session.
