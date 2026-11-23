@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { get } from "./api";
+import { command, get } from "./api";
 import type { Project } from "./events";
 import type { StartFrom } from "./Sessions";
 
@@ -27,8 +27,16 @@ type Feature = {
   breakdown: Partial<Record<Stage, number>>;
   branch: string; // Implement spec's new Worktree
   ref: string;
+  idea?: string; // the Idea it was linked from (#14)
 };
-type BoardData = { tracker: string; note?: string; features: Feature[] };
+// Idea matches internal/app's ideaView: an Idea without its Spec yet, and
+// the Specs that appeared since it started.
+type Idea = {
+  session: string;
+  name: string;
+  suggest: { id: string; title: string; ref: string }[];
+};
+type BoardData = { tracker: string; note?: string; features: Feature[]; ideas: Idea[] };
 
 const columns: { stage: Stage; name: string }[] = [
   { stage: "idea", name: "Idea" },
@@ -149,6 +157,19 @@ export function Board({
         >
           Refresh
         </button>
+        <button
+          type="button"
+          onClick={() =>
+            onStart({
+              title: "Grill new idea",
+              project: chosen.path,
+              skill: "grill-with-docs",
+              idea: true,
+            })
+          }
+        >
+          Grill new idea
+        </button>
         {(board?.tracker === "github" || board?.tracker === "local") && (
           <button
             type="button"
@@ -192,7 +213,23 @@ export function Board({
         {columns.map((c) => (
           <div key={c.stage} className="column" aria-label={c.name}>
             <h3>{c.name}</h3>
-            {c.stage === "idea" && <p className="empty">Ideas arrive with Grill new idea (#14).</p>}
+            {c.stage === "idea" && (
+              <>
+                {board?.ideas.length === 0 && (
+                  <p className="empty">Start one with Grill new idea.</p>
+                )}
+                {board?.ideas.map((i) => (
+                  <IdeaCard
+                    key={i.session}
+                    idea={i}
+                    onLinked={() => {
+                      refreshNext.current = true;
+                      setReloads((n) => n + 1);
+                    }}
+                  />
+                ))}
+              </>
+            )}
             {board?.features
               .filter((f) => f.stage === c.stage)
               .map((f) => (
@@ -222,6 +259,33 @@ export function Board({
   );
 }
 
+// IdeaCard is one Idea in the Idea column. Once a Spec appears that its
+// grilling may have written, it offers to link it: one click (story 74).
+function IdeaCard({ idea, onLinked }: { idea: Idea; onLinked: () => void }) {
+  const [error, setError] = useState("");
+  const link = async (spec: string) => {
+    const r = await command(`/api/sessions/${idea.session}/link-spec`, { spec });
+    if (r.ok) onLinked();
+    else setError(r.error);
+  };
+  return (
+    <div className="fcard">
+      <span className="t">{idea.name}</span>
+      {idea.suggest.length === 0 && <span className="s">grilling: no Spec yet</span>}
+      {idea.suggest.map((s) => (
+        <button key={s.id} type="button" onClick={() => void link(s.id)}>
+          Link {s.ref}: {s.title}
+        </button>
+      ))}
+      {error && (
+        <span className="s error" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function breakdown(f: Feature): string {
   if (f.tickets.length === 0) return "no Tickets yet";
   return [...columns]
@@ -248,6 +312,7 @@ function FeatureDetail({
       <p className="crumb">
         Stage: {stageName[feature.stage]}
         {feature.tickets.length > 0 && " (earliest open Ticket)"}
+        {feature.idea && ` · from Idea "${feature.idea}"`}
       </p>
       {step && (
         <p>

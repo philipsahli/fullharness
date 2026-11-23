@@ -33,7 +33,7 @@ func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 		// Local Specs have no number: the folder names the branch, and the
 		// prompt names the file, relative to the Project.
 		f := Feature{ID: d.Name(), Title: heading(string(spec), d.Name()), Closed: isClosed(status(string(spec))),
-			Branch: d.Name(), Ref: filepath.ToSlash(filepath.Join(".scratch", d.Name(), "spec.md"))}
+			Branch: d.Name(), Ref: filepath.ToSlash(filepath.Join(".scratch", d.Name(), "spec.md")), Tickets: []Ticket{}}
 		files, _ := filepath.Glob(filepath.Join(dir, "issues", "*.md")) // a bad pattern is impossible here
 		for _, file := range files {
 			b, err := os.ReadFile(file)

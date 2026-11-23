@@ -22,7 +22,10 @@ type sessionDeps struct {
 	sessions *session.Manager
 	state    *state.Store
 	agents   []agent.Definition
-	log      *slog.Logger
+	// specs lists a Project's Specs for a new Idea's record; ok is false
+	// when its tracker can't be read.
+	specs func(project string) (ids []string, ok bool)
+	log   *slog.Logger
 }
 
 // agentInfo is an Agent as the New Session and Start dialogs list it.
@@ -50,6 +53,9 @@ type newSession struct {
 	AutoApprove bool `json:"autoApprove"`
 	// Link ties a Session started from the board to its Feature and Ticket.
 	Link *tracker.Link `json:"link"`
+	// Idea names a new Idea (Grill new idea): the Session gets a new
+	// Worktree on idea/<slug of the name>, so it takes no Worktree or branch.
+	Idea string `json:"idea"`
 }
 
 // badRequest is a New Session request fh refuses, with the reason.
@@ -113,8 +119,49 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		accepted(w, d.sessions.Prompt(r.PathValue("id"), req.Text))
 	})
 
+	// Link an Idea to the Spec its grilling produced, as the board suggests.
+	srv.Handle("POST /api/sessions/{id}/link-spec", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Spec string `json:"spec"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Spec == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"spec": "<the Spec's id on the board>"}`)
+			return
+		}
+		if err := d.sessions.LinkSpec(r.PathValue("id"), req.Spec); err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	srv.Handle("POST /api/sessions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
+	})
+
+	// Mode and config options (the model, say) are set only to what the
+	// Agent offers, as the Session summary lists them.
+	srv.Handle("POST /api/sessions/{id}/mode", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Mode == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"mode": "…"}`)
+			return
+		}
+		noContent(w, d.sessions.SetMode(r.PathValue("id"), req.Mode))
+	})
+
+	srv.Handle("POST /api/sessions/{id}/option", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Option string `json:"option"`
+			Value  string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Option == "" || req.Value == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"option": "…", "value": "…"}`)
+			return
+		}
+		noContent(w, d.sessions.SetOption(r.PathValue("id"), req.Option, req.Value))
 	})
 
 	srv.Handle("POST /api/sessions/{id}/reopen", func(w http.ResponseWriter, r *http.Request) {
@@ -178,18 +225,28 @@ func accepted(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+func noContent(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeSessionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // writeSessionError maps every Session error to its status in one place.
 func writeSessionError(w http.ResponseWriter, err error) {
 	var bad badRequest
 	var refused *worktree.RefusedError
 	switch {
-	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice):
+	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice),
+		errors.Is(err, session.ErrNotOffered):
 		server.WriteError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest):
 		server.WriteError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
 		errors.Is(err, session.ErrAnswered), errors.Is(err, session.ErrConfirm), errors.Is(err, session.ErrNoReopen),
-		errors.Is(err, session.ErrNotExited), errors.Is(err, session.ErrRemoving), errors.Is(err, session.ErrFolderGone):
+		errors.Is(err, session.ErrNotExited), errors.Is(err, session.ErrRemoving), errors.Is(err, session.ErrFolderGone),
+		errors.Is(err, session.ErrNotIdea), errors.Is(err, session.ErrIdeaLinked):
 		server.WriteError(w, http.StatusConflict, err.Error())
 	default:
 		server.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -209,6 +266,21 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 	def := d.agents[i]
 	if missing := def.Missing(); missing != "" {
 		return session.Summary{}, badRequest(def.Name + " can't start: " + missing)
+	}
+	launch := session.Launch{Project: p.Path, Prompt: req.Prompt, AutoApprove: req.AutoApprove, Link: req.Link}
+	if name := strings.TrimSpace(req.Idea); name != "" {
+		branch, ok := tracker.IdeaBranch(name)
+		switch {
+		case !ok:
+			return session.Summary{}, badRequest("an Idea's name needs letters or digits")
+		case req.Worktree != "" || req.Branch != "":
+			return session.Summary{}, badRequest("an Idea gets its own Worktree on " + branch + "; leave out worktree and branch")
+		case req.Link != nil:
+			return session.Summary{}, badRequest("an Idea links to its Spec later, once it has one")
+		}
+		req.Branch = branch
+		launch.Idea = name
+		launch.KnownSpecs, launch.SpecsRead = d.specs(p.Path)
 	}
 	if (req.Worktree == "") == (req.Branch == "") {
 		return session.Summary{}, badRequest("pick an existing Worktree or a new branch, not both")
@@ -237,8 +309,8 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 	if req.Link != nil && req.Link.Feature == "" {
 		return session.Summary{}, badRequest("a link names the Feature, and the Ticket if any")
 	}
-	return d.sessions.Start(def, session.Launch{Project: p.Path, Worktree: wtPath, Branch: branch,
-		Prompt: req.Prompt, AutoApprove: req.AutoApprove, Link: req.Link})
+	launch.Worktree, launch.Branch = wtPath, branch
+	return d.sessions.Start(def, launch)
 }
 
 // findSkill finds skill among an Agent's slash command names: by exact name,

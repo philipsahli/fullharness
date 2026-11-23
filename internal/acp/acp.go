@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"syscall"
 	"time"
 
@@ -95,12 +96,45 @@ func (p *Process) Initialize(ctx context.Context) (canLoad bool, err error) {
 	return resp.AgentCapabilities.LoadSession, err
 }
 
-// Session is a new ACP session: its ID, the mode IDs the Agent offers, and
-// its select config options with the values each allows.
+// Session is a new ACP session: its ID, the session modes the Agent offers
+// and the current one, and its select config options.
 type Session struct {
 	ID      sdk.SessionId
-	Modes   []string
-	Options map[string][]string
+	Mode    string
+	Modes   []Choice
+	Options []Option
+}
+
+// Choice is a session mode, or one value of a config option.
+type Choice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Option is a select config option, such as the model.
+type Option struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Category is ACP's hint of what it sets, e.g. "model" or "mode"; may
+	// be empty.
+	Category string   `json:"category,omitempty"`
+	Value    string   `json:"value"`
+	Values   []Choice `json:"values"`
+}
+
+// HasMode reports whether the Agent offers mode.
+func (s Session) HasMode(mode string) bool {
+	return slices.ContainsFunc(s.Modes, func(c Choice) bool { return c.ID == mode })
+}
+
+// HasValue reports whether config option id offers value.
+func HasValue(options []Option, id, value string) bool {
+	for _, o := range options {
+		if o.ID == id {
+			return slices.ContainsFunc(o.Values, func(c Choice) bool { return c.ID == value })
+		}
+	}
+	return false
 }
 
 // NewSession creates an ACP session in cwd.
@@ -113,23 +147,45 @@ func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 }
 
 func newSessionInfo(id sdk.SessionId, modes *sdk.SessionModeState, options []sdk.SessionConfigOption) Session {
-	s := Session{ID: id, Options: map[string][]string{}}
+	s := Session{ID: id, Options: Options(options)}
 	if modes != nil {
+		s.Mode = string(modes.CurrentModeId)
 		for _, m := range modes.AvailableModes {
-			s.Modes = append(s.Modes, string(m.Id))
-		}
-	}
-	for _, o := range options {
-		// Only plain selects: the options fh sets (Copilot's allow_all) are
-		// ungrouped; a grouped one would show up as "not offered".
-		if o.Select == nil || o.Select.Options.Ungrouped == nil {
-			continue
-		}
-		for _, v := range *o.Select.Options.Ungrouped {
-			s.Options[string(o.Select.Id)] = append(s.Options[string(o.Select.Id)], string(v.Value))
+			s.Modes = append(s.Modes, Choice{ID: string(m.Id), Name: m.Name})
 		}
 	}
 	return s
+}
+
+// Options converts the Agent's config options. Only selects: ACP's boolean
+// toggles have no use in fh yet. A grouped select's values are listed
+// group after group.
+func Options(options []sdk.SessionConfigOption) []Option {
+	out := []Option{}
+	for _, o := range options {
+		sel := o.Select
+		if sel == nil {
+			continue
+		}
+		opt := Option{ID: string(sel.Id), Name: sel.Name, Value: string(sel.CurrentValue), Values: []Choice{}}
+		if sel.Category != nil {
+			opt.Category = string(*sel.Category)
+		}
+		var values []sdk.SessionConfigSelectOption
+		switch {
+		case sel.Options.Ungrouped != nil:
+			values = *sel.Options.Ungrouped
+		case sel.Options.Grouped != nil:
+			for _, g := range *sel.Options.Grouped {
+				values = append(values, g.Options...)
+			}
+		}
+		for _, v := range values {
+			opt.Values = append(opt.Values, Choice{ID: string(v.Value), Name: v.Name})
+		}
+		out = append(out, opt)
+	}
+	return out
 }
 
 // LoadSession reopens the ACP session sid in cwd. The Agent replays its
@@ -142,12 +198,17 @@ func (p *Process) LoadSession(ctx context.Context, sid sdk.SessionId, cwd string
 	return newSessionInfo(sid, resp.Modes, resp.ConfigOptions), nil
 }
 
-// SetOption sets a select config option.
-func (p *Process) SetOption(ctx context.Context, sid sdk.SessionId, id, value string) error {
-	_, err := p.conn.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{
+// SetOption sets a select config option. It returns every option as the
+// Agent reports them afterwards: one change may change others, such as the
+// effort levels a new model allows.
+func (p *Process) SetOption(ctx context.Context, sid sdk.SessionId, id, value string) ([]Option, error) {
+	resp, err := p.conn.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{
 		SessionId: sid, ConfigId: sdk.SessionConfigId(id), Value: sdk.SessionConfigValueId(value),
 	}})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return Options(resp.ConfigOptions), nil
 }
 
 // SetMode sets the session's mode.

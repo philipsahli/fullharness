@@ -107,8 +107,44 @@ type Summary struct {
 	Reason string   `json:"reason,omitempty"`
 	Stderr []string `json:"stderr,omitempty"`
 	// Link is the Feature (and Ticket) the Session was started from on the
-	// board; nil for a Session started from New Session.
+	// board; nil for a Session started from New Session. An Idea's Session
+	// gets a link to its Spec once you confirm it (LinkSpec).
 	Link *tracker.Link `json:"link,omitempty"`
+	// Idea is the name of the Idea a Grill new idea Session is for (#14).
+	Idea string `json:"idea,omitempty"`
+	// Commands are the slash commands of the Agent's latest
+	// available_commands_update, for the composer's "/" list.
+	Commands []Command `json:"commands,omitempty"`
+	// Mode is the current session mode, one of Modes; both are empty when
+	// the Agent offers no modes.
+	Mode  string       `json:"mode,omitempty"`
+	Modes []acp.Choice `json:"modes,omitempty"`
+	// Options are the Agent's select config options, such as the model.
+	Options []acp.Option `json:"options,omitempty"`
+	// Usage is the Agent's latest usage_update; nil until it sends one.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Usage is how much of the context window a Session uses and, when the
+// Agent reports it, what the Session has cost so far.
+type Usage struct {
+	Used int64 `json:"used"` // tokens in context
+	Size int64 `json:"size"` // the context window, in tokens
+	Cost *Cost `json:"cost,omitempty"`
+}
+
+// Cost is a Session's cost so far, in Currency: an ISO 4217 code such as
+// "USD", or another unit such as "credits".
+type Cost struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// Command is one slash command the Agent offers.
+type Command struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Hint        string `json:"hint,omitempty"` // what to type after the name
 }
 
 // Item is one entry of a conversation.
@@ -166,6 +202,9 @@ var (
 	ErrRemoving    = errors.New("this Worktree is being removed")
 	ErrLinked      = errors.New("a Session is linked to it; close the Session first")
 	ErrFolderGone  = errors.New("the Worktree's folder is gone")
+	ErrNotIdea     = errors.New("this Session is not an Idea")
+	ErrIdeaLinked  = errors.New("this Idea is already linked to a Spec")
+	ErrNotOffered  = errors.New("the Agent doesn't offer that setting")
 )
 
 // Saved is what state.json keeps of a Session across fh restarts. The
@@ -179,8 +218,28 @@ type Saved struct {
 	Title       string `json:"title"`
 	AutoApprove bool   `json:"autoApprove"`
 	CanLoad     bool   `json:"canLoad"` // the Agent offered session/load
-	// Link is kept so a Ticket stays Implementing after a restart.
+	// Link is kept so a Ticket stays Implementing after a restart, and an
+	// Idea keeps its Spec.
 	Link *tracker.Link `json:"link,omitempty"`
+	// Idea, KnownSpecs and SpecsRead are an Idea's record (see IdeaRecord).
+	Idea       string   `json:"idea,omitempty"`
+	KnownSpecs []string `json:"knownSpecs,omitempty"`
+	SpecsRead  bool     `json:"specsRead,omitempty"`
+}
+
+// IdeaRecord is an Idea-stage Feature: a named Session that grills an idea
+// until `/to-spec` writes its Spec (spec #1, story 74). fh keeps it because
+// the tracker has nothing to show for an Idea yet (ADR 0004).
+type IdeaRecord struct {
+	Session string
+	Name    string
+	// Spec is the Spec you linked the Idea to; empty until then.
+	Spec string
+	// KnownSpecs are the Specs the tracker had when the Idea started; only a
+	// Spec that appears later can be the Idea's. SpecsRead is false until
+	// the tracker was read once, e.g. while gh was logged out at the start.
+	KnownSpecs []string
+	SpecsRead  bool
 }
 
 // Config wires a Manager into fh.
@@ -246,6 +305,9 @@ type session struct {
 	acpID           sdk.SessionId
 	stopping        bool
 	logPath         string
+	// An Idea's Specs at its start (IdeaRecord); unused for other Sessions.
+	knownSpecs []string
+	specsRead  bool
 }
 
 // pending is an open permission request: where its card is, which option
@@ -265,6 +327,11 @@ type Launch struct {
 	// AutoApprove starts the Agent in its auto mode.
 	AutoApprove bool
 	Link        *tracker.Link
+	// Idea names the Idea a Grill new idea Session is for; KnownSpecs and
+	// SpecsRead start its record (IdeaRecord).
+	Idea       string
+	KnownSpecs []string
+	SpecsRead  bool
 }
 
 // Start creates a Session as l says and launches its Agent.
@@ -293,7 +360,8 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 		return Summary{}, ErrFolderGone
 	}
 	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
-		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
+		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link, Idea: l.Idea})
+	s.knownSpecs, s.specsRead = l.KnownSpecs, l.SpecsRead
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
 
@@ -372,7 +440,8 @@ func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definit
 			def = agent.Definition{ID: sv.Agent, Name: sv.Agent}
 		}
 		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
-			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link})
+			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link, Idea: sv.Idea})
+		s.knownSpecs, s.specsRead = sv.KnownSpecs, sv.SpecsRead
 		// canLoad is kept as saved even while the Agent is missing, so
 		// Reopen comes back when the Agent is configured again.
 		s.acpID, s.canLoad, s.agentKnown = sdk.SessionId(sv.ACPID), sv.CanLoad, ok
@@ -390,7 +459,8 @@ func (m *Manager) persist() {
 		s.mu.Lock()
 		if !s.closed {
 			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
-				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link})
+				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link,
+				Idea: s.sum.Idea, KnownSpecs: s.knownSpecs, SpecsRead: s.specsRead})
 		}
 		s.mu.Unlock()
 	}
@@ -407,6 +477,66 @@ func (m *Manager) Links(project string) []tracker.Link {
 		}
 	}
 	return out
+}
+
+// Ideas returns project's Ideas: its Grill new idea Sessions, live or
+// Exited. Closing the Session drops its Idea.
+func (m *Manager) Ideas(project string) []IdeaRecord {
+	var out []IdeaRecord
+	for _, s := range m.all() {
+		s.mu.Lock()
+		if s.sum.Project == project && s.sum.Idea != "" && !s.closed {
+			r := IdeaRecord{Session: s.sum.ID, Name: s.sum.Idea, KnownSpecs: slices.Clone(s.knownSpecs), SpecsRead: s.specsRead}
+			if s.sum.Link != nil {
+				r.Spec = s.sum.Link.Feature
+			}
+			out = append(out, r)
+		}
+		s.mu.Unlock()
+	}
+	return out
+}
+
+// SetKnownSpecs records the Specs the tracker has, for an Idea whose start
+// couldn't read them; an Idea that has them keeps its own.
+func (m *Manager) SetKnownSpecs(id string, specs []string) error {
+	s, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if s.specsRead || s.sum.Idea == "" {
+		s.mu.Unlock()
+		return nil
+	}
+	s.knownSpecs, s.specsRead = slices.Clone(specs), true
+	s.mu.Unlock()
+	m.persist()
+	return nil
+}
+
+// LinkSpec links Idea Session id to the Spec its grilling produced: the
+// Idea leaves the board's Idea column, and the Session shows its Spec.
+func (m *Manager) LinkSpec(id, spec string) error {
+	s, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	switch {
+	case s.sum.Idea == "":
+		s.mu.Unlock()
+		return ErrNotIdea
+	case s.sum.Link != nil:
+		s.mu.Unlock()
+		return ErrIdeaLinked
+	}
+	s.sum.Link = &tracker.Link{Feature: spec}
+	s.mu.Unlock()
+	m.cfg.Log.Info("idea linked", "session", id, "spec", spec)
+	m.persist()
+	s.publish()
+	return nil
 }
 
 // Reopen restarts an Exited Session's Agent in the same Worktree, Agent and
@@ -465,6 +595,8 @@ func (s *session) resetRunLocked() {
 	s.proc, s.stopping, s.loginNeeded, s.ready = nil, false, false, false
 	s.inTurn, s.unseen, s.cancelRequested = false, false, false
 	s.transcript, s.tools = nil, map[string]int{} // the Agent replays the conversation
+	// The reloaded Agent reports these again.
+	s.sum.Commands, s.sum.Mode, s.sum.Modes, s.sum.Options = nil, "", nil, nil
 	s.lastPublished = ""
 }
 
@@ -763,9 +895,10 @@ func (s *session) run(load bool, prompt string) {
 		s.mu.Unlock()
 	}
 	sid := acpSess.ID
-	s.setAsking(ctx, proc, acpSess)
+	acpSess = s.setAsking(ctx, proc, acpSess)
 	s.mu.Lock()
 	s.acpID, s.ready = sid, true
+	s.sum.Mode, s.sum.Modes, s.sum.Options = acpSess.Mode, acpSess.Modes, acpSess.Options
 	if prompt == "" {
 		s.deriveLocked() // Idle; with a prompt, beginTurn goes straight to Working
 	}
@@ -786,31 +919,36 @@ func (s *session) run(load bool, prompt string) {
 // setAsking puts the Agent in "ask before acting", or auto-approve, by
 // mode and config option as its definition says (the environment part was
 // set at launch). If that fails, the conversation says so instead of the
-// user finding out from an unasked edit.
-func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) {
+// user finding out from an unasked edit. It returns acpSess with the mode
+// and options as they are afterwards.
+func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) acp.Session {
 	a, auto := s.def.Asking, s.summary().AutoApprove
 	if !a.Known() {
 		s.addItem(Item{Type: "notice", Text: "fh doesn't know how to make this Agent ask before it acts, so it follows its own settings; auto-approve has no effect."})
-		return
+		return acpSess
 	}
 	var problems []error
 	if mode := a.Mode.Pick(auto); mode != "" {
-		if !slices.Contains(acpSess.Modes, mode) {
+		if !acpSess.HasMode(mode) {
 			problems = append(problems, fmt.Errorf("mode %q not offered", mode))
 		} else if err := proc.SetMode(ctx, acpSess.ID, mode); err != nil {
 			problems = append(problems, err)
+		} else {
+			acpSess.Mode = mode
 		}
 	}
 	if a.Option != "" {
 		value := a.Value.Pick(auto)
-		if !slices.Contains(acpSess.Options[a.Option], value) {
+		if !acp.HasValue(acpSess.Options, a.Option, value) {
 			problems = append(problems, fmt.Errorf("option %s=%s not offered", a.Option, value))
-		} else if err := proc.SetOption(ctx, acpSess.ID, a.Option, value); err != nil {
+		} else if opts, err := proc.SetOption(ctx, acpSess.ID, a.Option, value); err != nil {
 			problems = append(problems, err)
+		} else {
+			acpSess.Options = afterSet(acpSess.Options, opts, a.Option, value)
 		}
 	}
 	if len(problems) == 0 {
-		return
+		return acpSess
 	}
 	s.m.cfg.Log.Info("agent asking setup failed", "session", s.sum.ID, "err", errors.Join(problems...))
 	text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
@@ -818,6 +956,82 @@ func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.
 		text = "fh couldn't switch the Agent to auto-approve, so it keeps its own setting."
 	}
 	s.addItem(Item{Type: "notice", Text: text})
+	return acpSess
+}
+
+// afterSet is the option list after option id was set to value: the list
+// the Agent answered with, or, if it sent none, the old list with that one
+// value changed.
+func afterSet(old, answered []acp.Option, id, value string) []acp.Option {
+	if len(answered) > 0 {
+		return answered
+	}
+	out := slices.Clone(old)
+	for i := range out {
+		if out[i].ID == id {
+			out[i].Value = value
+		}
+	}
+	return out
+}
+
+// SetMode switches Session id to one of the modes its Agent offers.
+func (m *Manager) SetMode(id, mode string) error {
+	s, proc, sid, err := m.live(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	offered := slices.ContainsFunc(s.sum.Modes, func(c acp.Choice) bool { return c.ID == mode })
+	s.mu.Unlock()
+	if !offered {
+		return ErrNotOffered
+	}
+	if err := proc.SetMode(context.Background(), sid, mode); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.sum.Mode = mode
+	s.mu.Unlock()
+	s.publish()
+	return nil
+}
+
+// SetOption sets one of Session id's config options, such as its model.
+func (m *Manager) SetOption(id, option, value string) error {
+	s, proc, sid, err := m.live(id)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	offered := acp.HasValue(s.sum.Options, option, value)
+	s.mu.Unlock()
+	if !offered {
+		return ErrNotOffered
+	}
+	opts, err := proc.SetOption(context.Background(), sid, option, value)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.sum.Options = afterSet(s.sum.Options, opts, option, value)
+	s.mu.Unlock()
+	s.publish()
+	return nil
+}
+
+// live finds Session id with its running Agent and ACP session.
+func (m *Manager) live(id string) (*session, *acp.Process, sdk.SessionId, error) {
+	s, err := m.find(id)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ready || s.sum.State == Exited || s.proc == nil {
+		return nil, nil, "", ErrNotRunning
+	}
+	return s, s.proc, s.acpID, nil
 }
 
 // watch turns an unexpected process exit into Exited "Agent crashed".
@@ -920,15 +1134,44 @@ func (s *session) Update(n sdk.SessionNotification) {
 		if title, ok := u.SessionInfoUpdate.Title.Value(); ok && title != "" {
 			s.retitle(title)
 		}
-	case u.AvailableCommandsUpdate != nil:
-		if s.m.cfg.Commands == nil {
-			return
+	case u.CurrentModeUpdate != nil:
+		s.mu.Lock()
+		s.sum.Mode = string(u.CurrentModeUpdate.CurrentModeId)
+		s.mu.Unlock()
+		s.publish()
+	case u.UsageUpdate != nil:
+		uu := u.UsageUpdate
+		usage := &Usage{Used: uu.Used, Size: uu.Size}
+		if uu.Cost != nil {
+			usage.Cost = &Cost{Amount: uu.Cost.Amount, Currency: uu.Cost.Currency}
 		}
+		s.mu.Lock()
+		s.sum.Usage = usage
+		s.mu.Unlock()
+		s.publish()
+	case u.ConfigOptionUpdate != nil:
+		s.mu.Lock()
+		s.sum.Options = acp.Options(u.ConfigOptionUpdate.ConfigOptions)
+		s.mu.Unlock()
+		s.publish()
+	case u.AvailableCommandsUpdate != nil:
 		names := []string{}
+		cmds := []Command{}
 		for _, c := range u.AvailableCommandsUpdate.AvailableCommands {
 			names = append(names, c.Name)
+			cmd := Command{Name: c.Name, Description: c.Description}
+			if c.Input != nil && c.Input.Unstructured != nil {
+				cmd.Hint = c.Input.Unstructured.Hint
+			}
+			cmds = append(cmds, cmd)
 		}
-		s.m.cfg.Commands(s.def.ID, names)
+		s.mu.Lock()
+		s.sum.Commands = cmds
+		s.mu.Unlock()
+		s.publish()
+		if s.m.cfg.Commands != nil {
+			s.m.cfg.Commands(s.def.ID, names)
+		}
 	}
 }
 

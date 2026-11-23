@@ -2,11 +2,13 @@ package app
 
 import (
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
+	"github.com/philipsahli/fullharness/internal/session"
 	"github.com/philipsahli/fullharness/internal/tracker"
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
@@ -16,21 +18,87 @@ import (
 // this window, and Refresh skips it.
 const ghCacheFor = 50 * time.Second
 
+// boardView is a board with its Ideas, which only fh knows (ADR 0004).
+type boardView struct {
+	tracker.Board
+	Ideas []ideaView `json:"ideas"`
+}
+
+// ideaView is an Idea not yet linked to a Spec, for the Idea column.
+type ideaView struct {
+	Session string `json:"session"`
+	Name    string `json:"name"`
+	// Suggest lists the Specs that appeared since the Idea started and no
+	// other Idea has, any of which its `/to-spec` may have written.
+	Suggest []specRef `json:"suggest"`
+}
+
+type specRef struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Ref   string `json:"ref"`
+}
+
 // registerBoardRoutes adds GET /api/board?project=<path>[&refresh=1].
 // Local markdown is read fresh on every call; gh results are cached.
-// links lists a Project's Session links, which make Tickets Implementing.
-func registerBoardRoutes(srv *server.Server, projects *project.Registry, links func(project string) []tracker.Link) {
-	b := &boards{cache: map[string]*ghEntry{}}
+// sessions gives the Session links, which make Tickets Implementing, and
+// the Ideas.
+func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boards, sessions *session.Manager) {
 	srv.Handle("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projects.Get(r.URL.Query().Get("project"))
 		if !ok {
 			server.WriteError(w, http.StatusNotFound, "no such Project")
 			return
 		}
-		board := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
-		tracker.Derive(board.Features, links(p.Path))
-		server.WriteJSON(w, http.StatusOK, board)
+		board, read := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
+		tracker.Derive(board.Features, sessions.Links(p.Path))
+		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
+}
+
+// withIdeas adds p's Ideas to its board, names each linked Spec's Idea, and
+// suggests the Specs an unlinked Idea may have produced. read says the
+// tracker was read; an Idea started while it couldn't be learns its known
+// Specs from the first board that is.
+func withIdeas(project string, board tracker.Board, read bool, sessions *session.Manager) boardView {
+	v := boardView{Board: board, Ideas: []ideaView{}}
+	ideas := sessions.Ideas(project)
+	taken := map[string]bool{}
+	for _, i := range ideas {
+		if i.Spec != "" {
+			taken[i.Spec] = true
+			if j := slices.IndexFunc(v.Features, func(f tracker.Feature) bool { return f.ID == i.Spec }); j >= 0 {
+				v.Features[j].Idea = i.Name
+			}
+		}
+	}
+	for _, i := range ideas {
+		if i.Spec != "" {
+			continue
+		}
+		iv := ideaView{Session: i.Session, Name: i.Name, Suggest: []specRef{}}
+		switch {
+		case !read:
+		case !i.SpecsRead:
+			_ = sessions.SetKnownSpecs(i.Session, specIDs(board)) // fails only for a Session closed meanwhile, whose Idea is gone
+		default:
+			for _, f := range v.Features {
+				if !f.Closed && !taken[f.ID] && !slices.Contains(i.KnownSpecs, f.ID) {
+					iv.Suggest = append(iv.Suggest, specRef{ID: f.ID, Title: f.Title, Ref: f.Ref})
+				}
+			}
+		}
+		v.Ideas = append(v.Ideas, iv)
+	}
+	return v
+}
+
+func specIDs(board tracker.Board) []string {
+	ids := []string{}
+	for _, f := range board.Features {
+		ids = append(ids, f.ID)
+	}
+	return ids
 }
 
 type boards struct {
@@ -55,11 +123,14 @@ type ghResult struct {
 	err        error
 }
 
-func (b *boards) read(repo string, refresh bool) tracker.Board {
+// read reads repo's board; ok is false when its tracker couldn't be read:
+// none, unsupported, or gh failed.
+func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) {
 	kind, name := tracker.Detect(repo)
-	board := tracker.Board{Tracker: kind, Features: []tracker.Feature{}}
+	board = tracker.Board{Tracker: kind, Features: []tracker.Feature{}}
 	switch kind {
 	case tracker.KindLocal:
+		ok = true
 		var prBranches []string
 		if tracker.HasGitHubRemote(repo) {
 			// Without gh the board skips Review; the Tickets still show.
@@ -79,6 +150,7 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 			board.Note = tracker.Note(gr.err)
 			break
 		}
+		ok = true
 		board.Features = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in GitHub yet: run /to-spec in a Session to write one."
@@ -88,7 +160,14 @@ func (b *boards) read(repo string, refresh bool) tracker.Board {
 	case tracker.KindNone:
 		board.Note = "No Issue tracker set up: add docs/agents/issue-tracker.md, or run /setup-matt-pocock-skills in a Session."
 	}
-	return board
+	return board, ok
+}
+
+// specs lists repo's Specs as its board has them now, for a new Idea's
+// record; ok is false when the tracker can't be read.
+func (b *boards) specs(repo string) (ids []string, ok bool) {
+	board, ok := b.read(repo, false)
+	return specIDs(board), ok
 }
 
 // gh returns the repo's gh read, from the cache when it's fresh and has
