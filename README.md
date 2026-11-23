@@ -208,7 +208,7 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 - A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
 - `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
 
-A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base: `origin/<default branch>`, or the local default branch without a remote. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
+A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
 For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
@@ -226,6 +226,35 @@ A local markdown Project with a GitHub remote gets its open PRs the same way, ma
 A board with no Specs says so, with a hint to run `/to-spec` in a Session.
 
 Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
+
+#### Starting Sessions from the board
+
+Each button opens the Start dialog, prefilled with a Worktree, an Agent and a starting prompt that runs one of [Matt Pocock's skills](https://github.com/mattpocock/skills). Change anything before you click **Start Session**.
+
+| Button | Where | Skill | Worktree |
+| --- | --- | --- | --- |
+| **Start Session** | a Startable Ticket | `implement` | new, on the Ticket's branch, e.g. `42-login-form` |
+| **Make tickets** | a Feature at Spec | `to-tickets` | the main tree |
+| **Implement spec** | a Feature at Tickets, Implementing or Review | `implement-spec` | new, on the Spec's branch |
+| **Retro** | a Shipped Feature | `retro` | the main tree |
+| **Write spec** | the board header | `to-spec` | the main tree |
+| **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
+
+A Session started from a Ticket or Feature shows that link in its header, and the Ticket counts as Implementing.
+
+Each Agent names skills its own way, so fh looks for the skill among the slash commands the Agent last reported: by its exact name, or as `<plugin>:<name>` (Claude Code lists plugin skills as `mattpocock-skills:implement`).
+
+- An Agent without the skill is greyed out, with a note such as "`/implement` isn't installed for Copilot CLI".
+- fh learns an Agent's slash commands from its first Session and keeps them across restarts. Until then the Agent can still be picked, and the dialog warns once that fh can't tell whether the skill is installed.
+
+Copilot CLI and OpenCode see Matt's skills only once they're installed where those Agents look for skills, `~/.agents/skills`:
+
+```bash
+git clone https://github.com/mattpocock/skills.git ~/src/mattpocock-skills
+mkdir -p ~/.agents/skills
+ln -s ~/src/mattpocock-skills/skills/engineering/* ~/.agents/skills/
+# then start a new Session of that Agent, so fh learns its commands
+```
 
 ### Agents
 

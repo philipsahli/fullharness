@@ -96,7 +96,8 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 			// worth showing, and they would pile up in Shipped (#12).
 			continue
 		}
-		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED"}
+		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED",
+			Branch: branchName(strconv.Itoa(i.Number), i.Title), Ref: "#" + strconv.Itoa(i.Number)}
 		for _, k := range kids {
 			f.Tickets = append(f.Tickets, githubTicket(byNum[k], byNum, prs, aheadBranches))
 		}
@@ -109,7 +110,9 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 }
 
 func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string) Ticket {
-	t := Ticket{Number: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED", Blockers: []Blocker{}}
+	n := strconv.Itoa(i.Number)
+	t := Ticket{Number: n, Title: i.Title, Closed: i.State == "CLOSED", Blockers: []Blocker{},
+		Branch: branchName(n, i.Title), Ref: "#" + n}
 	for _, l := range labels(i) {
 		if slices.Contains(triageRoles, l) {
 			t.Label = l

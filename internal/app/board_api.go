@@ -18,7 +18,8 @@ const ghCacheFor = 50 * time.Second
 
 // registerBoardRoutes adds GET /api/board?project=<path>[&refresh=1].
 // Local markdown is read fresh on every call; gh results are cached.
-func registerBoardRoutes(srv *server.Server, projects *project.Registry) {
+// links lists a Project's Session links, which make Tickets Implementing.
+func registerBoardRoutes(srv *server.Server, projects *project.Registry, links func(project string) []tracker.Link) {
 	b := &boards{cache: map[string]*ghEntry{}}
 	srv.Handle("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projects.Get(r.URL.Query().Get("project"))
@@ -26,7 +27,9 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry) {
 			server.WriteError(w, http.StatusNotFound, "no such Project")
 			return
 		}
-		server.WriteJSON(w, http.StatusOK, b.read(p.Path, r.URL.Query().Get("refresh") == "1"))
+		board := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
+		tracker.MarkLinked(board.Features, links(p.Path))
+		server.WriteJSON(w, http.StatusOK, board)
 	})
 }
 

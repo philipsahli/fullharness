@@ -167,6 +167,11 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 				log.Info("save sessions failed", "err", err)
 			}
 		},
+		Commands: func(agentID string, names []string) {
+			if err := st.SetCommands(agentID, names); err != nil {
+				log.Info("save agent commands failed", "agent", agentID, "err", err)
+			}
+		},
 		EnteredWaiting: func(sum session.Summary, what string, viewed bool) {
 			notes.enteredWaiting(sum, what, viewed)
 		},
@@ -192,7 +197,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	})
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
-	registerBoardRoutes(srv, reg)
+	registerBoardRoutes(srv, reg, sessions.Links)
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,

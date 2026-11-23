@@ -30,6 +30,7 @@ type action struct {
 	SayPID     bool        `json:"sayPid,omitempty"`     // say "pid=N"
 	SayConfig  string      `json:"sayConfig,omitempty"`  // say "<id>=<value>" for a config option
 	Title      string      `json:"title,omitempty"`      // a session_info_update with this title
+	Commands   []string    `json:"commands,omitempty"`   // an available_commands_update with these names
 	Tool       *toolAction `json:"tool,omitempty"`       // a tool_call
 	ToolUpdate *toolAction `json:"toolUpdate,omitempty"` // a tool_call_update
 	Permission *toolAction `json:"permission,omitempty"` // request permission, then say the chosen option
@@ -220,6 +221,14 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 		case s.Title != "":
 			err = update(acp.SessionUpdate{SessionInfoUpdate: &acp.SessionSessionInfoUpdate{
 				SessionUpdate: "session_info_update", Title: acp.PatchSet(s.Title),
+			}})
+		case s.Commands != nil:
+			var cmds []acp.AvailableCommand
+			for _, name := range s.Commands {
+				cmds = append(cmds, acp.AvailableCommand{Name: name, Description: "fake " + name})
+			}
+			err = update(acp.SessionUpdate{AvailableCommandsUpdate: &acp.SessionAvailableCommandsUpdate{
+				SessionUpdate: "available_commands_update", AvailableCommands: cmds,
 			}})
 		case s.Tool != nil:
 			t := s.Tool

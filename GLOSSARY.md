@@ -69,7 +69,7 @@ An issue in the Software factory that describes one buildable piece of work, typ
 _Avoid_: task, story, card
 
 **Startable ticket**:
-A Ticket of a Spec, labelled `ready-for-agent`, with no open blockers, that nobody has started (no branch with commits, no open PR); the only kind of Ticket a Session can be started from.
+A Ticket of a Spec, labelled `ready-for-agent`, with no open blockers, that nobody has started (no branch with commits, no Session started from it, no open PR); the only kind of Ticket a Session can be started from.
 _Avoid_: ready ticket ("ready" means the `ready-for-agent` label alone), unblocked, available
 
 ## Planning

@@ -6,6 +6,7 @@ package tracker
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,6 +51,10 @@ type Feature struct {
 	Note      string         `json:"note,omitempty"`
 	Tickets   []Ticket       `json:"tickets"`
 	Breakdown map[string]int `json:"breakdown"` // Stage → number of Tickets
+	// Branch is the branch a new Worktree for the whole Spec gets (Implement
+	// spec), and Ref how a skill's prompt names the Spec (#13).
+	Branch string `json:"branch"`
+	Ref    string `json:"ref"`
 }
 
 // Ticket is one buildable piece of a Feature.
@@ -61,9 +66,15 @@ type Ticket struct {
 	Blockers  []Blocker `json:"blockers"`
 	Stage     string    `json:"stage"`
 	Startable bool      `json:"startable"`
-	// Inputs to the Stage, filled by the adapter:
+	// Branch is the branch Start Session gives the Ticket's new Worktree,
+	// one the adapter's own branch rule matches; Ref is how the implement
+	// skill's prompt names the Ticket, e.g. "#42" (#13).
+	Branch string `json:"branch"`
+	Ref    string `json:"ref"`
+	// Inputs to the Stage, filled by the adapter or Link:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
 	OpenPR      bool `json:"-"` // a linked PR is open
+	Linked      bool `json:"-"` // a Session (live or Exited) was started from it
 }
 
 // Blocker is a Ticket that has to close first.
@@ -108,7 +119,7 @@ func Detect(repo string) (kind, name string) {
 // Derive sets every Ticket's and Feature's Stage, Startable and breakdown.
 // It is the one place these rules live (#11), for every tracker:
 //   - Ticket: closed → Shipped; an open linked PR → Review; a branch ahead
-//     → Implementing; else Tickets.
+//     or a linked Session → Implementing; else Tickets.
 //   - Startable: at the Tickets Stage (open, not started), labelled
 //     ready-for-agent, no open (or unknown) blocker. "Part of a Spec" is the adapter's job: it passes only
 //     Tickets that belong to a Spec.
@@ -117,6 +128,7 @@ func Detect(repo string) (kind, name string) {
 func Derive(features []Feature) {
 	for i := range features {
 		f := &features[i]
+		f.Note = "" // Derive runs again after Link; the note is its own output
 		// Blockers match Tickets by numeric value: "5" and "05" are the same
 		// Ticket, whatever width a folder uses.
 		byValue := map[int]Ticket{}
@@ -134,7 +146,7 @@ func Derive(features []Feature) {
 				t.Stage = StageShipped
 			case t.OpenPR:
 				t.Stage = StageReview
-			case t.BranchAhead:
+			case t.BranchAhead || t.Linked:
 				t.Stage = StageImplementing
 			default:
 				t.Stage = StageTickets
@@ -174,6 +186,51 @@ func Derive(features []Feature) {
 			f.Stage, f.Note = StageReview, "All Tickets are closed: close the Spec to ship it."
 		}
 	}
+}
+
+// Link is a Session's tie to the Feature (and Ticket) it was started from
+// on the board. Ticket is empty for a Session about the whole Feature, such
+// as Implement spec.
+type Link struct {
+	Feature string `json:"feature"`
+	Ticket  string `json:"ticket,omitempty"`
+}
+
+// MarkLinked marks the Tickets that links name and derives the Stages again:
+// a Ticket a Session was started from is Implementing even before its
+// branch has commits, and stays so once that Session is Exited (#13).
+func MarkLinked(features []Feature, links []Link) {
+	for i := range features {
+		f := &features[i]
+		for j := range f.Tickets {
+			t := &f.Tickets[j]
+			t.Linked = slices.ContainsFunc(links, func(l Link) bool { return l.Feature == f.ID && l.Ticket == t.Number })
+		}
+	}
+	Derive(features)
+}
+
+// maxSlug bounds the slug part of a branch fh names after a title.
+const maxSlug = 40
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// branchName is "<n>-<slug of title>": the title lowercased, every run of
+// other characters one "-", cut at a word to at most maxSlug characters.
+func branchName(n, title string) string {
+	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	if len(slug) > maxSlug {
+		slug = slug[:maxSlug+1]
+		if cut := strings.LastIndex(slug, "-"); cut > 0 {
+			slug = slug[:cut]
+		} else {
+			slug = slug[:maxSlug]
+		}
+	}
+	if slug == "" {
+		return n
+	}
+	return n + "-" + slug
 }
 
 // numberOf parses a Ticket number from a branch name like "12-login" or
