@@ -78,7 +78,9 @@ function WorktreeItem({ wt }: { wt: Worktree }) {
     <li className="wt" title={`${wt.path}\n${fetchNote(wt)}`}>
       <span className="dot" aria-hidden="true" />
       <span>{wt.branch || "(detached)"}</span>
-      <span className="tag">{wt.main ? "main tree" : "Agent worktree"}</span>
+      {/* fh's own Worktrees need no tag; the others say why they differ. */}
+      {wt.main && <span className="tag">main tree</span>}
+      {wt.agent && <span className="tag">Agent worktree</span>}
       {wt.missing ? (
         <span className="counts warn">Folder not found</span>
       ) : (
