@@ -748,23 +748,24 @@ func (m *Manager) Prompt(id, text string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.beginTurn(Idle); err != nil {
+	if err := s.beginTurn(); err != nil {
 		return err
 	}
 	go s.prompt(text)
 	return nil
 }
 
-// beginTurn moves the Session from state from to Working, checked and set
-// under one lock, so two sends at once can't both start a turn.
-func (s *session) beginTurn(from string) error {
+// beginTurn moves the Session from Idle to Working, checked and set under
+// one lock, so two sends at once can't both start a turn. The starting
+// prompt doesn't come through here: run starts its turn as it sets ready.
+func (s *session) beginTurn() error {
 	s.mu.Lock()
 	state := s.sum.State
-	if from == Idle && state == Waiting && s.sum.Waiting == WaitingTurn {
+	if state == Waiting && s.sum.Waiting == WaitingTurn {
 		state = Idle // writing the next message means you've looked
 	}
 	switch state {
-	case from:
+	case Idle:
 		s.inTurn, s.unseen, s.cancelRequested = true, false, false
 		s.deriveLocked()
 		s.mu.Unlock()
@@ -941,19 +942,20 @@ func (s *session) run(load bool, prompt string) {
 	s.mu.Lock()
 	s.acpID, s.ready = sid, true
 	s.sum.Mode, s.sum.Modes, s.sum.Options = acpSess.Mode, acpSess.Modes, acpSess.Options
-	if prompt == "" {
-		s.deriveLocked() // Idle; with a prompt, beginTurn goes straight to Working
+	// With a prompt, straight from Starting to Working under the same lock
+	// that sets ready: anything that derives the state in between (a tab
+	// saying it's looking) would otherwise make it Idle, and the starting
+	// prompt would be dropped, or a second message let in before it.
+	if prompt != "" {
+		s.inTurn = true
 	}
+	s.deriveLocked()
+	exited := s.sum.State == Exited
 	s.mu.Unlock()
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
 	s.m.persist()
-	if prompt == "" {
-		s.publish()
-		return
-	}
-	// Straight from Starting to Working: an Idle in between would let a
-	// second message in before the starting prompt.
-	if s.beginTurn(Starting) == nil {
+	s.publish()
+	if prompt != "" && !exited {
 		s.prompt(prompt)
 	}
 }

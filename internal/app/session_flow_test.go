@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -30,6 +32,44 @@ func newSessionIn(t *testing.T, f *fh, prompt string) (c *http.Client, tab func(
 		waitState(t, conn, id, "idle")
 	}
 	return c, func() map[string]any { return nextEvent(t, conn, 10*time.Second) }, id, repo
+}
+
+// A tab opens a new Session's conversation, and says it's looking, while
+// the Agent is still starting. That must not lose the starting prompt.
+func TestLookingAtAStartingSessionKeepsItsStartingPrompt(t *testing.T) {
+	f := startFhWithAgent(t, script{"prompts": map[string]any{"hello": []any{map[string]any{"say": "hi"}}}})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+
+	for i := range 10 {
+		id := f.startSession(c, map[string]any{"project": repo, "branch": fmt.Sprintf("try-%d", i), "agent": "claude", "prompt": "hello"})
+		stop := make(chan struct{})
+		looked := make(chan struct{})
+		go func() {
+			defer close(looked)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				req, _ := http.NewRequest("POST", f.origin()+"/api/sessions/"+id+"/viewing",
+					strings.NewReader(`{"tab": "t1", "viewing": true}`)) // a constant request always builds
+				req.Header.Set("Origin", f.origin())
+				if resp, err := c.Do(req); err == nil {
+					_, _ = io.Copy(io.Discard, resp.Body) // drained so the connection is reused
+					_ = resp.Body.Close()                 // only the timing matters here
+				}
+			}
+		}()
+		// With the prompt lost, the Session goes Idle without telling the
+		// tabs, so it never shows Working.
+		waitState(t, tab, id, "working")
+		close(stop)
+		<-looked
+	}
 }
 
 func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
