@@ -19,6 +19,8 @@ type worktreeDeps struct {
 	sessions *session.Manager
 	state    *state.Store
 	log      *slog.Logger
+	// beforeRemove is Options.BeforeWorktreeRemove; nil runs nothing.
+	beforeRemove func()
 }
 
 // registerWorktreeRoutes adds Remove Worktree. fh only removes a Worktree
@@ -68,6 +70,9 @@ func registerWorktreeRoutes(srv *server.Server, d worktreeDeps) {
 		if !req.Confirm {
 			d.askToConfirm(w, req.Path)
 			return
+		}
+		if d.beforeRemove != nil {
+			d.beforeRemove()
 		}
 		if err := worktree.Remove(req.Project, req.Path); err != nil {
 			server.WriteError(w, http.StatusConflict, err.Error())

@@ -1,12 +1,16 @@
 package app_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fhWorktree has fh create a Worktree on branch (through a Session it then
@@ -46,8 +50,8 @@ func TestAMergedCleanWorktreeIsRemovedAfterConfirmation(t *testing.T) {
 	f.addProject(c, repo)
 	wt := mergedWorktree(t, f, c, repo)
 	f.post(c, "/api/projects/refresh", nil)
-	if w := worktreeAt(t, projects(t, f.state(c))[0], wt); w["merged"] != true || w["noOwnCommits"] != false || w["removal"] != "" {
-		t.Fatalf("merged %v noOwnCommits %v removal %q, want true, false and no refusal", w["merged"], w["noOwnCommits"], w["removal"])
+	if w := worktreeAt(t, projects(t, f.state(c))[0], wt); w["merge"] != "merged" || w["removal"] != "" {
+		t.Fatalf("merge %q removal %q, want merged and no refusal", w["merge"], w["removal"])
 	}
 
 	if status, msg := f.removeWorktree(c, repo, wt, false); status != http.StatusConflict || !strings.Contains(msg, "confirm") {
@@ -108,8 +112,8 @@ func TestASquashMergedBranchCountsAsMerged(t *testing.T) {
 	f.post(c, "/api/projects/refresh", nil)
 	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
 
-	if w["merged"] != true || w["ahead"] != float64(2) {
-		t.Fatalf("merged %v ahead %v, want true and still 2 ahead", w["merged"], w["ahead"])
+	if w["merge"] != "merged" || w["ahead"] != float64(2) {
+		t.Fatalf("merge %q ahead %v, want merged and still 2 ahead", w["merge"], w["ahead"])
 	}
 	if status, msg := f.removeWorktree(c, repo, wt, true); status != http.StatusNoContent {
 		t.Errorf("status %d %q, want 204", status, msg)
@@ -237,8 +241,8 @@ func TestARebaseMergedBranchCountsAsMerged(t *testing.T) {
 	f.post(c, "/api/projects/refresh", nil)
 	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
 
-	if w["merged"] != true || w["ahead"] != float64(2) {
-		t.Fatalf("merged %v ahead %v, want true and still 2 ahead", w["merged"], w["ahead"])
+	if w["merge"] != "merged" || w["ahead"] != float64(2) {
+		t.Fatalf("merge %q ahead %v, want merged and still 2 ahead", w["merge"], w["ahead"])
 	}
 }
 
@@ -251,8 +255,8 @@ func TestAWorktreeWithNoCommitsOfItsOwnIsRemovableButNotCalledMerged(t *testing.
 
 	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
 
-	if w["noOwnCommits"] != true || w["merged"] != false || w["removal"] != "" {
-		t.Fatalf("noOwnCommits %v merged %v removal %q, want true, false and no refusal", w["noOwnCommits"], w["merged"], w["removal"])
+	if w["merge"] != "no-own-commits" || w["removal"] != "" {
+		t.Fatalf("merge %q removal %q, want no-own-commits and no refusal", w["merge"], w["removal"])
 	}
 	if status, msg := f.removeWorktree(c, repo, wt, true); status != http.StatusNoContent {
 		t.Errorf("status %d %q, want 204", status, msg)
@@ -317,5 +321,81 @@ func TestAWorktreeMergedIntoOriginIsRemoved(t *testing.T) {
 
 	if status, msg := f.removeWorktree(c, repo, wt, true); status != http.StatusNoContent {
 		t.Errorf("status %d %q, want 204", status, msg)
+	}
+}
+
+func TestWithoutAReflogAWorktreeWithNothingOfItsOwnIsCalledInBase(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	// Without reflogs fh can't tell a fresh branch from a fast-forward merge.
+	git(t, repo, "config", "core.logAllRefUpdates", "false")
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "fresh")
+
+	w := worktreeAt(t, projects(t, f.state(c))[0], wt)
+
+	if w["merge"] != "in-base" || w["removal"] != "" {
+		t.Fatalf("merge %q removal %q, want in-base and no refusal", w["merge"], w["removal"])
+	}
+}
+
+// rawPost is post for a goroutine: it reports errors instead of failing.
+func rawPost(f *fh, c *http.Client, path string, body any) (int, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequest("POST", f.origin()+path, bytes.NewReader(b))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", f.origin())
+	resp, err := c.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	_ = resp.Body.Close() // only the status matters
+	return resp.StatusCode, nil
+}
+
+func TestNoSessionStartsInAWorktreeWhileItIsBeingRemoved(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, fmt.Sprintf("[agents.claude]\ncommand = [%q]\nenv = { FH_FAKE_SCRIPT = \"{}\" }\n", fakeAgentBin))
+	opts := appOptions(dir)
+	// The hook holds the removal open, reserved, until the test lets go.
+	reached, release := make(chan struct{}, 1), make(chan struct{})
+	opts.BeforeWorktreeRemove = func() {
+		reached <- struct{}{}
+		<-release
+	}
+	f := startFhWith(t, opts)
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	wt := fhWorktree(t, f, c, repo, "done")
+	removed := make(chan int, 1)
+	go func() {
+		status, err := rawPost(f, c, "/api/worktrees/remove", map[string]any{"project": repo, "path": wt, "confirm": true})
+		if err != nil {
+			status = 0
+		}
+		removed <- status
+	}()
+	select {
+	case <-reached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the removal never reached git")
+	}
+
+	status, body := f.post(c, "/api/sessions", map[string]any{"project": repo, "worktree": wt, "agent": "claude"})
+	close(release)
+
+	if status != http.StatusConflict || body["error"] != "this Worktree is being removed" {
+		t.Errorf("start during removal: status %d %v, want 409 saying it is being removed", status, body)
+	}
+	if got := <-removed; got != http.StatusNoContent {
+		t.Errorf("removal: status %d, want 204", got)
 	}
 }

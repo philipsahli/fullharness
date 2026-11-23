@@ -106,7 +106,7 @@ function RemoveWorktree({
   onError: (e: string) => void;
 }) {
   const name = wt.branch || wt.path;
-  const state = wt.noOwnCommits ? "It has no commits of its own." : `It is merged into ${wt.base}.`;
+  const state = mergeNote(wt);
   const remove = async () => {
     // The button stays focusable when refused, so the reason is reachable
     // by keyboard and screen reader, not only as a hover tooltip.
@@ -151,6 +151,19 @@ function RemoveWorktree({
       Remove
     </button>
   );
+}
+
+// mergeNote says, for the confirmation and tooltip, why nothing on the
+// Worktree's branch is lost.
+function mergeNote(wt: Worktree): string {
+  switch (wt.merge) {
+    case "no-own-commits":
+      return "It has no commits of its own.";
+    case "in-base":
+      return `Everything on it is already in ${wt.base}.`;
+    default:
+      return `It is merged into ${wt.base}.`;
+  }
 }
 
 function fetchNote(wt: Worktree): string {

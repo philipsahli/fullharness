@@ -184,7 +184,7 @@ func (r *Registry) removal(w worktree.Worktree) string {
 		return fmt.Sprintf("it has %d uncommitted %s", w.Uncommitted, plural(w.Uncommitted, "file", "files"))
 	case w.Base == "":
 		return "no main branch to check the merge against"
-	case !w.Merged && !w.NoOwnCommits:
+	case w.Merge == worktree.NotMerged:
 		return "its branch isn't merged into " + w.Base
 	case r.linked(w.Path):
 		return "a Session is linked to it; close the Session first"

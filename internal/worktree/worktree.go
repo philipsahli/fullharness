@@ -36,19 +36,32 @@ type Worktree struct {
 	Ahead  int    `json:"ahead"`
 	Behind int    `json:"behind"`
 	Base   string `json:"base"` // empty when no default branch was found
-	// Merged means the branch has commits of its own and Base has them all:
-	// as the same commits, as rebased copies (`git cherry`), or as one squash
-	// commit with the same change. NoOwnCommits means HEAD is still where the
-	// branch was created. Both are read only for Worktrees fh created, the
-	// only ones it offers to remove.
-	Merged       bool `json:"merged"`
-	NoOwnCommits bool `json:"noOwnCommits"`
+	// Merge says whether Base has everything on HEAD, and how. It is read
+	// only for Worktrees fh created, the only ones it offers to remove.
+	Merge Merge `json:"merge"`
 	// Removal is why fh won't remove the Worktree, or "" when it would.
 	// Package project fills it in, because it depends on Sessions.
 	Removal string `json:"removal"`
 	// FetchedAt is the last `git fetch` in this repo, nil if never.
 	FetchedAt *time.Time `json:"fetchedAt"`
 }
+
+// Merge is how much of a Worktree's work its Base already has.
+type Merge string
+
+const (
+	// NotMerged: HEAD has commits Base lacks, or fh didn't check.
+	NotMerged Merge = ""
+	// Merged: the branch has commits of its own and Base has them all, as
+	// the same commits, as rebased copies (`git cherry`), or as one squash
+	// commit with the same change.
+	Merged Merge = "merged"
+	// NoOwnCommits: HEAD is still where the branch was created.
+	NoOwnCommits Merge = "no-own-commits"
+	// InBase: HEAD is part of Base, but without a reflog fh can't tell a
+	// fast-forward merge from a branch that never had commits.
+	InBase Merge = "in-base"
+)
 
 // List returns every Worktree of the repo at repo, main tree first.
 // created reports whether fh created the Worktree at a path.
@@ -106,12 +119,13 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 				return
 			}
 			if w.Ahead == 0 {
-				w.NoOwnCommits = atCreation(w.Path, w.Branch)
-				w.Merged = !w.NoOwnCommits
+				w.Merge = inBase(w.Path, w.Branch)
 				return
 			}
 			key, merged := mergedAhead(repo, w.Path, base)
-			w.Merged = merged
+			if merged {
+				w.Merge = Merged
+			}
 			if key != "" {
 				usedMu.Lock()
 				used[key] = true
@@ -184,22 +198,27 @@ func aheadBehind(dir, base string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
-// atCreation reports whether branch still points where it was created:
-// the oldest entry of its reflog. HEAD being part of base can't tell a
-// fresh branch from a fast-forward merge; the reflog can. Without a
-// reflog (detached HEAD, or reflogs turned off) it says no, so the
-// Worktree counts as merged.
-func atCreation(dir, branch string) bool {
+// inBase tells, for a HEAD that is part of base, a fresh branch from a
+// fast-forward merge: a branch still at the oldest entry of its reflog
+// never had commits of its own. Without a reflog (detached HEAD, reflogs
+// turned off, or the entries expired) it can't tell, and says InBase.
+func inBase(dir, branch string) Merge {
 	if branch == "" {
-		return false
+		return InBase
 	}
 	out, err := run(dir, "log", "-g", "--format=%H", "refs/heads/"+branch, "--")
-	if err != nil {
-		return false
-	}
 	entries := strings.Fields(string(out))
+	if err != nil || len(entries) == 0 {
+		return InBase
+	}
 	head, err := run(dir, "rev-parse", "HEAD")
-	return err == nil && len(entries) > 0 && entries[len(entries)-1] == strings.TrimSpace(string(head))
+	if err != nil {
+		return InBase
+	}
+	if entries[len(entries)-1] == strings.TrimSpace(string(head)) {
+		return NoOwnCommits
+	}
+	return Merged
 }
 
 // mergedAhead reports whether base has all of HEAD's commits although HEAD

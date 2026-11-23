@@ -54,6 +54,10 @@ type Options struct {
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
+	// BeforeWorktreeRemove runs right before git removes a Worktree, while
+	// the removal is reserved; tests use it to hold a removal open. nil
+	// means nothing runs.
+	BeforeWorktreeRemove func()
 }
 
 // DefaultAgentStartTimeout leaves room for npx to download the Claude Code
@@ -204,7 +208,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	registerBoardRoutes(srv, reg, sessions.Links)
-	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log})
+	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,

@@ -142,7 +142,7 @@ fh counts a branch as merged when the default branch has its work in any of thes
 
 When the button doesn't work, it's greyed out and its tooltip says why. Click it to see the reason as text.
 
-Before removing, fh asks you to confirm. The question says whether the branch is merged or has no commits of its own. It also lists the ignored files at the top of the Worktree, such as `.env` or `node_modules`, because `git worktree remove` deletes them with the folder.
+Before removing, fh asks you to confirm. The question says whether the branch is merged or has no commits of its own. When fh can't tell those two apart, because the branch has no reflog, it says that everything on the branch is already in the default branch. It also lists the ignored files at the top of the Worktree, such as `.env` or `node_modules`, because `git worktree remove` deletes them with the folder.
 
 fh never removes a Worktree on its own, and never removes the main tree or an Agent worktree.
 
