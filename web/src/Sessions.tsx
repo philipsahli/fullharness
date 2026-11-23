@@ -97,6 +97,9 @@ export type StartFrom = {
   ref?: string; // what the skill works on, e.g. "#42"
   note?: string; // added after ref, e.g. which branch to integrate on
   link?: Link;
+  // idea: Grill new idea. The dialog asks for the Idea's name instead of a
+  // Worktree; fh gives it a new Worktree on idea/<name> (#14).
+  idea?: boolean;
 };
 
 // Agents whose unknown commands were already pointed out in this tab: the
@@ -133,6 +136,7 @@ export function NewSession(props: {
   );
   const [worktree, setWorktree] = useState(prefillBusy ? "" : (from?.worktree ?? "")); // "" means a new Worktree
   const [branch, setBranch] = useState(from?.branch ?? "");
+  const [ideaName, setIdeaName] = useState("");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -187,7 +191,8 @@ export function NewSession(props: {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const req: Record<string, unknown> = { project, agent, prompt, autoApprove, link: from?.link };
-    if (worktree) req.worktree = worktree;
+    if (from?.idea) req.idea = ideaName.trim();
+    else if (worktree) req.worktree = worktree;
     else req.branch = branch.trim();
     const r = await command("/api/sessions", req);
     if (!r.ok) {
@@ -230,41 +235,54 @@ export function NewSession(props: {
           ))}
         </select>
       </label>
-      <fieldset>
-        <legend>Worktree</legend>
-        {prefillBusy && (
-          <p className="why">
-            The main tree already has a Session, so this one needs a new Worktree: name its branch.
-          </p>
-        )}
-        <label className="choice">
-          <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
-          New Worktree on branch
+      {from?.idea ? (
+        <label>
+          Idea name
           <input
-            value={branch}
-            onChange={(e) => setBranch(e.target.value)}
-            onFocus={() => setWorktree("")}
-            placeholder="feature/login"
-            aria-label="New branch name"
+            value={ideaName}
+            onChange={(e) => setIdeaName(e.target.value)}
+            placeholder="Dark mode"
           />
+          <span className="why">It gets its own Worktree on a new idea/… branch.</span>
         </label>
-        {p?.worktrees.map((w) => {
-          const why = reason(w);
-          return (
-            <label key={w.path} className="choice" data-disabled={why !== "" || undefined}>
-              <input
-                type="radio"
-                disabled={why !== ""}
-                checked={worktree === w.path}
-                onChange={() => setWorktree(w.path)}
-              />
-              <code>{w.branch || "(detached)"}</code>
-              {w.main && <span className="tag">main tree</span>}
-              {why && <span className="why">{why}</span>}
-            </label>
-          );
-        })}
-      </fieldset>
+      ) : (
+        <fieldset>
+          <legend>Worktree</legend>
+          {prefillBusy && (
+            <p className="why">
+              The main tree already has a Session, so this one needs a new Worktree: name its
+              branch.
+            </p>
+          )}
+          <label className="choice">
+            <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
+            New Worktree on branch
+            <input
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              onFocus={() => setWorktree("")}
+              placeholder="feature/login"
+              aria-label="New branch name"
+            />
+          </label>
+          {p?.worktrees.map((w) => {
+            const why = reason(w);
+            return (
+              <label key={w.path} className="choice" data-disabled={why !== "" || undefined}>
+                <input
+                  type="radio"
+                  disabled={why !== ""}
+                  checked={worktree === w.path}
+                  onChange={() => setWorktree(w.path)}
+                />
+                <code>{w.branch || "(detached)"}</code>
+                {w.main && <span className="tag">main tree</span>}
+                {why && <span className="why">{why}</span>}
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
       <fieldset>
         <legend>Agent</legend>
         {agents.map((a) => {
@@ -308,7 +326,10 @@ export function NewSession(props: {
         </p>
       )}
       <div className="row">
-        <button type="submit" disabled={!agent || (!worktree && !branch.trim())}>
+        <button
+          type="submit"
+          disabled={!agent || (from?.idea ? !ideaName.trim() : !worktree && !branch.trim())}
+        >
           Start Session
         </button>
         <button type="button" onClick={props.onCancel}>
@@ -402,7 +423,11 @@ export function Conversation(props: {
         </button>
         <span className="crumb" title={session.worktree}>
           {session.agentName} · {session.worktree}
-          {session.link && ` · started from ${linkText(session.link)}`}
+          {session.idea && ` · Idea "${session.idea}"`}
+          {session.link &&
+            (session.idea
+              ? ` → ${linkText(session.link)}`
+              : ` · started from ${linkText(session.link)}`)}
         </span>
       </header>
       <div className="items">

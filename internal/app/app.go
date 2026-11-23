@@ -207,13 +207,15 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	reg.Relabel() // broadcasts, so only once srv exists
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
-	registerBoardRoutes(srv, reg, sessions.Links)
+	boards := &boards{cache: map[string]*ghEntry{}}
+	registerBoardRoutes(srv, reg, boards, sessions)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,
 		state:    st,
 		agents:   agents,
+		specs:    boards.specs,
 		log:      log,
 	})
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)

@@ -1,6 +1,7 @@
 // Package state keeps fh's runtime-state file, state.json: facts fh needs
 // across restarts that aren't the user's configuration: the Worktrees fh
-// created (#4), Sessions (#9) and each Agent's slash commands (#13).
+// created (#4), Sessions (#9) with their Ideas and Spec links (#14), and
+// each Agent's slash commands (#13).
 package state
 
 import (
