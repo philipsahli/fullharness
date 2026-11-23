@@ -117,6 +117,31 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
 
+	// Mode and config options (the model, say) are set only to what the
+	// Agent offers, as the Session summary lists them.
+	srv.Handle("POST /api/sessions/{id}/mode", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Mode == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"mode": "…"}`)
+			return
+		}
+		noContent(w, d.sessions.SetMode(r.PathValue("id"), req.Mode))
+	})
+
+	srv.Handle("POST /api/sessions/{id}/option", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Option string `json:"option"`
+			Value  string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Option == "" || req.Value == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"option": "…", "value": "…"}`)
+			return
+		}
+		noContent(w, d.sessions.SetOption(r.PathValue("id"), req.Option, req.Value))
+	})
+
 	srv.Handle("POST /api/sessions/{id}/reopen", func(w http.ResponseWriter, r *http.Request) {
 		accepted(w, d.sessions.Reopen(r.PathValue("id")))
 	})
@@ -178,12 +203,21 @@ func accepted(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+func noContent(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeSessionError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // writeSessionError maps every Session error to its status in one place.
 func writeSessionError(w http.ResponseWriter, err error) {
 	var bad badRequest
 	var refused *worktree.RefusedError
 	switch {
-	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice):
+	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice),
+		errors.Is(err, session.ErrNotOffered):
 		server.WriteError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest):
 		server.WriteError(w, http.StatusNotFound, err.Error())
