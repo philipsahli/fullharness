@@ -602,6 +602,9 @@ button:disabled {
 .msg.agent a {
   color: var(--accent);
 }
+.msg.agent code {
+  font-family: var(--f-mono);
+}
 .msg.agent :not(pre) > code {
   background: var(--sunken);
   padding: 1px 4px;

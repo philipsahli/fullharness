@@ -30,6 +30,17 @@ const components: Components = {
     ) : (
       <span>{children}</span>
     ),
+  // An image would make the page fetch its URL without a click, so an
+  // http(s) image is a link to it, named by its alt text, and any other image
+  // is its alt text.
+  img: ({ src, alt }) =>
+    typeof src === "string" && /^https?:\/\//i.test(src) ? (
+      <a href={src} target="_blank" rel="noopener">
+        {alt || src}
+      </a>
+    ) : (
+      <span>{alt}</span>
+    ),
 };
 
 // useOncePerFrame returns value, updated at most once per animation frame.
