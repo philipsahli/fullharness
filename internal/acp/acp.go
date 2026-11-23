@@ -183,30 +183,42 @@ func (c client) RequestPermission(ctx context.Context, r sdk.RequestPermissionRe
 	return c.h.Permission(ctx, r), nil
 }
 
-func (client) ReadTextFile(context.Context, sdk.ReadTextFileRequest) (sdk.ReadTextFileResponse, error) {
-	return sdk.ReadTextFileResponse{}, errUnsupported
-}
-func (client) WriteTextFile(context.Context, sdk.WriteTextFileRequest) (sdk.WriteTextFileResponse, error) {
-	return sdk.WriteTextFileResponse{}, errUnsupported
-}
-func (client) CreateTerminal(context.Context, sdk.CreateTerminalRequest) (sdk.CreateTerminalResponse, error) {
-	return sdk.CreateTerminalResponse{}, errUnsupported
-}
-func (client) KillTerminal(context.Context, sdk.KillTerminalRequest) (sdk.KillTerminalResponse, error) {
-	return sdk.KillTerminalResponse{}, errUnsupported
-}
-func (client) TerminalOutput(context.Context, sdk.TerminalOutputRequest) (sdk.TerminalOutputResponse, error) {
-	return sdk.TerminalOutputResponse{}, errUnsupported
-}
-func (client) ReleaseTerminal(context.Context, sdk.ReleaseTerminalRequest) (sdk.ReleaseTerminalResponse, error) {
-	return sdk.ReleaseTerminalResponse{}, errUnsupported
-}
-func (client) WaitForTerminalExit(context.Context, sdk.WaitForTerminalExitRequest) (sdk.WaitForTerminalExitResponse, error) {
-	return sdk.WaitForTerminalExitResponse{}, errUnsupported
-}
-func (client) CreateElicitation(context.Context, sdk.CreateElicitationRequest) (sdk.CreateElicitationResponse, error) {
-	return sdk.CreateElicitationResponse{}, errUnsupported
-}
-func (client) CompleteElicitation(context.Context, sdk.CompleteElicitationNotification) error {
+// Refused is optionally implemented by a Handler that wants to hear about
+// requests fh refuses (fs, terminal, elicitation). The release smoke test
+// uses it to catch an Agent that starts relying on them.
+type Refused interface{ Refused(method string) }
+
+func (c client) refuse(method string) error {
+	if r, ok := c.h.(Refused); ok {
+		r.Refused(method)
+	}
 	return errUnsupported
+}
+
+func (c client) ReadTextFile(context.Context, sdk.ReadTextFileRequest) (sdk.ReadTextFileResponse, error) {
+	return sdk.ReadTextFileResponse{}, c.refuse("fs/read_text_file")
+}
+func (c client) WriteTextFile(context.Context, sdk.WriteTextFileRequest) (sdk.WriteTextFileResponse, error) {
+	return sdk.WriteTextFileResponse{}, c.refuse("fs/write_text_file")
+}
+func (c client) CreateTerminal(context.Context, sdk.CreateTerminalRequest) (sdk.CreateTerminalResponse, error) {
+	return sdk.CreateTerminalResponse{}, c.refuse("terminal/create")
+}
+func (c client) KillTerminal(context.Context, sdk.KillTerminalRequest) (sdk.KillTerminalResponse, error) {
+	return sdk.KillTerminalResponse{}, c.refuse("terminal/kill")
+}
+func (c client) TerminalOutput(context.Context, sdk.TerminalOutputRequest) (sdk.TerminalOutputResponse, error) {
+	return sdk.TerminalOutputResponse{}, c.refuse("terminal/output")
+}
+func (c client) ReleaseTerminal(context.Context, sdk.ReleaseTerminalRequest) (sdk.ReleaseTerminalResponse, error) {
+	return sdk.ReleaseTerminalResponse{}, c.refuse("terminal/release")
+}
+func (c client) WaitForTerminalExit(context.Context, sdk.WaitForTerminalExitRequest) (sdk.WaitForTerminalExitResponse, error) {
+	return sdk.WaitForTerminalExitResponse{}, c.refuse("terminal/wait_for_exit")
+}
+func (c client) CreateElicitation(context.Context, sdk.CreateElicitationRequest) (sdk.CreateElicitationResponse, error) {
+	return sdk.CreateElicitationResponse{}, c.refuse("elicitation/create")
+}
+func (c client) CompleteElicitation(context.Context, sdk.CompleteElicitationNotification) error {
+	return c.refuse("elicitation/complete")
 }
