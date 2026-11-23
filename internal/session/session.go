@@ -23,6 +23,7 @@ import (
 
 	"github.com/philipsahli/fullharness/internal/acp"
 	"github.com/philipsahli/fullharness/internal/agent"
+	"github.com/philipsahli/fullharness/internal/diff"
 	"github.com/philipsahli/fullharness/internal/tracker"
 )
 
@@ -159,28 +160,30 @@ type Item struct {
 
 // Request is a permission request, as its card and its Inbox entry show it.
 type Request struct {
-	ID           string    `json:"id"`
-	Session      string    `json:"session"`
-	SessionTitle string    `json:"sessionTitle"`
-	Project      string    `json:"project"`
-	Title        string    `json:"title"`
-	Kind         string    `json:"kind"`
-	Command      string    `json:"command,omitempty"`
-	Paths        []string  `json:"paths,omitempty"`
-	Content      string    `json:"content,omitempty"` // text and diffs, plain
-	Always       bool      `json:"always"`            // the Agent offers "always allow"
-	Status       string    `json:"status"`            // StatusPending until settled
-	CreatedAt    time.Time `json:"createdAt"`
+	ID           string      `json:"id"`
+	Session      string      `json:"session"`
+	SessionTitle string      `json:"sessionTitle"`
+	Project      string      `json:"project"`
+	Title        string      `json:"title"`
+	Kind         string      `json:"kind"`
+	Command      string      `json:"command,omitempty"`
+	Paths        []string    `json:"paths,omitempty"`
+	Content      string      `json:"content,omitempty"` // text content, plain
+	Diffs        []diff.File `json:"diffs,omitempty"`   // the edits the tool call would make
+	Always       bool        `json:"always"`            // the Agent offers "always allow"
+	Status       string      `json:"status"`            // StatusPending until settled
+	CreatedAt    time.Time   `json:"createdAt"`
 }
 
 // Tool is a tool call as its card shows it.
 type Tool struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Kind      string `json:"kind"`
-	Status    string `json:"status"`
-	Content   string `json:"content,omitempty"`   // text content, plain
-	RawOutput string `json:"rawOutput,omitempty"` // raw output, plain
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Kind      string      `json:"kind"`
+	Status    string      `json:"status"`
+	Content   string      `json:"content,omitempty"`   // text content, plain
+	Diffs     []diff.File `json:"diffs,omitempty"`     // the edits the tool call makes
+	RawOutput string      `json:"rawOutput,omitempty"` // raw output, plain
 }
 
 // Detail is a Session with its whole conversation.
@@ -1127,7 +1130,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 			if t.Status == "" {
 				t.Status = "pending"
 			}
-			t.Content = contentText(tc.Content)
+			t.Content, t.Diffs = toolContent(tc.Content)
 			t.RawOutput = rawText(tc.RawOutput)
 		})
 	case u.ToolCallUpdate != nil:
@@ -1143,7 +1146,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 				t.Status = string(v)
 			}
 			if v, ok := tu.Content.Value(); ok {
-				t.Content = contentText(v)
+				t.Content, t.Diffs = toolContent(v)
 			}
 			if v, ok := tu.RawOutput.Value(); ok {
 				t.RawOutput = rawText(v)
@@ -1233,7 +1236,7 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 		}
 	}
 	if cs, ok := tc.Content.Value(); ok {
-		req.Content = contentText(cs)
+		req.Content, req.Diffs = toolContent(cs)
 	}
 	p := &pending{options: map[string]sdk.PermissionOptionId{}, answer: make(chan sdk.PermissionOptionId, 1)}
 	for _, o := range r.Options {
@@ -1576,32 +1579,24 @@ func (s *session) waitingForLocked() string {
 	return s.sum.AgentName + " is waiting"
 }
 
-// contentText shows a tool call's content as plain text: text as is, a diff
-// as its path and every old line with "-", every new line with "+". It is
-// not a minimal diff; nicer diffs may come with #45.
-func contentText(cs []sdk.ToolCallContent) string {
+// toolContent splits a tool call's content into its text, joined, and its
+// diffs as line diffs. No old text means a new file.
+func toolContent(cs []sdk.ToolCallContent) (string, []diff.File) {
 	var parts []string
+	var files []diff.File
 	for _, c := range cs {
 		switch {
 		case c.Content != nil && c.Content.Content.Text != nil:
 			parts = append(parts, c.Content.Content.Text.Text)
 		case c.Diff != nil:
-			var b strings.Builder
-			b.WriteString(c.Diff.Path + "\n")
+			old := ""
 			if c.Diff.OldText != nil {
-				prefixLines(&b, "-", *c.Diff.OldText)
+				old = *c.Diff.OldText
 			}
-			prefixLines(&b, "+", c.Diff.NewText)
-			parts = append(parts, strings.TrimRight(b.String(), "\n"))
+			files = append(files, diff.Lines(c.Diff.Path, old, c.Diff.NewText))
 		}
 	}
-	return strings.Join(parts, "\n")
-}
-
-func prefixLines(b *strings.Builder, prefix, text string) {
-	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		b.WriteString(prefix + line + "\n")
-	}
+	return strings.Join(parts, "\n"), files
 }
 
 // rawText shows raw output as plain text: a JSON string unquoted, anything
