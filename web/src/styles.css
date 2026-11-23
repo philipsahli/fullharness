@@ -265,6 +265,10 @@ h3 {
   font-family: var(--f-body);
   font-size: 11.5px;
 }
+.wt .link[aria-disabled="true"] {
+  color: var(--muted);
+  opacity: 0.6;
+}
 .wt .dot {
   width: 7px;
   height: 7px;

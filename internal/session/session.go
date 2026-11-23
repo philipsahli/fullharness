@@ -163,6 +163,9 @@ var (
 	ErrConfirm     = errors.New("the Session's Agent is running; confirm to stop it and close the Session")
 	ErrNoReopen    = errors.New("this Agent can't reopen Sessions (no session/load)")
 	ErrNotExited   = errors.New("only an Exited Session can be reopened")
+	ErrRemoving    = errors.New("this Worktree is being removed")
+	ErrLinked      = errors.New("a Session is linked to it; close the Session first")
+	ErrFolderGone  = errors.New("the Worktree's folder is gone")
 )
 
 // Saved is what state.json keeps of a Session across fh restarts. The
@@ -198,6 +201,9 @@ type Config struct {
 	// Sessions reports them (available_commands_update), for skill
 	// resolution (#13).
 	Commands func(agentID string, names []string)
+	// Changed runs after a Session is added or closed, so Worktrees can say
+	// whether a Session is linked to them.
+	Changed func()
 }
 
 // Manager holds all Sessions.
@@ -207,6 +213,8 @@ type Manager struct {
 	mu       sync.Mutex
 	sessions []*session
 	closed   bool // set by StopAll: fh is quitting, start nothing new
+	// removing holds the Worktrees being removed; Start refuses them.
+	removing map[string]bool
 }
 
 // New returns an empty Manager.
@@ -274,6 +282,16 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 			return Summary{}, ErrWorktreeUse
 		}
 	}
+	// Checked under the lock ReserveRemoval takes, so a Start that the
+	// caller validated before a removal can't go ahead after it.
+	if m.removing[l.Worktree] {
+		m.mu.Unlock()
+		return Summary{}, ErrRemoving
+	}
+	if _, err := os.Stat(l.Worktree); err != nil {
+		m.mu.Unlock()
+		return Summary{}, ErrFolderGone
+	}
 	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
 		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
 	m.sessions = append(m.sessions, s)
@@ -284,8 +302,48 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 	// ACP session (login needed, say) is listed after a restart.
 	m.persist()
 	s.publish()
+	m.changed()
 	go s.run(false, l.Prompt)
 	return s.summary(), nil
+}
+
+// changed runs Config.Changed; the caller holds no lock, because Changed
+// may ask the Manager about its Sessions.
+func (m *Manager) changed() {
+	if m.cfg.Changed != nil {
+		m.cfg.Changed()
+	}
+}
+
+// Linked reports whether a Session, live or Exited, runs in worktree.
+func (m *Manager) Linked(worktree string) bool {
+	return slices.ContainsFunc(m.all(), func(s *session) bool { return s.summary().Worktree == worktree })
+}
+
+// ReserveRemoval stops Start from using worktree until release is called,
+// for removing it. It fails when a Session is linked to the Worktree or a
+// removal is already under way; both checks and the reservation happen
+// under one lock, so no Session can slip in between.
+func (m *Manager) ReserveRemoval(worktree string) (release func(), err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.removing[worktree] {
+		return nil, ErrRemoving
+	}
+	for _, s := range m.sessions {
+		if s.summary().Worktree == worktree {
+			return nil, ErrLinked
+		}
+	}
+	if m.removing == nil {
+		m.removing = map[string]bool{}
+	}
+	m.removing[worktree] = true
+	return func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		delete(m.removing, worktree)
+	}, nil
 }
 
 func (m *Manager) newSession(def agent.Definition, sum Summary) *session {
@@ -441,6 +499,7 @@ func (m *Manager) Close(id string, confirm bool) error {
 	m.cfg.Broadcast(map[string]any{"type": "closed", "session": id})
 	m.publishInbox()
 	m.persist()
+	m.changed()
 	return nil
 }
 

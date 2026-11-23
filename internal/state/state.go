@@ -74,7 +74,8 @@ func (s *Store) save() error {
 	return fileutil.WriteAtomic(s.file, b)
 }
 
-// RemoveWorktree forgets path, after creating it failed.
+// RemoveWorktree forgets path, after creating it failed or after the user
+// removed it.
 func (s *Store) RemoveWorktree(path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

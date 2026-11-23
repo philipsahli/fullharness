@@ -54,6 +54,10 @@ type Options struct {
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
+	// BeforeWorktreeRemove runs right before git removes a Worktree, while
+	// the removal is reserved; tests use it to hold a removal open. nil
+	// means nothing runs.
+	BeforeWorktreeRemove func()
 }
 
 // DefaultAgentStartTimeout leaves room for npx to download the Claude Code
@@ -145,7 +149,11 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return fail(err)
 	}
 	var srv *server.Server
-	reg, err := project.Open(opts.Dir, st.CreatedWorktree, func(ps []project.Project) {
+	// sessions doesn't exist yet when Open reads the Projects; a Relabel
+	// once sessions are restored fills in the Session rule.
+	var sessions *session.Manager
+	linked := func(path string) bool { return sessions != nil && sessions.Linked(path) }
+	reg, err := project.Open(opts.Dir, st.CreatedWorktree, linked, func(ps []project.Project) {
 		srv.Broadcast(map[string]any{"type": "projects", "projects": ps})
 	})
 	if err != nil {
@@ -156,7 +164,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if startTimeout == 0 {
 		startTimeout = DefaultAgentStartTimeout
 	}
-	sessions := session.New(session.Config{
+	sessions = session.New(session.Config{
 		StartTimeout: startTimeout,
 		LogDir:       logDir,
 		Broadcast:    func(ev any) { srv.Broadcast(ev) },
@@ -175,7 +183,8 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		EnteredWaiting: func(sum session.Summary, what string, viewed bool) {
 			notes.enteredWaiting(sum, what, viewed)
 		},
-		Log: log,
+		Changed: reg.Relabel,
+		Log:     log,
 	})
 	inst.sessions = sessions
 	agents := agent.Resolve(cfg.Agents)
@@ -195,9 +204,11 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		// dev tells the tab to reload on a restart instead of stopping.
 		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "dev": opts.Dev}
 	})
+	reg.Relabel() // broadcasts, so only once srv exists
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	registerBoardRoutes(srv, reg, sessions.Links)
+	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,

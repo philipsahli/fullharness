@@ -12,6 +12,12 @@ export type Worktree = {
   ahead: number;
   behind: number;
   base: string; // what ahead/behind compare with, e.g. "origin/main"
+  // How much of its work base already has (fh's Worktrees only), matching
+  // worktree.Merge: "" not merged, merged (also rebased or squashed),
+  // no-own-commits (still where it was created), in-base (no reflog to
+  // tell those two apart).
+  merge: "" | "merged" | "no-own-commits" | "in-base";
+  removal: string; // why fh won't remove it, "" when it would
   fetchedAt: string | null; // last git fetch; null if never
 };
 

@@ -2,7 +2,10 @@
 // event channel, so callers only need to know whether the command was taken.
 // The browser adds the cookie and the Origin header fh checks.
 
-export type CommandResult = { ok: true; body: unknown } | { ok: false; error: string };
+// A refusal keeps its body too: some carry more than the error, such as the
+// ignored files a Worktree removal asks you to confirm.
+export type CommandResult =
+  { ok: true; body: unknown } | { ok: false; error: string; body?: unknown };
 
 export async function command(path: string, body?: unknown): Promise<CommandResult> {
   try {
@@ -14,7 +17,8 @@ export async function command(path: string, body?: unknown): Promise<CommandResu
     });
     const text = await resp.text();
     const data = text ? JSON.parse(text) : undefined;
-    if (!resp.ok) return { ok: false, error: data?.error ?? `fh answered ${resp.status}` };
+    if (!resp.ok)
+      return { ok: false, error: data?.error ?? `fh answered ${resp.status}`, body: data };
     return { ok: true, body: data };
   } catch {
     return { ok: false, error: "fh is not reachable" };

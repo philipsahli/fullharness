@@ -1,5 +1,6 @@
 // Package worktree reads a Project's git Worktrees by running git and parsing
-// its porcelain output. It never changes a repo.
+// its porcelain output. Only Create and Remove change a repo, and only when
+// the user asked.
 package worktree
 
 import (
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -34,9 +36,32 @@ type Worktree struct {
 	Ahead  int    `json:"ahead"`
 	Behind int    `json:"behind"`
 	Base   string `json:"base"` // empty when no default branch was found
+	// Merge says whether Base has everything on HEAD, and how. It is read
+	// only for Worktrees fh created, the only ones it offers to remove.
+	Merge Merge `json:"merge"`
+	// Removal is why fh won't remove the Worktree, or "" when it would.
+	// Package project fills it in, because it depends on Sessions.
+	Removal string `json:"removal"`
 	// FetchedAt is the last `git fetch` in this repo, nil if never.
 	FetchedAt *time.Time `json:"fetchedAt"`
 }
+
+// Merge is how much of a Worktree's work its Base already has.
+type Merge string
+
+const (
+	// NotMerged: HEAD has commits Base lacks, or fh didn't check.
+	NotMerged Merge = ""
+	// Merged: the branch has commits of its own and Base has them all, as
+	// the same commits, as rebased copies (`git cherry`), or as one squash
+	// commit with the same change.
+	Merged Merge = "merged"
+	// NoOwnCommits: HEAD is still where the branch was created.
+	NoOwnCommits Merge = "no-own-commits"
+	// InBase: HEAD is part of Base, but without a reflog fh can't tell a
+	// fast-forward merge from a branch that never had commits.
+	InBase Merge = "in-base"
+)
 
 // List returns every Worktree of the repo at repo, main tree first.
 // created reports whether fh created the Worktree at a path.
@@ -58,11 +83,16 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 	}
 	base := defaultBase(repo)
 	fetchedAt := lastFetch(repo)
-	// Two git calls per Worktree; run Worktrees in parallel so a refresh of
-	// 20 stays well under #3's 1 s target (measured on an M-series Mac with
-	// small repositories: about 480 ms one by one, 185 ms in parallel).
+	// Two git calls per Worktree, plus one or two for the merge check of
+	// fh's own Worktrees (more when HEAD or the base moved); run Worktrees in
+	// parallel so a refresh of 20 stays well under #3's 1 s target (measured
+	// before the merge check, on an M-series Mac with small repositories:
+	// about 480 ms one by one, 185 ms in parallel).
 	sem := make(chan struct{}, parallelGit)
 	var wg sync.WaitGroup
+	var usedMu sync.Mutex
+	used := map[string]bool{} // mergeCache keys this List read
+	defer func() { mergeCache.keep(repo, used) }()
 	for i := range wts {
 		w := &wts[i]
 		w.Main = i == 0
@@ -79,8 +109,27 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 			// These fail only if the folder vanishes mid-refresh; the next
 			// refresh marks it Missing, so zeros are fine meanwhile.
 			w.Uncommitted, _ = uncommitted(w.Path)
-			if base != "" {
-				w.Ahead, w.Behind, _ = aheadBehind(w.Path, base)
+			if base == "" {
+				return
+			}
+			var err error
+			// Both stay false on an error: zero ahead from a failed read
+			// must not offer removal.
+			if w.Ahead, w.Behind, err = aheadBehind(w.Path, base); err != nil || w.Main || w.Agent {
+				return
+			}
+			if w.Ahead == 0 {
+				w.Merge = inBase(w.Path, w.Branch)
+				return
+			}
+			key, merged := mergedAhead(repo, w.Path, base)
+			if merged {
+				w.Merge = Merged
+			}
+			if key != "" {
+				usedMu.Lock()
+				used[key] = true
+				usedMu.Unlock()
 			}
 		})
 	}
@@ -149,10 +198,156 @@ func aheadBehind(dir, base string) (ahead, behind int, err error) {
 	return ahead, behind, nil
 }
 
+// inBase tells, for a HEAD that is part of base, a fresh branch from a
+// fast-forward merge: a branch still at the oldest entry of its reflog
+// never had commits of its own. Without a reflog (detached HEAD, reflogs
+// turned off, or the entries expired) it can't tell, and says InBase.
+func inBase(dir, branch string) Merge {
+	if branch == "" {
+		return InBase
+	}
+	out, err := run(dir, "log", "-g", "--format=%H", "refs/heads/"+branch, "--")
+	entries := strings.Fields(string(out))
+	if err != nil || len(entries) == 0 {
+		return InBase
+	}
+	head, err := run(dir, "rev-parse", "HEAD")
+	if err != nil {
+		return InBase
+	}
+	if entries[len(entries)-1] == strings.TrimSpace(string(head)) {
+		return NoOwnCommits
+	}
+	return Merged
+}
+
+// mergedAhead reports whether base has all of HEAD's commits although HEAD
+// is ahead of it: as rebased copies, or as one squash commit. The answer
+// is cached per HEAD and base commit pair, which can't change; key is
+// that pair, "" when it couldn't be read.
+func mergedAhead(repo, dir, base string) (key string, merged bool) {
+	out, err := run(dir, "rev-parse", "HEAD", base)
+	if err != nil {
+		return "", false
+	}
+	key = strings.Join(strings.Fields(string(out)), " ")
+	if v, ok := mergeCache.get(repo, key); ok {
+		return key, v
+	}
+	merged = rebaseMerged(dir, base) || squashMerged(dir, base)
+	mergeCache.put(repo, key, merged)
+	return key, merged
+}
+
+// rebaseMerged reports whether every commit on HEAD has a copy with the
+// same patch on base, which is what GitHub's "Rebase and merge" leaves:
+// `git cherry` marks those "-" and the rest "+".
+func rebaseMerged(dir, base string) bool {
+	out, err := run(dir, "cherry", base, "HEAD")
+	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.HasPrefix(line, "+") {
+			return false
+		}
+	}
+	return true
+}
+
+// squashMerged reports whether a commit on base since HEAD branched off has
+// the same patch as all of HEAD's work together, which is what a squash
+// merge (GitHub's "Squash and merge") leaves behind. Patch IDs are compared
+// without writing to the repo; a squash commit that also changed other
+// files, or resolved a conflict, doesn't match.
+func squashMerged(dir, base string) bool {
+	mb, err := run(dir, "merge-base", base, "HEAD")
+	if err != nil {
+		return false
+	}
+	fork := strings.TrimSpace(string(mb))
+	// The user's diff settings must not change the patch: no external
+	// diff tool, textconv filter, colour or signature lines.
+	plain := []string{"--no-ext-diff", "--no-textconv", "--no-color"}
+	diff, err := run(dir, append(append([]string{"diff"}, plain...), fork, "HEAD")...)
+	if err != nil || len(diff) == 0 {
+		return false
+	}
+	own, err := runStdin(dir, diff, "patch-id", "--stable")
+	if err != nil {
+		return false
+	}
+	id, _, _ := strings.Cut(strings.TrimSpace(string(own)), " ")
+	if id == "" {
+		return false
+	}
+	log, err := run(dir, append(append([]string{"log", "-p", "--no-merges", "--no-show-signature", "--format=commit %H"}, plain...), fork+".."+base)...)
+	if err != nil {
+		return false
+	}
+	theirs, err := runStdin(dir, log, "patch-id", "--stable")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(theirs), "\n") {
+		if other, _, _ := strings.Cut(line, " "); other == id {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeCache holds mergedAhead's answers per repo. List keeps only the
+// keys it read, so entries for commits no Worktree is on any more go.
+var mergeCache = &answerCache{byRepo: map[string]map[string]bool{}}
+
+type answerCache struct {
+	mu     sync.Mutex
+	byRepo map[string]map[string]bool
+}
+
+func (c *answerCache) get(repo, key string) (v, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok = c.byRepo[repo][key]
+	return v, ok
+}
+
+func (c *answerCache) put(repo, key string, v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.byRepo[repo] == nil {
+		c.byRepo[repo] = map[string]bool{}
+	}
+	c.byRepo[repo][key] = v
+}
+
+// keep drops repo's entries that aren't in used.
+func (c *answerCache) keep(repo string, used map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k := range c.byRepo[repo] {
+		if !used[k] {
+			delete(c.byRepo[repo], k)
+		}
+	}
+	if len(c.byRepo[repo]) == 0 {
+		delete(c.byRepo, repo)
+	}
+}
+
 // run runs git in dir and returns stdout. The error carries git's stderr.
 func run(dir string, args ...string) ([]byte, error) {
+	return runStdin(dir, nil, args...)
+}
+
+// runStdin is run with stdin, for git commands that read a patch.
+func runStdin(dir string, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	// Background reads like `git status` may otherwise refresh .git/index,
 	// writing to the user's repo and contending for its lock with the
 	// user's own git commands; fh only reads.
@@ -264,4 +459,35 @@ func BranchesAhead(repo string) []string {
 		}
 	}
 	return ahead
+}
+
+// Ignored lists the top-level entries in the Worktree at path that git
+// ignores, such as .env or node_modules, which `git worktree remove`
+// deletes along with the folder.
+func Ignored(path string) ([]string, error) {
+	out, err := run(path, "status", "--porcelain=v1", "-z", "--ignored")
+	if err != nil {
+		return nil, err
+	}
+	var top []string
+	for _, entry := range strings.Split(string(out), "\x00") {
+		name, ok := strings.CutPrefix(entry, "!! ")
+		if !ok {
+			continue
+		}
+		first, _, _ := strings.Cut(name, "/")
+		if !slices.Contains(top, first) {
+			top = append(top, first)
+		}
+	}
+	slices.Sort(top)
+	return top, nil
+}
+
+// Remove runs `git worktree remove` on the Worktree at path, without
+// --force, so git itself refuses one with uncommitted or untracked files
+// even if they appeared after fh's checks. The branch stays.
+func Remove(repo, path string) error {
+	_, err := run(repo, "worktree", "remove", path)
+	return err
 }
