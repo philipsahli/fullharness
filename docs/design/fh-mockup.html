@@ -476,6 +476,9 @@ let sessions = [
       { r: "user", t: "/grill-with-docs Idea: first-run onboarding for heroflow" },
       { r: "agent", t: "Recorded **Hero** and **Flow** in `GLOSSARY.md`. Next round: does onboarding create a sample Flow, or start empty?" },
     ] },
+  { id: "s9", title: "#89 Requeue with exponential backoff", project: "io", wt: "89-requeue-backoff", agent: "claude", state: "exited", exit: "fh quit", canReopen: false, folderGone: true, fid: "f-io1", ticket: 89,
+    acp: "ses_77a2…c41", started: "2 days ago", git: { ahead: 0, behind: 0, files: [], pr: { n: 88, state: "merged" } },
+    msgs: [{ r: "user", t: "/implement #89" }, { r: "agent", t: "Opened PR #88: requeue with exponential backoff, capped at 5 min." }] },
   { id: "s8", title: "#41 Template picker", project: "hf", wt: "41-template-picker", agent: "copilot", state: "exited", exit: "Agent crashed", canReopen: false, fid: "f-hf2", ticket: 41,
     acp: "ses_31c0…be2", started: "1 h ago", git: { ahead: 2, behind: 0, files: [["M","src/templates/picker.ts"]], pr: null },
     stderr: ["Error: session/load not supported by this Copilot CLI version", "    at AcpServer.load (dist/acp.js:212:11)"],
@@ -525,7 +528,7 @@ const factory = {
   ],
   io: [
     { id: "f-io1", name: "Backoff for missing CRDs", stage: "Review", ref: "Spec #87", next: "Close Spec", skill: "", allClosed: true,
-      tickets: [ { n: 89, t: "Requeue with exponential backoff", stage: "Shipped", pr: { n: 88, state: "merged" } } ] },
+      tickets: [ { n: 89, t: "Requeue with exponential backoff", stage: "Shipped", sid: "s9", pr: { n: 88, state: "merged" } } ] },
     { id: "f-io3", name: "Cluster labels", stage: "Shipped", ref: "Spec #91", next: "Retro", skill: "/retro", closedEarly: 93, retroDone: true,
       tickets: [ { n: 92, t: "Read labels from the cluster API", stage: "Shipped", pr: { n: 94, state: "merged" } }, { n: 93, t: "Filter inventory by label", stage: "Implementing", note: "Spec closed by `Closes #91` in PR #94" } ] },
     { id: "f-io2", name: "Multi-cluster inventory", stage: "Spec", ref: "Spec #90", next: "Make tickets", skill: "/to-tickets" },
@@ -687,9 +690,9 @@ function composer(s) {
   const a = AGENTS[s.agent].name;
   if (s.state === "exited" && s.canReopen) return `<div class="composer"><span class="crumb" style="flex:1">Exited: ${s.exit}. ${a} supports session/load, so the history comes back.</span><button class="btn" data-closesess="${s.id}">Close Session</button><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`;
   if (s.state === "exited") return `<div class="composer" style="display:grid;gap:8px;align-items:stretch">
-      <div class="notice"><strong>Exited: ${s.exit}. This Session can't be reopened.</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
-      <span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span></div>
-      <div class="acts" style="justify-content:flex-end">${s.ticket ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
+      <div class="notice"><strong>Exited: ${s.exit}. ${s.folderGone ? "Can't reopen: the Worktree's folder is gone." : "This Session can't be reopened."}</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
+      ${s.folderGone ? "" : `<span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span>`}</div>
+      <div class="acts" style="justify-content:flex-end">${s.ticket && !s.folderGone ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
   if (s.state === "starting") return `<div class="composer"><input type="text" disabled placeholder="Starting ${a}…" aria-label="Message"><button class="btn primary" disabled>Send</button></div>`;
   const hint = s.turnDone ? `<span class="crumb">${a} finished its turn and is waiting for your reply.</span>` : "";
   return `<form class="composer" data-send="${s.id}" style="flex-wrap:wrap">${hint ? `<div style="flex:1 1 100%">${hint}</div>` : ""}<input id="composer-input" type="text" placeholder="Message ${a}… (/ for skills)" aria-label="Message">
@@ -728,17 +731,18 @@ function renderSession() {
   $("#detail").innerHTML = `
     <section><h3>Worktree</h3>
       <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
-      <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
+      <dt>Branch</dt><dd class="mono">${s.wt}</dd>${s.folderGone ? "" : `<dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>`}
       <dt>PR</dt>${prLine(pr)}</dl>
+      ${s.folderGone ? `<p class="hint">The folder is gone (removed after the merge). Close the Session to drop it from the list.</p>` : ""}
       ${pr && pr.ci === "pass" && pr.state !== "merged" ? `<p class="hint"><button class="btn small primary" data-merge="${s.fid}:${s.ticket}">Merge #${pr.n}</button> <button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button></p>` : ""}</section>
-    <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
+    ${s.folderGone ? "" : `<section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>`}
     ${fx ? `<section><h3>${tk ? "Ticket" : "Feature"}</h3><div class="ticketcard">${tk ? `<span class="mono">#${tk.n}</span><strong>${esc(tk.t)}</strong>` : `<strong>${esc(fx.f.name)}</strong>`}<span class="crumb">${esc(fx.f.name)} · Stage: ${tk ? tk.stage : fx.f.stage}</span><button class="btn small" data-feat="${s.fid}" style="justify-self:start">Open Feature</button></div></section>`
       : `<section><h3>Feature</h3><p class="hint" style="margin:0 0 6px">Not part of a Feature.</p><button class="btn small" data-toast="Pick a Feature, or file this as a new Idea">Attach to a Feature…</button></section>`}
     ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${esc(sess(s.parent).title)}</button></section>`
       : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${esc(k.title)}</button></p>`).join("")}</section>` : ""}
     <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
-      <p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
-      <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p></section>`;
+      ${s.folderGone ? "" : `<p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
+      <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p>`}</section>`;
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
 }
 
