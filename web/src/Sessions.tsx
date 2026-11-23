@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
+import { ChangeCounts, Diffs } from "./Diff";
 import { AgentMarkdown } from "./Markdown";
 import { byListOrder, projectName, tabID } from "./events";
 import type {
   Command,
-  DiffFile,
   Item,
   Link,
   PermissionRequest,
@@ -457,7 +457,7 @@ export function Conversation(props: {
       </header>
       <div className="items">
         {(items ?? []).map((it, i) => (
-          <ItemView key={i} item={it} />
+          <ItemView key={i} item={it} session={session.id} />
         ))}
         {session.state === "exited" && (
           <div className="notice bad" role="status">
@@ -645,7 +645,7 @@ function money(amount: number, unit: string): string {
   return `${amount} ${unit}`;
 }
 
-function ItemView({ item }: { item: Item }) {
+function ItemView({ item, session }: { item: Item; session: string }) {
   switch (item.type) {
     case "user":
       return <div className="msg user">{item.text}</div>;
@@ -662,7 +662,7 @@ function ItemView({ item }: { item: Item }) {
         </div>
       );
     case "tool":
-      return <ToolCard tool={item.tool} />;
+      return <ToolCard tool={item.tool} session={session} />;
     case "permission":
       return <PermissionCard request={item.permission} />;
   }
@@ -712,7 +712,12 @@ export function PermissionCard({
         <p className="paths">{request.paths.join(", ")}</p>
       )}
       {request.content && <pre>{request.content}</pre>}
-      {request.diffs && request.diffs.length > 0 && <pre>{diffText(request.diffs)}</pre>}
+      {request.diffs && request.diffs.length > 0 && (
+        <Diffs
+          files={request.diffs}
+          fullURL={`/api/sessions/${request.session}/diffs/${request.id}`}
+        />
+      )}
       {pending ? (
         <div className="row">
           <button type="button" className="allow" onClick={() => void answer("allow")}>
@@ -756,36 +761,24 @@ function basename(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
 }
 
-// diffText shows diffs as unified diff text, until #85 renders them.
-function diffText(files: DiffFile[]): string {
-  return files
-    .map((f) => {
-      const hunks = f.hunks.map(
-        (h) =>
-          `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n` +
-          h.lines
-            .map((l) => l.op + l.text + (l.noNewline ? "\n\\ No newline at end of file" : ""))
-            .join("\n"),
-      );
-      const cut = f.truncated ? [`… cut; ${f.added + f.removed} lines changed in all`] : [];
-      return [`${f.path} +${f.added} −${f.removed}`, ...hunks, ...cut].join("\n");
-    })
-    .join("\n");
-}
-
-// ToolCard is collapsed by default, so following the Agent isn't noisy.
-function ToolCard({ tool }: { tool: Tool }) {
-  const output = [tool.content, tool.diffs && diffText(tool.diffs), tool.rawOutput]
-    .filter(Boolean)
-    .join("\n");
+// ToolCard is collapsed by default, so following the Agent isn't noisy. A
+// failed call opens itself, to show why; an edit's summary shows +N −M.
+function ToolCard({ tool, session }: { tool: Tool; session: string }) {
+  const output = [tool.content, tool.rawOutput].filter(Boolean).join("\n");
+  const diffs = tool.diffs ?? [];
   return (
-    <details className="toolcard">
+    <details className="toolcard" open={tool.status === "failed" || undefined}>
       <summary>
         <span className="kind">{tool.kind || "tool"}</span>
         <span className="title">{tool.title}</span>
+        {diffs.length > 0 && <ChangeCounts files={diffs} />}
         <span className={`status ${tool.status}`}>{tool.status.replace("_", " ")}</span>
       </summary>
-      {output ? <pre>{output}</pre> : <p className="empty">No output yet.</p>}
+      {output && <pre>{output}</pre>}
+      {diffs.length > 0 && (
+        <Diffs files={diffs} fullURL={`/api/sessions/${session}/diffs/${tool.id}`} />
+      )}
+      {!output && diffs.length === 0 && <p className="empty">No output yet.</p>}
     </details>
   );
 }
