@@ -315,3 +315,19 @@ func TestASessionsOwnPageSaysItCanBeReopened(t *testing.T) {
 		t.Errorf("GET /api/sessions/%s canReopen = %v, want true, as the list says", id, d["canReopen"])
 	}
 }
+
+func TestASessionWhoseWorktreeFolderIsGoneCantBeReopened(t *testing.T) {
+	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
+	if err := os.RemoveAll(repo); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions := objects(t, f.state(c), "sessions")
+	if len(sessions) != 1 || sessions[0]["canReopen"] != false || sessions[0]["folderGone"] != true {
+		t.Errorf("sessions = %v, want canReopen false and folderGone true", sessions)
+	}
+	status, body := f.post(c, "/api/sessions/"+id+"/reopen", nil)
+	if status != http.StatusConflict || body["error"] != "the Worktree's folder is gone" {
+		t.Fatalf("reopen: status %d (%v), want 409 saying the Worktree's folder is gone", status, body)
+	}
+}
