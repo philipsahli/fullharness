@@ -130,6 +130,14 @@ type Summary struct {
 	Options []acp.Option `json:"options,omitempty"`
 	// Usage is the Agent's latest usage_update; nil until it sends one.
 	Usage *Usage `json:"usage,omitempty"`
+	// Queued is the Queued message (#93): text sent while the Session was
+	// Starting, Working or Waiting, which fh sends as the next turn once
+	// the current one ends.
+	Queued string `json:"queued,omitempty"`
+	// Unsent is a Queued message that could not be sent because the turn
+	// was cancelled or failed, or the Agent exited. It goes back into the
+	// composer so it is never lost.
+	Unsent string `json:"unsent,omitempty"`
 }
 
 // Usage is how much of the context window a Session uses and, when the
@@ -206,7 +214,9 @@ type Detail struct {
 // Errors the API maps to status codes.
 var (
 	ErrNotFound    = errors.New("no such Session")
-	ErrBusy        = errors.New("the Agent is working; wait for the turn to end or cancel it")
+	ErrNoQueued    = errors.New("this Session has no Queued message")
+	ErrNoTurn      = errors.New("no turn is running; the Queued message goes out when the Agent is ready")
+	ErrQueuedVerb  = errors.New(`send {"action": "edit" | "remove" | "send-now" | "clear-unsent"}`)
 	ErrNotRunning  = errors.New("the Session's Agent is not running")
 	ErrWorktreeUse = errors.New("this Worktree already has a Session")
 	ErrAnswered    = errors.New("this request was already answered")
@@ -333,6 +343,12 @@ type session struct {
 	acpID           sdk.SessionId
 	stopping        bool
 	logPath         string
+	// sendNow is set by "Send now": the turn is being cancelled so that the
+	// Queued message goes out at once instead of back to the composer.
+	sendNow bool
+	// turns counts turns started, so "Send now" cancels only the turn it
+	// was asked for, never the Queued turn that follows it.
+	turns int
 	// settings are the mode and options to set again on Reopen; the live
 	// ones are in sum while the Agent has reported them (settingsLocked).
 	settings Settings
@@ -718,43 +734,123 @@ func (m *Manager) FullDiffs(id, item string) ([]diff.File, error) {
 	return nil, ErrNoItem
 }
 
-// Prompt sends text as the next turn. Sending is only allowed while Idle,
-// so a message never lands in a turn the user didn't write it for.
+// Prompt sends text as the next turn. While the Agent is Starting, Working
+// or Waiting on a permission request, text becomes the Queued message
+// instead, sent once the current turn ends: a message never lands in a
+// turn the user didn't write it for.
 func (m *Manager) Prompt(id, text string) error {
 	s, err := m.find(id)
 	if err != nil {
 		return err
 	}
-	if err := s.beginTurn(); err != nil {
+	started, err := s.beginTurnOrQueue(text)
+	if err != nil {
 		return err
 	}
-	go s.prompt(text)
+	if started {
+		go s.prompt(text)
+	}
 	return nil
 }
 
-// beginTurn moves the Session from Idle to Working, checked and set under
-// one lock, so two sends at once can't both start a turn. The starting
-// prompt doesn't come through here: run starts its turn as it sets ready.
-func (s *session) beginTurn() error {
+// beginTurnOrQueue moves the Session from Idle to Working and reports true,
+// or adds text to the Queued message when a turn is running or the Agent
+// isn't ready. Checked and set under one lock, so two sends at once can't
+// both start a turn. The starting prompt doesn't come through here: run
+// starts its turn as it sets ready.
+func (s *session) beginTurnOrQueue(text string) (bool, error) {
 	s.mu.Lock()
 	state := s.sum.State
 	if state == Waiting && s.sum.Waiting == WaitingTurn {
 		state = Idle // writing the next message means you've looked
 	}
 	switch state {
+	case Exited:
+		s.mu.Unlock()
+		return false, ErrNotRunning
 	case Idle:
-		s.inTurn, s.unseen, s.cancelRequested = true, false, false
+		s.startTurnLocked()
 		s.deriveLocked()
 		s.mu.Unlock()
 		s.publish()
-		return nil
-	case Exited:
+		return true, nil
+	default:
+		s.sum.Queued = joinMessages(s.sum.Queued, text)
 		s.mu.Unlock()
-		return ErrNotRunning
+		s.publish()
+		return false, nil
+	}
+}
+
+// QueuedAction is what the composer asks fh to do with the Queued message.
+type QueuedAction string
+
+const (
+	// QueuedEdit takes the Queued message (and any unsent text) back for
+	// the composer.
+	QueuedEdit QueuedAction = "edit"
+	// QueuedRemove drops the Queued message.
+	QueuedRemove QueuedAction = "remove"
+	// QueuedSendNow cancels the running turn and sends the Queued message.
+	QueuedSendNow QueuedAction = "send-now"
+	// QueuedClearUnsent says the composer has taken the unsent text.
+	QueuedClearUnsent QueuedAction = "clear-unsent"
+)
+
+// Queued acts on the Queued message as action says. Only QueuedEdit
+// returns text.
+func (m *Manager) Queued(id string, action QueuedAction) (string, error) {
+	s, err := m.find(id)
+	if err != nil {
+		return "", err
+	}
+	if action == QueuedSendNow {
+		return "", s.sendQueuedNow()
+	}
+	s.mu.Lock()
+	var text string
+	switch action {
+	case QueuedEdit:
+		text = joinMessages(s.sum.Unsent, s.sum.Queued)
+		s.sum.Queued, s.sum.Unsent = "", ""
+	case QueuedRemove:
+		s.sum.Queued = ""
+	case QueuedClearUnsent:
+		s.sum.Unsent = ""
 	default:
 		s.mu.Unlock()
-		return ErrBusy
+		return "", ErrQueuedVerb
 	}
+	s.mu.Unlock()
+	s.publish()
+	return text, nil
+}
+
+// sendQueuedNow cancels the running turn so that endTurn sends the Queued
+// message. It refuses without a running turn: while Starting the message
+// already goes out once the Agent is ready.
+func (s *session) sendQueuedNow() error {
+	s.mu.Lock()
+	if s.sum.Queued == "" {
+		s.mu.Unlock()
+		return ErrNoQueued
+	}
+	if !s.inTurn || !s.ready || s.proc == nil {
+		s.mu.Unlock()
+		return ErrNoTurn
+	}
+	s.sendNow, s.cancelRequested = true, true
+	turn := s.turns
+	s.mu.Unlock()
+	return s.cancelTurn(turn)
+}
+
+// joinMessages puts b after a, a blank line apart; either may be empty.
+func joinMessages(a, b string) string {
+	if a == "" || b == "" {
+		return a + b
+	}
+	return a + "\n\n" + b
 }
 
 // Cancel asks the Agent to end the current turn.
@@ -764,14 +860,27 @@ func (m *Manager) Cancel(id string) error {
 		return err
 	}
 	s.mu.Lock()
-	proc, sid, state := s.proc, s.acpID, s.sum.State
+	proc, state := s.proc, s.sum.State
 	s.mu.Unlock()
 	if (state != Working && state != Waiting) || proc == nil {
 		return nil // nothing to cancel; the turn already ended
 	}
 	s.mu.Lock()
 	s.cancelRequested = true
+	turn := s.turns
 	s.mu.Unlock()
+	return s.cancelTurn(turn)
+}
+
+// cancelTurn cancels turn number turn, unless it has already ended and
+// another (a Queued message) started; the caller set cancelRequested.
+func (s *session) cancelTurn(turn int) error {
+	s.mu.Lock()
+	proc, sid, same := s.proc, s.acpID, s.turns == turn && s.inTurn
+	s.mu.Unlock()
+	if !same || proc == nil {
+		return nil // that turn ended already
+	}
 	// ACP: a client that cancels a turn answers its open permission
 	// requests with "cancelled".
 	s.settleAll(StatusCancelled)
@@ -923,8 +1032,14 @@ func (s *session) run(load bool, prompt string) {
 	// that sets ready: anything that derives the state in between (a tab
 	// saying it's looking) would otherwise make it Idle, and the starting
 	// prompt would be dropped, or a second message let in before it.
+	// A message sent while Starting is the first turn when there is no
+	// starting prompt; otherwise it waits for that turn to end.
+	if prompt == "" && s.sum.Queued != "" {
+		prompt, s.sum.Queued = s.sum.Queued, ""
+	}
 	if prompt != "" {
 		s.inTurn = true
+		s.turns++
 	}
 	s.deriveLocked()
 	exited := s.sum.State == Exited
@@ -1155,7 +1270,7 @@ func (s *session) prompt(text string) {
 		// The Agent is alive but refused the turn; show it and let the
 		// user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.endTurn(false)
+		s.endTurn(turnFailed)
 		s.turnEnded(TurnEnd{Session: s.sum.ID, Err: err})
 		return
 	}
@@ -1164,9 +1279,16 @@ func (s *session) prompt(text string) {
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
 	}
 	// A turn you cancelled needs no second look; any other ending (end_turn,
-	// max_tokens, refusal) waits for you.
-	s.endTurn(cancelledTurn)
+	// max_tokens, refusal) waits for you, unless a Queued message goes out.
+	end := turnDone
+	if cancelledTurn {
+		end = turnCancelled
+	}
+	next := s.endTurn(end)
 	s.turnEnded(TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+	if next != "" {
+		s.prompt(next)
+	}
 }
 
 func (s *session) turnEnded(e TurnEnd) {
@@ -1503,16 +1625,59 @@ func (s *session) addItem(it Item) {
 	s.emit("item", seq, i, "item", it)
 }
 
-// endTurn marks the turn over. Unless you cancelled it, the Session waits
-// for you to look.
-func (s *session) endTurn(cancelled bool) {
+// turnEnd is how a turn ended, as far as the Queued message cares.
+type turnEnd int
+
+const (
+	turnDone      turnEnd = iota // end_turn, max_tokens, refusal, …
+	turnCancelled                // the Agent answered "cancelled"
+	turnFailed                   // the Agent answered the prompt with an error
+)
+
+// endTurn ends the running turn. It returns the Queued message when that
+// goes out as the next turn: then the Session stays Working, with no
+// "finished a turn" stop in between. A cancelled or failed turn moves the
+// Queued message to the unsent text instead, unless the cancel was "Send now".
+func (s *session) endTurn(end turnEnd) (next string) {
 	s.mu.Lock()
+	failed := end == turnFailed
+	cancelled := end == turnCancelled || s.cancelRequested
 	s.inTurn = false
-	// Seen already if you cancelled it, or if a tab is looking right now.
-	s.unseen = !cancelled && !s.cancelRequested && !s.viewedLocked()
+	if q := s.sum.Queued; q != "" {
+		if failed || (cancelled && !s.sendNow) {
+			s.giveBackQueuedLocked()
+		} else {
+			next, s.sum.Queued = q, ""
+		}
+	}
+	s.sendNow = false
+	if next != "" {
+		s.startTurnLocked()
+	} else {
+		// Seen already if you cancelled it, or if a tab is looking right now.
+		s.unseen = !cancelled && !s.viewedLocked()
+	}
 	s.deriveLocked()
 	s.mu.Unlock()
 	s.publish()
+	return next
+}
+
+// startTurnLocked marks a new turn as running; the caller holds s.mu and
+// sends the prompt.
+func (s *session) startTurnLocked() {
+	s.inTurn, s.unseen, s.cancelRequested = true, false, false
+	s.turns++
+}
+
+// giveBackQueuedLocked moves the Queued message to the unsent text, which the
+// composer takes back; the caller holds s.mu.
+func (s *session) giveBackQueuedLocked() {
+	if s.sum.Queued == "" {
+		return
+	}
+	s.sum.Unsent = joinMessages(s.sum.Unsent, s.sum.Queued)
+	s.sum.Queued = ""
 }
 
 // viewing records whether tab is looking at the Session (its conversation
@@ -1582,6 +1747,8 @@ func (s *session) exit(reason string, stderr []string) {
 	s.mu.Lock()
 	s.sum.State, s.sum.Waiting, s.sum.Since = Exited, "", time.Now()
 	s.sum.Reason, s.sum.Stderr = reason, stderr
+	s.giveBackQueuedLocked() // never lost: back to the composer
+	s.sendNow = false
 	if reason == ReasonLogin {
 		s.sum.Login = s.def.Login
 	}

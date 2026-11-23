@@ -199,7 +199,15 @@ A Worktree that already has a Session, or is an Agent worktree, is greyed out wi
 
 A new Worktree goes to `<project>.worktrees/<branch>/`, next to the Project's folder. Its branch starts from `origin/<default branch>`, or the local default branch when there's no remote.
 
-The conversation shows your messages, the Agent's reply as it streams in, and each tool call as a card you can expand. While the Agent works, **Cancel** replaces **Send**.
+The conversation shows your messages, the Agent's reply as it streams in, and each tool call as a card you can expand.
+
+While the Agent is starting, working, or waiting on a permission request, you can still write. The button reads **Queue**:
+
+- Your message waits as the Queued message and goes out as the next turn when this one ends.
+- Sending again adds to the Queued message.
+- **Edit** takes it back into the composer, **Remove** drops it, and **Send now** cancels the turn and sends it at once.
+- **Cancel** sits next to **Queue** once the Agent is ready.
+- If you cancel, the turn fails, or the Agent exits, the Queued message comes back into the composer, so it is never lost.
 
 When the Agent wants to edit a file or run a command, it asks first:
 
@@ -208,7 +216,7 @@ When the Agent wants to edit a file or run a command, it asks first:
 - The Inbox count stays visible in the tab bar.
 - Answering in the Inbox or in the Session is the same answer; the request leaves both.
 - A Session with an open request is **Waiting**.
-- **Cancel** ends the turn and answers its open requests as cancelled.
+- **Cancel** ends the turn, answers its open requests as cancelled, and puts a Queued message back in the composer.
 
 fh starts Claude Code in its asking mode (`default`), even if your own Claude Code setting is `auto`. With **Auto-approve** on, fh starts it in `auto` instead: Claude Code decides by itself what's safe and asks less. Anything it still asks goes to the Inbox. fh never uses the mode that skips asking altogether.
 
