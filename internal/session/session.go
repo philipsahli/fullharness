@@ -197,6 +197,10 @@ type Tool struct {
 type Detail struct {
 	Summary
 	Transcript []Item `json:"transcript"`
+	// Seq is the last conversation event already in Transcript. A tab that
+	// fetches the conversation keeps the events it gets meanwhile and
+	// applies only those after Seq (#69).
+	Seq int `json:"seq"`
 }
 
 // Errors the API maps to status codes.
@@ -296,6 +300,7 @@ type session struct {
 	mu          sync.Mutex
 	sum         Summary
 	transcript  []Item
+	seq         int            // conversation events sent so far; see emit
 	tools       map[string]int // tool call ID → transcript index
 	pending     map[string]*pending
 	settled     []int // transcript indexes of cards settled since the last afterSettle
@@ -525,9 +530,10 @@ func (m *Manager) Reopen(id string) error {
 	}
 	load := s.acpID != ""
 	s.resetRunLocked()
+	seq := s.nextSeqLocked()
 	s.mu.Unlock()
 	m.cfg.Log.Info("session reopening", "session", id, "load", load)
-	m.cfg.Broadcast(map[string]any{"type": "reset", "session": id}) // tabs drop the old conversation
+	m.cfg.Broadcast(map[string]any{"type": "reset", "session": id, "seq": seq}) // tabs drop the old conversation
 	s.publish()
 	go s.run(load, "")
 	return nil
@@ -667,7 +673,7 @@ func (m *Manager) Get(id string) (Detail, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// summaryLocked, not s.sum: it fills the derived fields (canReopen).
-	return Detail{Summary: s.summaryLocked(), Transcript: append([]Item{}, s.transcript...)}, nil
+	return Detail{Summary: s.summaryLocked(), Transcript: append([]Item{}, s.transcript...), Seq: s.seq}, nil
 }
 
 // FullDiffs returns the uncut diffs of a tool card or permission request in
@@ -1242,13 +1248,13 @@ func (s *session) retitle(title string) {
 		s.transcript[p.index].Permission = &req
 		changed = append(changed, p.index)
 	}
-	items := make([]Item, len(changed))
+	items, seqs := make([]Item, len(changed)), make([]int, len(changed))
 	for i, idx := range changed {
-		items[i] = s.transcript[idx]
+		items[i], seqs[i] = s.transcript[idx], s.nextSeqLocked()
 	}
 	s.mu.Unlock()
 	for i, idx := range changed {
-		s.emit("item", idx, "item", items[i])
+		s.emit("item", seqs[i], idx, "item", items[i])
 	}
 	s.publish()
 	if len(changed) > 0 {
@@ -1306,8 +1312,9 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 	p.index = len(s.transcript) - 1
 	s.pending[req.ID] = p
 	s.deriveLocked()
+	seq := s.nextSeqLocked()
 	s.mu.Unlock()
-	s.emit("item", p.index, "item", Item{Type: "permission", Permission: &req})
+	s.emit("item", seq, p.index, "item", Item{Type: "permission", Permission: &req})
 	s.publish()
 	s.m.publishInbox()
 
@@ -1424,13 +1431,13 @@ func (s *session) afterSettle() {
 	s.mu.Lock()
 	settled := s.settled
 	s.settled = nil
-	items := make([]Item, len(settled))
+	items, seqs := make([]Item, len(settled)), make([]int, len(settled))
 	for i, idx := range settled {
-		items[i] = s.transcript[idx]
+		items[i], seqs[i] = s.transcript[idx], s.nextSeqLocked()
 	}
 	s.mu.Unlock()
 	for i, idx := range settled {
-		s.emit("item", idx, "item", items[i])
+		s.emit("item", seqs[i], idx, "item", items[i])
 	}
 	s.publish()
 	s.m.publishInbox()
@@ -1443,8 +1450,9 @@ func (s *session) appendText(kind, text string) {
 	n := len(s.transcript)
 	if n > 0 && s.transcript[n-1].Type == kind {
 		s.transcript[n-1].Text += text
+		seq := s.nextSeqLocked()
 		s.mu.Unlock()
-		s.emit("chunk", n-1, "text", text)
+		s.emit("chunk", seq, n-1, "text", text)
 		return
 	}
 	s.mu.Unlock()
@@ -1463,16 +1471,18 @@ func (s *session) upsertTool(id string, apply func(*Tool)) {
 	apply(&t)
 	s.transcript[i].Tool = &t
 	item := s.transcript[i]
+	seq := s.nextSeqLocked()
 	s.mu.Unlock()
-	s.emit("item", i, "item", item)
+	s.emit("item", seq, i, "item", item)
 }
 
 func (s *session) addItem(it Item) {
 	s.mu.Lock()
 	s.transcript = append(s.transcript, it)
 	i := len(s.transcript) - 1
+	seq := s.nextSeqLocked()
 	s.mu.Unlock()
-	s.emit("item", i, "item", it)
+	s.emit("item", seq, i, "item", it)
 }
 
 // endTurn marks the turn over. Unless you cancelled it, the Session waits
@@ -1589,9 +1599,17 @@ func folderGone(dir string) bool {
 }
 
 // emit sends a conversation event: kind "item" (a new or replaced item at
-// index) or "chunk" (text appended to the agent message at index).
-func (s *session) emit(kind string, index int, key string, value any) {
-	s.m.cfg.Broadcast(map[string]any{"type": kind, "session": s.sum.ID, "index": index, key: value})
+// index) or "chunk" (text appended to the agent message at index). seq comes
+// from nextSeqLocked, taken under s.mu with the change it describes, so it
+// says whether a fetched Detail already holds the change.
+func (s *session) emit(kind string, seq, index int, key string, value any) {
+	s.m.cfg.Broadcast(map[string]any{"type": kind, "session": s.sum.ID, "seq": seq, "index": index, key: value})
+}
+
+// nextSeqLocked numbers the next conversation event; the caller holds s.mu.
+func (s *session) nextSeqLocked() int {
+	s.seq++
+	return s.seq
 }
 
 func (s *session) publish() {

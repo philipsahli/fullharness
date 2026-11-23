@@ -3,7 +3,14 @@ import { command, get } from "./api";
 import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
 import { AgentMarkdown } from "./Markdown";
-import { byListOrder, projectName, tabID } from "./events";
+import {
+  byListOrder,
+  loadedConversation,
+  loadingConversation,
+  projectName,
+  stopLoadingConversation,
+  tabID,
+} from "./events";
 import type {
   Command,
   Item,
@@ -359,17 +366,30 @@ export function Conversation(props: {
   const [error, setError] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
-  // Fetch the whole conversation once per open; events keep it current.
+  // Fetch the whole conversation once per open, and again after a
+  // reconnect (a new epoch); events keep it current. A fetch that fails is
+  // tried again; one that a newer fetch replaced is ignored.
+  const epoch = props.snapshot.epoch;
   useEffect(() => {
     if (items) return;
-    void get<{ transcript: Item[] }>(`/api/sessions/${session.id}`).then((d) => {
-      if (d)
-        update((snap) => ({
-          ...snap,
-          transcripts: { ...snap.transcripts, [session.id]: d.transcript },
-        }));
-    });
-  }, [session.id, items, update]);
+    const id = session.id;
+    let live = true;
+    let retry: number | undefined;
+    const load = () => {
+      void get<{ transcript: Item[]; seq: number }>(`/api/sessions/${id}`).then((d) => {
+        if (!live) return;
+        if (d) update((snap) => loadedConversation(snap, id, d.transcript, d.seq));
+        else retry = window.setTimeout(load, 1000);
+      });
+    };
+    update((snap) => loadingConversation(snap, id));
+    load();
+    return () => {
+      live = false;
+      window.clearTimeout(retry);
+      update((snap) => stopLoadingConversation(snap, id));
+    };
+  }, [session.id, items, epoch, update]);
 
   // You're looking at this Session while its conversation is open in a
   // visible tab. Tell fh now, every 15 s (fh forgets a tab after 30 s, so a
