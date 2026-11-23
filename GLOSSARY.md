@@ -84,6 +84,14 @@ _Avoid_: task, story, card
 A Ticket of a Spec, labelled `ready-for-agent`, with no open blockers, that nobody has started (no branch with commits, no Session started from it, no open PR); the only kind of Ticket a Session can be started from.
 _Avoid_: ready ticket ("ready" means the `ready-for-agent` label alone), unblocked, available
 
+**Autopilot**:
+fullharness starting the next skill for a Feature by itself, for Features in the Roadmap group Now of a Project where the user turned it on. It acts when a Session's turn ends or when the Issue tracker shows new Startable work, and waits at Stop points.
+_Avoid_: pipeline, automation, bot, agent (an Agent is a CLI)
+
+**Stop point**:
+A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
+_Avoid_: gate, checkpoint, pause
+
 ## Planning
 
 **Roadmap**:
