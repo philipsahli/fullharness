@@ -51,7 +51,30 @@ export type SessionSummary = {
   canReopen: boolean; // its Agent can reload it (session/load) once Exited
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
-  link?: Link; // started from the board (#13)
+  link?: Link; // started from the board (#13), or an Idea's Spec (#14)
+  idea?: string; // the Idea a Grill new idea Session is for (#14)
+  commands?: Command[]; // the Agent's latest slash commands
+  mode?: string; // the current session mode, one of modes
+  modes?: Choice[];
+  options?: ConfigOption[]; // select config options, such as the model
+  usage?: Usage; // the Agent's latest usage_update
+};
+
+// Command, Choice, ConfigOption and Usage match internal/session and
+// internal/acp.
+export type Command = { name: string; description?: string; hint?: string };
+export type Choice = { id: string; name: string };
+export type ConfigOption = {
+  id: string;
+  name: string;
+  category?: string; // e.g. "model" or "mode"
+  value: string;
+  values: Choice[];
+};
+export type Usage = {
+  used: number; // tokens in context
+  size: number; // context window, in tokens
+  cost?: { amount: number; currency: string };
 };
 
 export type Tool = {

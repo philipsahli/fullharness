@@ -49,12 +49,14 @@ type Feature struct {
 	Closed    bool           `json:"closed"` // the Spec is closed
 	Stage     string         `json:"stage"`
 	Note      string         `json:"note,omitempty"`
-	Tickets   []Ticket       `json:"tickets"`
+	Tickets   []Ticket       `json:"tickets"`   // never nil: the UI reads its length
 	Breakdown map[string]int `json:"breakdown"` // Stage → number of Tickets
 	// Branch is the branch a new Worktree for the whole Spec gets (Implement
 	// spec), and Ref how a skill's prompt names the Spec (#13).
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
+	// Idea names the Idea linked to this Spec, if any (#14).
+	Idea string `json:"idea,omitempty"`
 }
 
 // Ticket is one buildable piece of a Feature.
@@ -210,22 +212,36 @@ const maxSlug = 40
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
-// branchName is "<n>-<slug of title>": the title lowercased, every run of
-// other characters one "-", cut at a word to at most maxSlug characters.
+// branchName is "<n>-<slug of title>".
 func branchName(n, title string) string {
-	slug := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(title), "-"), "-")
-	if len(slug) > maxSlug {
-		slug = slug[:maxSlug+1]
-		if cut := strings.LastIndex(slug, "-"); cut > 0 {
-			slug = slug[:cut]
+	if s := slug(title); s != "" {
+		return n + "-" + s
+	}
+	return n
+}
+
+// IdeaBranch is the branch Grill new idea gives an Idea's Worktree,
+// "idea/<slug of name>", so two Ideas grilled at once each edit their own
+// glossary (spec #1, story 73). ok is false for a name with no letters or
+// digits.
+func IdeaBranch(name string) (branch string, ok bool) {
+	s := slug(name)
+	return "idea/" + s, s != ""
+}
+
+// slug is text lowercased, every run of other characters one "-", cut at a
+// word to at most maxSlug characters.
+func slug(text string) string {
+	s := strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(text), "-"), "-")
+	if len(s) > maxSlug {
+		s = s[:maxSlug+1]
+		if cut := strings.LastIndex(s, "-"); cut > 0 {
+			s = s[:cut]
 		} else {
-			slug = slug[:maxSlug]
+			s = s[:maxSlug]
 		}
 	}
-	if slug == "" {
-		return n
-	}
-	return n + "-" + slug
+	return s
 }
 
 // numberOf parses a Ticket number from a branch name like "12-login" or

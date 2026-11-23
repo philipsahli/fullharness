@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"syscall"
 	"time"
 
@@ -95,12 +96,45 @@ func (p *Process) Initialize(ctx context.Context) (canLoad bool, err error) {
 	return resp.AgentCapabilities.LoadSession, err
 }
 
-// Session is a new ACP session: its ID, the mode IDs the Agent offers, and
-// its select config options with the values each allows.
+// Session is a new ACP session: its ID, the session modes the Agent offers
+// and the current one, and its select config options.
 type Session struct {
 	ID      sdk.SessionId
-	Modes   []string
-	Options map[string][]string
+	Mode    string
+	Modes   []Choice
+	Options []Option
+}
+
+// Choice is a session mode, or one value of a config option.
+type Choice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Option is a select config option, such as the model.
+type Option struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Category is ACP's hint of what it sets, e.g. "model" or "mode"; may
+	// be empty.
+	Category string   `json:"category,omitempty"`
+	Value    string   `json:"value"`
+	Values   []Choice `json:"values"`
+}
+
+// HasMode reports whether the Agent offers mode.
+func (s Session) HasMode(mode string) bool {
+	return slices.ContainsFunc(s.Modes, func(c Choice) bool { return c.ID == mode })
+}
+
+// HasValue reports whether config option id offers value.
+func HasValue(options []Option, id, value string) bool {
+	for _, o := range options {
+		if o.ID == id {
+			return slices.ContainsFunc(o.Values, func(c Choice) bool { return c.ID == value })
+		}
+	}
+	return false
 }
 
 // NewSession creates an ACP session in cwd.
@@ -113,23 +147,45 @@ func (p *Process) NewSession(ctx context.Context, cwd string) (Session, error) {
 }
 
 func newSessionInfo(id sdk.SessionId, modes *sdk.SessionModeState, options []sdk.SessionConfigOption) Session {
-	s := Session{ID: id, Options: map[string][]string{}}
+	s := Session{ID: id, Options: Options(options)}
 	if modes != nil {
+		s.Mode = string(modes.CurrentModeId)
 		for _, m := range modes.AvailableModes {
-			s.Modes = append(s.Modes, string(m.Id))
-		}
-	}
-	for _, o := range options {
-		// Only plain selects: the options fh sets (Copilot's allow_all) are
-		// ungrouped; a grouped one would show up as "not offered".
-		if o.Select == nil || o.Select.Options.Ungrouped == nil {
-			continue
-		}
-		for _, v := range *o.Select.Options.Ungrouped {
-			s.Options[string(o.Select.Id)] = append(s.Options[string(o.Select.Id)], string(v.Value))
+			s.Modes = append(s.Modes, Choice{ID: string(m.Id), Name: m.Name})
 		}
 	}
 	return s
+}
+
+// Options converts the Agent's config options. Only selects: ACP's boolean
+// toggles have no use in fh yet. A grouped select's values are listed
+// group after group.
+func Options(options []sdk.SessionConfigOption) []Option {
+	out := []Option{}
+	for _, o := range options {
+		sel := o.Select
+		if sel == nil {
+			continue
+		}
+		opt := Option{ID: string(sel.Id), Name: sel.Name, Value: string(sel.CurrentValue), Values: []Choice{}}
+		if sel.Category != nil {
+			opt.Category = string(*sel.Category)
+		}
+		var values []sdk.SessionConfigSelectOption
+		switch {
+		case sel.Options.Ungrouped != nil:
+			values = *sel.Options.Ungrouped
+		case sel.Options.Grouped != nil:
+			for _, g := range *sel.Options.Grouped {
+				values = append(values, g.Options...)
+			}
+		}
+		for _, v := range values {
+			opt.Values = append(opt.Values, Choice{ID: string(v.Value), Name: v.Name})
+		}
+		out = append(out, opt)
+	}
+	return out
 }
 
 // LoadSession reopens the ACP session sid in cwd. The Agent replays its
@@ -142,12 +198,17 @@ func (p *Process) LoadSession(ctx context.Context, sid sdk.SessionId, cwd string
 	return newSessionInfo(sid, resp.Modes, resp.ConfigOptions), nil
 }
 
-// SetOption sets a select config option.
-func (p *Process) SetOption(ctx context.Context, sid sdk.SessionId, id, value string) error {
-	_, err := p.conn.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{
+// SetOption sets a select config option. It returns every option as the
+// Agent reports them afterwards: one change may change others, such as the
+// effort levels a new model allows.
+func (p *Process) SetOption(ctx context.Context, sid sdk.SessionId, id, value string) ([]Option, error) {
+	resp, err := p.conn.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{
 		SessionId: sid, ConfigId: sdk.SessionConfigId(id), Value: sdk.SessionConfigValueId(value),
 	}})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return Options(resp.ConfigOptions), nil
 }
 
 // SetMode sets the session's mode.
@@ -183,30 +244,42 @@ func (c client) RequestPermission(ctx context.Context, r sdk.RequestPermissionRe
 	return c.h.Permission(ctx, r), nil
 }
 
-func (client) ReadTextFile(context.Context, sdk.ReadTextFileRequest) (sdk.ReadTextFileResponse, error) {
-	return sdk.ReadTextFileResponse{}, errUnsupported
-}
-func (client) WriteTextFile(context.Context, sdk.WriteTextFileRequest) (sdk.WriteTextFileResponse, error) {
-	return sdk.WriteTextFileResponse{}, errUnsupported
-}
-func (client) CreateTerminal(context.Context, sdk.CreateTerminalRequest) (sdk.CreateTerminalResponse, error) {
-	return sdk.CreateTerminalResponse{}, errUnsupported
-}
-func (client) KillTerminal(context.Context, sdk.KillTerminalRequest) (sdk.KillTerminalResponse, error) {
-	return sdk.KillTerminalResponse{}, errUnsupported
-}
-func (client) TerminalOutput(context.Context, sdk.TerminalOutputRequest) (sdk.TerminalOutputResponse, error) {
-	return sdk.TerminalOutputResponse{}, errUnsupported
-}
-func (client) ReleaseTerminal(context.Context, sdk.ReleaseTerminalRequest) (sdk.ReleaseTerminalResponse, error) {
-	return sdk.ReleaseTerminalResponse{}, errUnsupported
-}
-func (client) WaitForTerminalExit(context.Context, sdk.WaitForTerminalExitRequest) (sdk.WaitForTerminalExitResponse, error) {
-	return sdk.WaitForTerminalExitResponse{}, errUnsupported
-}
-func (client) CreateElicitation(context.Context, sdk.CreateElicitationRequest) (sdk.CreateElicitationResponse, error) {
-	return sdk.CreateElicitationResponse{}, errUnsupported
-}
-func (client) CompleteElicitation(context.Context, sdk.CompleteElicitationNotification) error {
+// Refused is optionally implemented by a Handler that wants to hear about
+// requests fh refuses (fs, terminal, elicitation). The release smoke test
+// uses it to catch an Agent that starts relying on them.
+type Refused interface{ Refused(method string) }
+
+func (c client) refuse(method string) error {
+	if r, ok := c.h.(Refused); ok {
+		r.Refused(method)
+	}
 	return errUnsupported
+}
+
+func (c client) ReadTextFile(context.Context, sdk.ReadTextFileRequest) (sdk.ReadTextFileResponse, error) {
+	return sdk.ReadTextFileResponse{}, c.refuse("fs/read_text_file")
+}
+func (c client) WriteTextFile(context.Context, sdk.WriteTextFileRequest) (sdk.WriteTextFileResponse, error) {
+	return sdk.WriteTextFileResponse{}, c.refuse("fs/write_text_file")
+}
+func (c client) CreateTerminal(context.Context, sdk.CreateTerminalRequest) (sdk.CreateTerminalResponse, error) {
+	return sdk.CreateTerminalResponse{}, c.refuse("terminal/create")
+}
+func (c client) KillTerminal(context.Context, sdk.KillTerminalRequest) (sdk.KillTerminalResponse, error) {
+	return sdk.KillTerminalResponse{}, c.refuse("terminal/kill")
+}
+func (c client) TerminalOutput(context.Context, sdk.TerminalOutputRequest) (sdk.TerminalOutputResponse, error) {
+	return sdk.TerminalOutputResponse{}, c.refuse("terminal/output")
+}
+func (c client) ReleaseTerminal(context.Context, sdk.ReleaseTerminalRequest) (sdk.ReleaseTerminalResponse, error) {
+	return sdk.ReleaseTerminalResponse{}, c.refuse("terminal/release")
+}
+func (c client) WaitForTerminalExit(context.Context, sdk.WaitForTerminalExitRequest) (sdk.WaitForTerminalExitResponse, error) {
+	return sdk.WaitForTerminalExitResponse{}, c.refuse("terminal/wait_for_exit")
+}
+func (c client) CreateElicitation(context.Context, sdk.CreateElicitationRequest) (sdk.CreateElicitationResponse, error) {
+	return sdk.CreateElicitationResponse{}, c.refuse("elicitation/create")
+}
+func (c client) CompleteElicitation(context.Context, sdk.CompleteElicitationNotification) error {
+	return c.refuse("elicitation/complete")
 }

@@ -98,7 +98,7 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 			continue
 		}
 		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED",
-			Branch: branchName(strconv.Itoa(i.Number), i.Title), Ref: "#" + strconv.Itoa(i.Number)}
+			Branch: branchName(strconv.Itoa(i.Number), i.Title), Ref: "#" + strconv.Itoa(i.Number), Tickets: []Ticket{}}
 		for _, k := range kids {
 			f.Tickets = append(f.Tickets, githubTicket(byNum[k], byNum, prs, aheadBranches))
 		}

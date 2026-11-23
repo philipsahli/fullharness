@@ -73,6 +73,37 @@ func TestReopenLoadsTheSessionWithItsHistory(t *testing.T) {
 	}
 }
 
+func TestReopenKeepsTheModeAndModelChosenInTheSession(t *testing.T) {
+	f := startFhWithAgent(t, script{"models": true, "default": []any{
+		map[string]any{"sayMode": true}, map[string]any{"say": ";"}, map[string]any{"sayConfig": "model"},
+	}})
+	c, _, id, _ := newSessionIn(t, f, "")
+	tab := f.connectTab(c)
+	f.post(c, "/api/sessions/"+id+"/mode", map[string]string{"mode": "plan"})
+	f.post(c, "/api/sessions/"+id+"/option", map[string]string{"option": "model", "value": "opus"})
+	waitFor(t, tab, id, "plan and opus", func(s map[string]any) bool {
+		return s["mode"] == "plan" && option(t, s, "model")["value"] == "opus"
+	})
+	f.stop()
+	f = startFhWith(t, f.opts)
+	c = f.authorisedClient()
+	tab = f.connectTab(c)
+
+	if status, body := f.post(c, "/api/sessions/"+id+"/reopen", nil); status != http.StatusAccepted {
+		t.Fatalf("reopen: status %d (%v), want 202", status, body)
+	}
+	s := waitState(t, tab, id, "idle")
+
+	if s["mode"] != "plan" || option(t, s, "model")["value"] != "opus" {
+		t.Errorf("reopened Session shows mode %v, model %v; want plan and opus", s["mode"], option(t, s, "model")["value"])
+	}
+	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "which?"})
+	waitTurn(t, tab, id)
+	if got := lastAgentText(t, f, c, id); got != "mode=plan;model=opus" {
+		t.Errorf("the reopened Agent runs with %q, want mode=plan;model=opus", got)
+	}
+}
+
 func TestReopenIsRefusedWhenTheWorktreeHasANewSession(t *testing.T) {
 	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
 	f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})

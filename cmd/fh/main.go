@@ -16,6 +16,10 @@ import (
 	"github.com/philipsahli/fullharness/internal/app"
 )
 
+// version is set by GoReleaser at release (-X main.version); a source build
+// says "dev".
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "fh:", err)
@@ -30,7 +34,13 @@ func run() error {
 	dir := flag.String("dir", "", "config and state folder (default ~/.config/fullharness)")
 	verbose := flag.Bool("verbose", false, "log at debug level")
 	dev := flag.Bool("dev", false, "keep the token across restarts so open tabs reload (make dev); needs --dir")
+	showVersion := flag.Bool("version", false, "print fh's version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("fh", version)
+		return nil
+	}
 
 	// --dev keeps a token in a file across launches; never do that for the
 	// real config folder, where a new token per launch is the protection.

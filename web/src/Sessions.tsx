@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import { byListOrder, projectName, tabID } from "./events";
 import type {
+  Command,
   Item,
   Link,
   PermissionRequest,
@@ -11,6 +12,7 @@ import type {
   Snapshot,
   Tool,
   Update,
+  Usage,
   Worktree,
 } from "./events";
 
@@ -97,6 +99,9 @@ export type StartFrom = {
   ref?: string; // what the skill works on, e.g. "#42"
   note?: string; // added after ref, e.g. which branch to integrate on
   link?: Link;
+  // idea: Grill new idea. The dialog asks for the Idea's name instead of a
+  // Worktree; fh gives it a new Worktree on idea/<name> (#14).
+  idea?: boolean;
 };
 
 // Agents whose unknown commands were already pointed out in this tab: the
@@ -133,6 +138,7 @@ export function NewSession(props: {
   );
   const [worktree, setWorktree] = useState(prefillBusy ? "" : (from?.worktree ?? "")); // "" means a new Worktree
   const [branch, setBranch] = useState(from?.branch ?? "");
+  const [ideaName, setIdeaName] = useState("");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -187,7 +193,8 @@ export function NewSession(props: {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const req: Record<string, unknown> = { project, agent, prompt, autoApprove, link: from?.link };
-    if (worktree) req.worktree = worktree;
+    if (from?.idea) req.idea = ideaName.trim();
+    else if (worktree) req.worktree = worktree;
     else req.branch = branch.trim();
     const r = await command("/api/sessions", req);
     if (!r.ok) {
@@ -230,41 +237,54 @@ export function NewSession(props: {
           ))}
         </select>
       </label>
-      <fieldset>
-        <legend>Worktree</legend>
-        {prefillBusy && (
-          <p className="why">
-            The main tree already has a Session, so this one needs a new Worktree: name its branch.
-          </p>
-        )}
-        <label className="choice">
-          <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
-          New Worktree on branch
+      {from?.idea ? (
+        <label>
+          Idea name
           <input
-            value={branch}
-            onChange={(e) => setBranch(e.target.value)}
-            onFocus={() => setWorktree("")}
-            placeholder="feature/login"
-            aria-label="New branch name"
+            value={ideaName}
+            onChange={(e) => setIdeaName(e.target.value)}
+            placeholder="Dark mode"
           />
+          <span className="why">It gets its own Worktree on a new idea/… branch.</span>
         </label>
-        {p?.worktrees.map((w) => {
-          const why = reason(w);
-          return (
-            <label key={w.path} className="choice" data-disabled={why !== "" || undefined}>
-              <input
-                type="radio"
-                disabled={why !== ""}
-                checked={worktree === w.path}
-                onChange={() => setWorktree(w.path)}
-              />
-              <code>{w.branch || "(detached)"}</code>
-              {w.main && <span className="tag">main tree</span>}
-              {why && <span className="why">{why}</span>}
-            </label>
-          );
-        })}
-      </fieldset>
+      ) : (
+        <fieldset>
+          <legend>Worktree</legend>
+          {prefillBusy && (
+            <p className="why">
+              The main tree already has a Session, so this one needs a new Worktree: name its
+              branch.
+            </p>
+          )}
+          <label className="choice">
+            <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
+            New Worktree on branch
+            <input
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              onFocus={() => setWorktree("")}
+              placeholder="feature/login"
+              aria-label="New branch name"
+            />
+          </label>
+          {p?.worktrees.map((w) => {
+            const why = reason(w);
+            return (
+              <label key={w.path} className="choice" data-disabled={why !== "" || undefined}>
+                <input
+                  type="radio"
+                  disabled={why !== ""}
+                  checked={worktree === w.path}
+                  onChange={() => setWorktree(w.path)}
+                />
+                <code>{w.branch || "(detached)"}</code>
+                {w.main && <span className="tag">main tree</span>}
+                {why && <span className="why">{why}</span>}
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
       <fieldset>
         <legend>Agent</legend>
         {agents.map((a) => {
@@ -308,7 +328,10 @@ export function NewSession(props: {
         </p>
       )}
       <div className="row">
-        <button type="submit" disabled={!agent || (!worktree && !branch.trim())}>
+        <button
+          type="submit"
+          disabled={!agent || (from?.idea ? !ideaName.trim() : !worktree && !branch.trim())}
+        >
           Start Session
         </button>
         <button type="button" onClick={props.onCancel}>
@@ -391,6 +414,26 @@ export function Conversation(props: {
     setError(r.ok ? "" : r.error);
   };
 
+  // The "/" list: shown while the composer holds only "/" and a partial
+  // command name.
+  const [pick, setPick] = useState(0);
+  const [slashOff, setSlashOff] = useState(false); // Escape hides it until the text changes
+  const matches = slashMatches(session.commands ?? [], text);
+  const showSlash = !slashOff && matches.length > 0;
+  const choose = (c: Command) => {
+    setText(`/${c.name} `);
+    setPick(0);
+  };
+  const change = (t: string) => {
+    setText(t);
+    setPick(0);
+    setSlashOff(false);
+  };
+  const setting = async (path: string, body: Record<string, string>) => {
+    const r = await command(`/api/sessions/${session.id}/${path}`, body);
+    setError(r.ok ? "" : r.error);
+  };
+
   return (
     <section className="conversation" aria-label={`Session ${session.title}`}>
       <header className="mhead">
@@ -402,8 +445,13 @@ export function Conversation(props: {
         </button>
         <span className="crumb" title={session.worktree}>
           {session.agentName} · {session.worktree}
-          {session.link && ` · started from ${linkText(session.link)}`}
+          {session.idea && ` · Idea "${session.idea}"`}
+          {session.link &&
+            (session.idea
+              ? ` → ${linkText(session.link)}`
+              : ` · started from ${linkText(session.link)}`)}
         </span>
+        <SessionSettings session={session} onSet={(p, b) => void setting(p, b)} />
       </header>
       <div className="items">
         {(items ?? []).map((it, i) => (
@@ -431,13 +479,54 @@ export function Conversation(props: {
         <div ref={end} />
       </div>
       <form className="composer" onSubmit={(e) => void send(e)}>
+        {showSlash && (
+          <ul className="slash" role="listbox" aria-label="Slash commands">
+            {matches.map((c, i) => (
+              <li
+                key={c.name}
+                role="option"
+                aria-selected={i === pick}
+                // mousedown, not click: the textarea keeps focus.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  choose(c);
+                }}
+              >
+                <code>/{c.name}</code>
+                {c.hint && <span className="hint">{c.hint}</span>}
+                {c.description && <span className="desc">{c.description}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={session.state === "idle" ? "Message the Agent" : stateNames[session.state]}
+          onChange={(e) => change(e.target.value)}
+          placeholder={
+            session.state === "idle"
+              ? `Message the Agent${session.commands?.length ? ", or / for its commands" : ""}`
+              : stateNames[session.state]
+          }
           aria-label="Message"
           rows={2}
           onKeyDown={(e) => {
+            if (showSlash) {
+              const n = matches.length;
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setPick((pick + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+                return;
+              }
+              if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                e.preventDefault();
+                choose(matches[Math.min(pick, n - 1)]);
+                return;
+              }
+              if (e.key === "Escape") {
+                setSlashOff(true);
+                return;
+              }
+            }
             if (e.key === "Enter" && !e.shiftKey && session.state === "idle" && text.trim()) {
               e.preventDefault();
               void send(e);
@@ -461,6 +550,97 @@ export function Conversation(props: {
       )}
     </section>
   );
+}
+
+// slashMatches lists the commands for a composer holding "/" and a partial
+// name. A plugin's "<plugin>:<skill>" also matches by its skill part, so
+// "/tdd" finds "mattpocock-skills:tdd".
+function slashMatches(commands: Command[], text: string): Command[] {
+  const m = /^\/(\S*)$/.exec(text);
+  if (!m) return [];
+  const q = m[1].toLowerCase();
+  return commands.filter((c) => {
+    const name = c.name.toLowerCase();
+    return name.startsWith(q) || name.split(":").pop()!.startsWith(q);
+  });
+}
+
+// SessionSettings shows the Session's mode and config options (the model,
+// say) where the Agent offers them, and its usage.
+function SessionSettings(props: {
+  session: SessionSummary;
+  onSet: (path: string, body: Record<string, string>) => void;
+}) {
+  const { session: s, onSet } = props;
+  // The Agent can only change them while it runs and its session exists.
+  const off = s.state === "starting" || s.state === "exited";
+  return (
+    <div className="settings">
+      {s.modes && s.modes.length > 0 && (
+        <label>
+          Mode
+          <select
+            value={s.mode ?? ""}
+            disabled={off}
+            onChange={(e) => onSet("mode", { mode: e.target.value })}
+          >
+            {s.modes.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {s.options?.map((o) => (
+        <label key={o.id}>
+          {o.name}
+          <select
+            value={o.value}
+            disabled={off}
+            onChange={(e) => onSet("option", { option: o.id, value: e.target.value })}
+          >
+            {o.values.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+      {s.usage && <UsageView usage={s.usage} />}
+    </div>
+  );
+}
+
+function UsageView({ usage }: { usage: Usage }) {
+  const pct = usage.size > 0 ? Math.round((usage.used / usage.size) * 100) : 0;
+  return (
+    <span className="usage" title={`${usage.used} of ${usage.size} tokens in context`}>
+      context {tokens(usage.used)} / {tokens(usage.size)} ({pct}%)
+      {usage.cost && ` · ${money(usage.cost.amount, usage.cost.currency)}`}
+    </span>
+  );
+}
+
+// tokens writes a token count short: 950, 53k, 1.2M.
+function tokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
+// money writes an ISO 4217 amount as currency; ACP also allows other units,
+// such as "credits", which are written after the number.
+function money(amount: number, unit: string): string {
+  if (/^[A-Z]{3}$/.test(unit)) {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: unit }).format(amount);
+    } catch {
+      // An unknown code: fall through to the plain form.
+    }
+  }
+  return `${amount} ${unit}`;
 }
 
 function ItemView({ item }: { item: Item }) {

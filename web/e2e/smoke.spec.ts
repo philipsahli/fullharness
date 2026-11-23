@@ -1,4 +1,6 @@
 import { test as base, expect } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { Fh, runFh } from "./fh";
 import { tempFolder, tempRepo, tempRepoWith } from "./repo";
 
@@ -120,6 +122,51 @@ test("a New Session in a Project's main tree streams the Agent's reply and its t
     await expect(conversation.getByText("README.md")).toBeVisible();
     await expect(conversation.getByText("completed")).toBeVisible();
     await expect(conversation.getByRole("button", { name: "Send" })).toBeDisabled(); // empty composer
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("typing / lists the Agent's slash commands; the model and usage show in the header", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      models: true,
+      onStart: [{ commands: ["grill-me", "mattpocock-skills:tdd"] }],
+      prompts: { hello: [{ usage: { used: 53000, size: 200000, cost: 0.42, currency: "USD" } }] },
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("hello");
+    await form.getByRole("button", { name: "Start Session" }).click();
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.getByText("context 53k / 200k (27%) · $0.42")).toBeVisible();
+
+    const message = conversation.getByLabel("Message");
+    await message.fill("/");
+    const list = conversation.getByRole("listbox", { name: "Slash commands" });
+    await expect(list.getByRole("option")).toHaveCount(2);
+    await message.fill("/td"); // a plugin's skill matches by its own name
+    await expect(list.getByRole("option")).toHaveText([
+      "/mattpocock-skills:tdd" + "fake mattpocock-skills:tdd",
+    ]);
+    await message.press("Enter");
+    await expect(message).toHaveValue("/mattpocock-skills:tdd ");
+    await expect(list).toHaveCount(0);
+
+    await conversation.getByLabel("Model").selectOption("opus");
+    await expect(conversation.getByLabel("Model")).toHaveValue("opus");
   } finally {
     await fh.dispose();
   }
@@ -411,6 +458,56 @@ test("Start Session on a Startable ticket runs the implement skill, linked to th
     await expect(spec.getByLabel("New branch name")).toHaveValue("login");
     await expect(spec.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
       "/implement-spec .scratch/login/spec.md (use this Worktree's branch, login, as the integration branch)",
+    );
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("Grill new idea starts a named Session, and its Spec links in one click", async ({ page }) => {
+  const fh = await Fh.start({
+    agentScript: {},
+  });
+  try {
+    const repo = tempRepoWith("shop", { ".scratch/login/spec.md": "# Login\n" });
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page.getByRole("button", { name: "Grill new idea" }).click();
+    const form = page.getByRole("form", { name: "Grill new idea" });
+    await form.getByLabel("Idea name").fill("Dark mode");
+    await expect(form.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
+      "/grill-with-docs ",
+    );
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    // The Session runs in a new Worktree on idea/dark-mode, its first title.
+    const conversation = page.getByRole("region", { name: "Session idea/dark-mode" });
+    await expect(conversation).toContainText("/grill-with-docs");
+    await expect(conversation).toContainText('Idea "Dark mode"');
+
+    // The grilling's /to-spec writes a Spec; the Idea offers to link it.
+    mkdirSync(path.join(repo, ".scratch/dark-mode"), { recursive: true });
+    writeFileSync(path.join(repo, ".scratch/dark-mode/spec.md"), "# Dark mode\n");
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const board = page.getByRole("region", { name: "Software factory" });
+    const ideas = board.locator('.column[aria-label="Idea"]');
+    await expect(ideas).toContainText("Dark mode");
+    await ideas.getByRole("button", { name: /Link .scratch\/dark-mode\/spec.md/ }).click();
+
+    await expect(ideas).not.toContainText("Dark mode");
+    await board
+      .locator('.column[aria-label="Spec"]')
+      .getByRole("button", { name: /Dark mode/ })
+      .click();
+    await expect(page.getByRole("region", { name: "Feature Dark mode" })).toContainText(
+      'from Idea "Dark mode"',
     );
   } finally {
     await fh.dispose();

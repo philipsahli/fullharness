@@ -87,7 +87,9 @@ type Summary struct {
 	// AgentName is the Agent's display name, e.g. "Claude Code".
 	AgentName string `json:"agentName"`
 	State     string `json:"state"`
-	// AutoApprove is set when the Session started in the Agent's auto mode.
+	// AutoApprove is set while the Agent acts without asking first: started
+	// with auto-approve, or switched to the Agent's auto mode or option
+	// later (syncAutoLocked).
 	AutoApprove bool `json:"autoApprove"`
 	// Waiting says why a Waiting Session waits: "permission" (a request is
 	// open) or "turn" (a turn ended that nobody has looked at yet).
@@ -107,8 +109,44 @@ type Summary struct {
 	Reason string   `json:"reason,omitempty"`
 	Stderr []string `json:"stderr,omitempty"`
 	// Link is the Feature (and Ticket) the Session was started from on the
-	// board; nil for a Session started from New Session.
+	// board; nil for a Session started from New Session. An Idea's Session
+	// gets a link to its Spec once you confirm it (LinkSpec).
 	Link *tracker.Link `json:"link,omitempty"`
+	// Idea is the name of the Idea a Grill new idea Session is for (#14).
+	Idea string `json:"idea,omitempty"`
+	// Commands are the slash commands of the Agent's latest
+	// available_commands_update, for the composer's "/" list.
+	Commands []Command `json:"commands,omitempty"`
+	// Mode is the current session mode, one of Modes; both are empty when
+	// the Agent offers no modes.
+	Mode  string       `json:"mode,omitempty"`
+	Modes []acp.Choice `json:"modes,omitempty"`
+	// Options are the Agent's select config options, such as the model.
+	Options []acp.Option `json:"options,omitempty"`
+	// Usage is the Agent's latest usage_update; nil until it sends one.
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Usage is how much of the context window a Session uses and, when the
+// Agent reports it, what the Session has cost so far.
+type Usage struct {
+	Used int64 `json:"used"` // tokens in context
+	Size int64 `json:"size"` // the context window, in tokens
+	Cost *Cost `json:"cost,omitempty"`
+}
+
+// Cost is a Session's cost so far, in Currency: an ISO 4217 code such as
+// "USD", or another unit such as "credits".
+type Cost struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// Command is one slash command the Agent offers.
+type Command struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Hint        string `json:"hint,omitempty"` // what to type after the name
 }
 
 // Item is one entry of a conversation.
@@ -166,6 +204,7 @@ var (
 	ErrRemoving    = errors.New("this Worktree is being removed")
 	ErrLinked      = errors.New("a Session is linked to it; close the Session first")
 	ErrFolderGone  = errors.New("the Worktree's folder is gone")
+	ErrNotOffered  = errors.New("the Agent doesn't offer that setting")
 )
 
 // Saved is what state.json keeps of a Session across fh restarts. The
@@ -179,8 +218,27 @@ type Saved struct {
 	Title       string `json:"title"`
 	AutoApprove bool   `json:"autoApprove"`
 	CanLoad     bool   `json:"canLoad"` // the Agent offered session/load
-	// Link is kept so a Ticket stays Implementing after a restart.
+	// Link is kept so a Ticket stays Implementing after a restart, and an
+	// Idea keeps its Spec.
 	Link *tracker.Link `json:"link,omitempty"`
+	Idea
+	Settings
+}
+
+// Settings are the mode and config option values a Session last had. The
+// Agent forgets them when it exits, so Reopen sets them again after
+// session/load.
+type Settings struct {
+	Mode string `json:"mode,omitempty"`
+	// Options are in the Agent's order: setting one (the model) can change
+	// what a later one (the effort) offers.
+	Options []OptionValue `json:"options,omitempty"`
+}
+
+// OptionValue is one config option's value.
+type OptionValue struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
 }
 
 // Config wires a Manager into fh.
@@ -246,6 +304,10 @@ type session struct {
 	acpID           sdk.SessionId
 	stopping        bool
 	logPath         string
+	// settings are the mode and options to set again on Reopen; the live
+	// ones are in sum while the Agent has reported them (settingsLocked).
+	settings Settings
+	idea     Idea // empty for a Session that is no Idea
 }
 
 // pending is an open permission request: where its card is, which option
@@ -265,6 +327,8 @@ type Launch struct {
 	// AutoApprove starts the Agent in its auto mode.
 	AutoApprove bool
 	Link        *tracker.Link
+	// Idea is set for a Grill new idea Session.
+	Idea Idea
 }
 
 // Start creates a Session as l says and launches its Agent.
@@ -294,6 +358,7 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 	}
 	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
 		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
+	s.idea = l.Idea
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
 
@@ -373,6 +438,7 @@ func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definit
 		}
 		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
 			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link})
+		s.idea, s.settings = sv.Idea, sv.Settings
 		// canLoad is kept as saved even while the Agent is missing, so
 		// Reopen comes back when the Agent is configured again.
 		s.acpID, s.canLoad, s.agentKnown = sdk.SessionId(sv.ACPID), sv.CanLoad, ok
@@ -390,7 +456,8 @@ func (m *Manager) persist() {
 		s.mu.Lock()
 		if !s.closed {
 			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
-				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link})
+				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link,
+				Idea: s.idea, Settings: s.settingsLocked()})
 		}
 		s.mu.Unlock()
 	}
@@ -465,7 +532,25 @@ func (s *session) resetRunLocked() {
 	s.proc, s.stopping, s.loginNeeded, s.ready = nil, false, false, false
 	s.inTurn, s.unseen, s.cancelRequested = false, false, false
 	s.transcript, s.tools = nil, map[string]int{} // the Agent replays the conversation
+	// The reloaded Agent reports these again; run sets the mode and options
+	// back to what they were.
+	s.settings = s.settingsLocked()
+	s.sum.Commands, s.sum.Mode, s.sum.Modes, s.sum.Options = nil, "", nil, nil
 	s.lastPublished = ""
+}
+
+// settingsLocked returns the mode and option values to keep: the Agent's
+// current ones once it has reported them, else those from before the last
+// Reopen or restart. The caller holds s.mu.
+func (s *session) settingsLocked() Settings {
+	if s.sum.Mode == "" && len(s.sum.Options) == 0 {
+		return s.settings
+	}
+	out := Settings{Mode: s.sum.Mode}
+	for _, o := range s.sum.Options {
+		out.Options = append(out.Options, OptionValue{ID: o.ID, Value: o.Value})
+	}
+	return out
 }
 
 // Close removes a Session from fh and frees its Worktree. A live Session's
@@ -577,23 +662,24 @@ func (m *Manager) Prompt(id, text string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.beginTurn(Idle); err != nil {
+	if err := s.beginTurn(); err != nil {
 		return err
 	}
 	go s.prompt(text)
 	return nil
 }
 
-// beginTurn moves the Session from state from to Working, checked and set
-// under one lock, so two sends at once can't both start a turn.
-func (s *session) beginTurn(from string) error {
+// beginTurn moves the Session from Idle to Working, checked and set under
+// one lock, so two sends at once can't both start a turn. The starting
+// prompt doesn't come through here: run starts its turn as it sets ready.
+func (s *session) beginTurn() error {
 	s.mu.Lock()
 	state := s.sum.State
-	if from == Idle && state == Waiting && s.sum.Waiting == WaitingTurn {
+	if state == Waiting && s.sum.Waiting == WaitingTurn {
 		state = Idle // writing the next message means you've looked
 	}
 	switch state {
-	case from:
+	case Idle:
 		s.inTurn, s.unseen, s.cancelRequested = true, false, false
 		s.deriveLocked()
 		s.mu.Unlock()
@@ -763,22 +849,27 @@ func (s *session) run(load bool, prompt string) {
 		s.mu.Unlock()
 	}
 	sid := acpSess.ID
-	s.setAsking(ctx, proc, acpSess)
+	acpSess = s.setAsking(ctx, proc, acpSess)
+	if load {
+		acpSess = s.restoreSettings(ctx, proc, acpSess)
+	}
 	s.mu.Lock()
 	s.acpID, s.ready = sid, true
-	if prompt == "" {
-		s.deriveLocked() // Idle; with a prompt, beginTurn goes straight to Working
+	s.sum.Mode, s.sum.Modes, s.sum.Options = acpSess.Mode, acpSess.Modes, acpSess.Options
+	// With a prompt, straight from Starting to Working under the same lock
+	// that sets ready: anything that derives the state in between (a tab
+	// saying it's looking) would otherwise make it Idle, and the starting
+	// prompt would be dropped, or a second message let in before it.
+	if prompt != "" {
+		s.inTurn = true
 	}
+	s.deriveLocked()
+	exited := s.sum.State == Exited
 	s.mu.Unlock()
 	s.m.cfg.Log.Info("session ready", "session", s.sum.ID)
 	s.m.persist()
-	if prompt == "" {
-		s.publish()
-		return
-	}
-	// Straight from Starting to Working: an Idle in between would let a
-	// second message in before the starting prompt.
-	if s.beginTurn(Starting) == nil {
+	s.publish()
+	if prompt != "" && !exited {
 		s.prompt(prompt)
 	}
 }
@@ -786,38 +877,180 @@ func (s *session) run(load bool, prompt string) {
 // setAsking puts the Agent in "ask before acting", or auto-approve, by
 // mode and config option as its definition says (the environment part was
 // set at launch). If that fails, the conversation says so instead of the
-// user finding out from an unasked edit.
-func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) {
+// user finding out from an unasked edit. It returns acpSess with the mode
+// and options as they are afterwards.
+func (s *session) setAsking(ctx context.Context, proc *acp.Process, acpSess acp.Session) acp.Session {
 	a, auto := s.def.Asking, s.summary().AutoApprove
 	if !a.Known() {
 		s.addItem(Item{Type: "notice", Text: "fh doesn't know how to make this Agent ask before it acts, so it follows its own settings; auto-approve has no effect."})
-		return
+		return acpSess
 	}
-	var problems []error
-	if mode := a.Mode.Pick(auto); mode != "" {
-		if !slices.Contains(acpSess.Modes, mode) {
-			problems = append(problems, fmt.Errorf("mode %q not offered", mode))
-		} else if err := proc.SetMode(ctx, acpSess.ID, mode); err != nil {
-			problems = append(problems, err)
-		}
-	}
+	want := Settings{Mode: a.Mode.Pick(auto)}
 	if a.Option != "" {
-		value := a.Value.Pick(auto)
-		if !slices.Contains(acpSess.Options[a.Option], value) {
-			problems = append(problems, fmt.Errorf("option %s=%s not offered", a.Option, value))
-		} else if err := proc.SetOption(ctx, acpSess.ID, a.Option, value); err != nil {
-			problems = append(problems, err)
-		}
+		want.Options = []OptionValue{{ID: a.Option, Value: a.Value.Pick(auto)}}
 	}
-	if len(problems) == 0 {
-		return
+	acpSess, err := apply(ctx, proc, acpSess, want)
+	if err == nil {
+		return acpSess
 	}
-	s.m.cfg.Log.Info("agent asking setup failed", "session", s.sum.ID, "err", errors.Join(problems...))
+	s.m.cfg.Log.Info("agent asking setup failed", "session", s.sum.ID, "err", err)
 	text := "fh couldn't switch the Agent to asking before it acts, so it may edit files and run commands without asking."
 	if auto {
 		text = "fh couldn't switch the Agent to auto-approve, so it keeps its own setting."
 	}
 	s.addItem(Item{Type: "notice", Text: text})
+	return acpSess
+}
+
+// restoreSettings sets the mode and options a reopened Session had before.
+// It runs after setAsking, so a mode or option chosen in the Session wins
+// over the asking default; both agree on auto-approve (syncAutoLocked).
+func (s *session) restoreSettings(ctx context.Context, proc *acp.Process, acpSess acp.Session) acp.Session {
+	s.mu.Lock()
+	want := s.settings
+	s.mu.Unlock()
+	acpSess, err := apply(ctx, proc, acpSess, want)
+	if err != nil {
+		s.m.cfg.Log.Info("restore mode and options failed", "session", s.sum.ID, "err", err)
+		s.addItem(Item{Type: "notice", Text: "fh couldn't set the mode or options this Session had before: " + err.Error()})
+	}
+	return acpSess
+}
+
+// apply sets want's mode and options on the Agent, skipping what it doesn't
+// offer, and returns acpSess as it is afterwards with every problem joined.
+func apply(ctx context.Context, proc *acp.Process, acpSess acp.Session, want Settings) (acp.Session, error) {
+	var problems []error
+	if mode := want.Mode; mode != "" {
+		if !acpSess.HasMode(mode) {
+			problems = append(problems, fmt.Errorf("mode %q not offered", mode))
+		} else if err := proc.SetMode(ctx, acpSess.ID, mode); err != nil {
+			problems = append(problems, err)
+		} else {
+			acpSess.Mode = mode
+		}
+	}
+	for _, o := range want.Options {
+		if !acp.HasValue(acpSess.Options, o.ID, o.Value) {
+			problems = append(problems, fmt.Errorf("option %s=%s not offered", o.ID, o.Value))
+		} else if opts, err := proc.SetOption(ctx, acpSess.ID, o.ID, o.Value); err != nil {
+			problems = append(problems, err)
+		} else {
+			acpSess.Options = afterSet(acpSess.Options, opts, o.ID, o.Value)
+		}
+	}
+	return acpSess, errors.Join(problems...)
+}
+
+// afterSet is the option list after option id was set to value: the list
+// the Agent answered with, or, if it sent none, the old list with that one
+// value changed.
+func afterSet(old, answered []acp.Option, id, value string) []acp.Option {
+	if len(answered) > 0 {
+		return answered
+	}
+	out := slices.Clone(old)
+	for i := range out {
+		if out[i].ID == id {
+			out[i].Value = value
+		}
+	}
+	return out
+}
+
+// SetMode switches Session id to one of the modes its Agent offers.
+func (m *Manager) SetMode(id, mode string) error {
+	return m.set(id,
+		func(sum Summary) bool { return acp.Session{Modes: sum.Modes}.HasMode(mode) },
+		func(proc *acp.Process, sid sdk.SessionId) (func(*Summary), error) {
+			err := proc.SetMode(context.Background(), sid, mode)
+			return func(sum *Summary) { sum.Mode = mode }, err
+		})
+}
+
+// SetOption sets one of Session id's config options, such as its model.
+func (m *Manager) SetOption(id, option, value string) error {
+	return m.set(id,
+		func(sum Summary) bool { return acp.HasValue(sum.Options, option, value) },
+		func(proc *acp.Process, sid sdk.SessionId) (func(*Summary), error) {
+			opts, err := proc.SetOption(context.Background(), sid, option, value)
+			return func(sum *Summary) { sum.Options = afterSet(sum.Options, opts, option, value) }, err
+		})
+}
+
+// set changes a live Session's setting if offered says the Agent offers it:
+// send tells the Agent and returns the change to the summary, which only
+// applies when send succeeded.
+func (m *Manager) set(id string, offered func(Summary) bool,
+	send func(*acp.Process, sdk.SessionId) (func(*Summary), error)) error {
+	s, proc, sid, err := m.live(id)
+	if err != nil {
+		return err
+	}
+	if !offered(s.summary()) {
+		return ErrNotOffered
+	}
+	change, err := send(proc, sid)
+	if err != nil {
+		return err
+	}
+	s.changeSettings(change)
+	return nil
+}
+
+// change applies fn to the summary and tells the tabs.
+func (s *session) change(fn func(*Summary)) {
+	s.mu.Lock()
+	fn(&s.sum)
+	s.mu.Unlock()
+	s.publish()
+}
+
+// changeSettings is change for the mode or options, which are saved so
+// Reopen can set them again, and which decide auto-approve.
+func (s *session) changeSettings(fn func(*Summary)) {
+	s.change(func(sum *Summary) {
+		fn(sum)
+		s.syncAutoLocked()
+	})
+	s.m.persist()
+}
+
+// syncAutoLocked makes AutoApprove say whether the Agent asks first, after
+// the mode or the asking option changed in the Session (spec #1, story
+// 40): the auto value turns it on, any other value off. Before the Session
+// is ready, setAsking hasn't run yet and AutoApprove is what it will
+// apply, so it stays. The caller holds s.mu.
+func (s *session) syncAutoLocked() {
+	a := s.def.Asking
+	if !s.ready {
+		return
+	}
+	if a.Mode.Auto != "" && s.sum.Mode != "" {
+		s.sum.AutoApprove = s.sum.Mode == a.Mode.Auto
+	}
+	if a.Option == "" {
+		return
+	}
+	for _, o := range s.sum.Options {
+		if o.ID == a.Option {
+			s.sum.AutoApprove = o.Value == a.Value.Auto
+		}
+	}
+}
+
+// live finds Session id with its running Agent and ACP session.
+func (m *Manager) live(id string) (*session, *acp.Process, sdk.SessionId, error) {
+	s, err := m.find(id)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ready || s.sum.State == Exited || s.proc == nil {
+		return nil, nil, "", ErrNotRunning
+	}
+	return s, s.proc, s.acpID, nil
 }
 
 // watch turns an unexpected process exit into Exited "Agent crashed".
@@ -920,15 +1153,32 @@ func (s *session) Update(n sdk.SessionNotification) {
 		if title, ok := u.SessionInfoUpdate.Title.Value(); ok && title != "" {
 			s.retitle(title)
 		}
-	case u.AvailableCommandsUpdate != nil:
-		if s.m.cfg.Commands == nil {
-			return
+	case u.CurrentModeUpdate != nil:
+		s.changeSettings(func(sum *Summary) { sum.Mode = string(u.CurrentModeUpdate.CurrentModeId) })
+	case u.UsageUpdate != nil:
+		uu := u.UsageUpdate
+		usage := &Usage{Used: uu.Used, Size: uu.Size}
+		if uu.Cost != nil {
+			usage.Cost = &Cost{Amount: uu.Cost.Amount, Currency: uu.Cost.Currency}
 		}
+		s.change(func(sum *Summary) { sum.Usage = usage })
+	case u.ConfigOptionUpdate != nil:
+		s.changeSettings(func(sum *Summary) { sum.Options = acp.Options(u.ConfigOptionUpdate.ConfigOptions) })
+	case u.AvailableCommandsUpdate != nil:
 		names := []string{}
+		cmds := []Command{}
 		for _, c := range u.AvailableCommandsUpdate.AvailableCommands {
 			names = append(names, c.Name)
+			cmd := Command{Name: c.Name, Description: c.Description}
+			if c.Input != nil && c.Input.Unstructured != nil {
+				cmd.Hint = c.Input.Unstructured.Hint
+			}
+			cmds = append(cmds, cmd)
 		}
-		s.m.cfg.Commands(s.def.ID, names)
+		s.change(func(sum *Summary) { sum.Commands = cmds })
+		if s.m.cfg.Commands != nil {
+			s.m.cfg.Commands(s.def.ID, names)
+		}
 	}
 }
 
@@ -1276,7 +1526,7 @@ func (s *session) summary() Summary {
 
 func (s *session) summaryLocked() Summary {
 	sum := s.sum
-	sum.CanReopen = s.reopenableLocked()
+	sum.CanReopen, sum.Idea = s.reopenableLocked(), s.idea.Name
 	return sum
 }
 

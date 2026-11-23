@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release build (#16): a version tag (v*) runs this in
+# .github/workflows/release.yml. Check it locally with
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: fh
+
+before:
+  hooks:
+    # The UI is embedded in the binary (go:embed web/dist), so build it first.
+    - make ui
+
+builds:
+  - id: fh
+    main: ./cmd/fh
+    binary: fh
+    env:
+      - CGO_ENABLED=0
+    # macOS only in v1 (spec #1, Out of Scope).
+    goos: [darwin]
+    goarch: [arm64, amd64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # Unsigned in v1: Go's linker ad-hoc signs darwin/arm64 binaries, which
+    # is enough for them to run; Homebrew is the main install path.
+
+archives:
+  - formats: [tar.gz]
+    # No version in the name, so .../releases/latest/download/fh_darwin_arm64.tar.gz
+    # (the README's direct-download command) always gets the latest.
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+
+# GoReleaser v2 writes Homebrew casks; brew install philipsahli/tap/fh finds
+# a cask the same way as a formula. The token is a fine-grained PAT with
+# contents write on philipsahli/homebrew-tap only (README, Releasing).
+homebrew_casks:
+  - name: fh
+    repository:
+      owner: philipsahli
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/philipsahli/fullharness
+    description: Run coding agents in parallel from one browser UI on your Mac
+    license: MIT
+    commit_author:
+      name: fh-release
+      email: fh-release@users.noreply.github.com
+    # The binary is unsigned, so Gatekeeper would block it with Homebrew's
+    # quarantine flag on; remove the flag after install.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/fh"]
+          end
