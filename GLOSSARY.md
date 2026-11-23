@@ -32,11 +32,15 @@ _Avoid_: orphan, ad-hoc session, scratch session
 
 **Inbox**:
 The single list of everything waiting for the user's answer across all Sessions: permission requests and requests to start a Child Session.
-_Avoid_: queue, notifications, approvals
+_Avoid_: queue (that is a Queued message), notifications, approvals
 
 **Session state**:
 Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, or login needed. (Closing a Session removes it, so "closed" is never shown as a reason.)
 _Avoid_: status, busy, blocked, error (an error is an Exited reason)
+
+**Queued message**:
+A message the user sent while the Agent was Starting, Working or Waiting. fullharness sends it as the Session's next turn once the current turn ends, never into the running turn. A Session has at most one; sending again adds to it.
+_Avoid_: pending message, draft; and never call the Inbox a queue
 
 **Notification**:
 A desktop alert that a Session started Waiting while nobody was looking at it: shown by an fh tab, or natively by macOS when no tab can. It points to the Session; answering happens there or in the Inbox.
