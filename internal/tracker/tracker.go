@@ -132,7 +132,9 @@ func Derive(features []Feature, links []Link) {
 		f := &features[i]
 		for j := range f.Tickets {
 			t := &f.Tickets[j]
-			t.Linked = slices.ContainsFunc(links, func(l Link) bool { return l.Feature == f.ID && l.Ticket == t.Number })
+			t.Linked = slices.ContainsFunc(links, func(l Link) bool {
+				return l.Feature == f.ID && (l.AllTickets || l.Ticket == t.Number)
+			})
 		}
 		// Blockers match Tickets by numeric value: "5" and "05" are the same
 		// Ticket, whatever width a folder uses.
@@ -194,11 +196,13 @@ func Derive(features []Feature, links []Link) {
 }
 
 // Link is a Session's tie to the Feature (and Ticket) it was started from
-// on the board. Ticket is empty for a Session about the whole Feature, such
-// as Implement spec.
+// on the board. Ticket is empty for a Session about the whole Feature.
+// AllTickets marks Implement spec, whose Session works on every open
+// Ticket; a Feature link without it (Make tickets, Retro) marks none.
 type Link struct {
-	Feature string `json:"feature"`
-	Ticket  string `json:"ticket,omitempty"`
+	Feature    string `json:"feature"`
+	Ticket     string `json:"ticket,omitempty"`
+	AllTickets bool   `json:"allTickets,omitempty"`
 }
 
 // maxSlug bounds the slug part of a branch fh names after a title.

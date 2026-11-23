@@ -405,8 +405,12 @@ test("Start Session on a Startable ticket runs the implement skill, linked to th
     await expect(board.locator('.column[aria-label="Implementing"]')).toContainText("Login");
     await board.getByRole("button", { name: /Login/ }).click();
     await detail.getByRole("button", { name: "Implement spec" }).click();
-    await expect(page.getByRole("form", { name: /Implement spec/ })).toContainText(
-      "`/implement-spec` isn't installed for Claude Code",
+    const spec = page.getByRole("form", { name: /Implement spec/ });
+    await expect(spec).toContainText("`/implement-spec` isn't installed for Claude Code");
+    // Its new Worktree's branch is the integration branch the skill works on.
+    await expect(spec.getByLabel("New branch name")).toHaveValue("login");
+    await expect(spec.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
+      "/implement-spec .scratch/login/spec.md (use this Worktree's branch, login, as the integration branch)",
     );
   } finally {
     await fh.dispose();

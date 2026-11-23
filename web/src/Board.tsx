@@ -47,14 +47,17 @@ const refreshEvery = 60_000;
 const lastProjectKey = "fh.board.project";
 
 // nextStep is the button a Feature at stage offers: the skill that moves it
-// on (spec #1, story 72). Implement spec runs in its own new Worktree; the
-// others write issues, so they start in the main tree.
-const nextStep: Partial<Record<Stage, { label: string; skill: string; newWorktree: boolean }>> = {
-  spec: { label: "Make tickets", skill: "to-tickets", newWorktree: false },
-  tickets: { label: "Implement spec", skill: "implement-spec", newWorktree: true },
-  implementing: { label: "Implement spec", skill: "implement-spec", newWorktree: true },
-  review: { label: "Implement spec", skill: "implement-spec", newWorktree: true },
-  shipped: { label: "Retro", skill: "retro", newWorktree: false },
+// on (spec #1, story 72). Implement spec (implements) runs in its own new
+// Worktree, whose branch is its integration branch, and takes every open
+// Ticket; the others write issues, so they start in the main tree.
+const makeTickets = { label: "Make tickets", skill: "to-tickets", implements: false };
+const implementSpec = { label: "Implement spec", skill: "implement-spec", implements: true };
+const nextStep: Partial<Record<Stage, typeof makeTickets>> = {
+  spec: makeTickets,
+  tickets: implementSpec,
+  implementing: implementSpec,
+  review: implementSpec,
+  shipped: { label: "Retro", skill: "retro", implements: false },
 };
 
 function mainTree(p: Project): string {
@@ -253,10 +256,15 @@ function FeatureDetail({
             onClick={() =>
               start({
                 title: `${step.label}: ${feature.ref}`,
-                ...(step.newWorktree ? { branch: feature.branch } : { worktree: mainTree }),
                 skill: step.skill,
                 ref: feature.ref,
-                link: { feature: feature.id },
+                ...(step.implements
+                  ? {
+                      branch: feature.branch,
+                      note: `(use this Worktree's branch, ${feature.branch}, as the integration branch)`,
+                      link: { feature: feature.id, allTickets: true },
+                    }
+                  : { worktree: mainTree, link: { feature: feature.id } }),
               })
             }
           >

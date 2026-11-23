@@ -24,7 +24,8 @@ export type Project = {
 
 // Link matches internal/tracker.Link: the Feature (and Ticket) a Session
 // was started from on the board.
-export type Link = { feature: string; ticket?: string };
+// allTickets marks Implement spec, whose Session takes every open Ticket.
+export type Link = { feature: string; ticket?: string; allTickets?: boolean };
 
 // SessionSummary, Tool and Item match internal/session.
 export type SessionState = "starting" | "working" | "waiting" | "idle" | "exited";

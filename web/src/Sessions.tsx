@@ -95,6 +95,7 @@ export type StartFrom = {
   worktree?: string; // …or this existing one (the main tree)
   skill: string; // the skill's name, resolved per Agent, e.g. "implement"
   ref?: string; // what the skill works on, e.g. "#42"
+  note?: string; // added after ref, e.g. which branch to integrate on
   link?: Link;
 };
 
@@ -104,7 +105,8 @@ const warnedUnknown = new Set<string>();
 
 function startPrompt(from: StartFrom, a: AgentInfo | undefined): string {
   const cmd = a?.skill ?? `/${from.skill}`;
-  return from.ref ? `${cmd} ${from.ref}` : `${cmd} `;
+  const text = [cmd, from.ref, from.note].filter(Boolean).join(" ");
+  return from.ref ? text : `${text} `;
 }
 
 // NewSession is the New Session dialog: Project, a new or free Worktree,
@@ -280,7 +282,8 @@ export function NewSession(props: {
               {!why && a.commandsUnknown && !alreadyWarned.has(a.id) && (
                 <span className="why">
                   fh doesn't know {a.name}'s slash commands yet, so it can't tell whether{" "}
-                  <code>/{from?.skill}</code> is installed
+                  <code>/{from?.skill}</code> is installed. Start any Session of {a.name} once so fh
+                  learns them
                 </span>
               )}
             </label>

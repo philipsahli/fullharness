@@ -227,3 +227,30 @@ func TestALocalTicketsSessionLinksByFolderAndNumberUntilClosed(t *testing.T) {
 		t.Errorf("login 01 after Close = %v, want Startable again", tk)
 	}
 }
+
+func TestAnImplementSpecSessionCoversItsOpenTickets(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "Spec: Login", State: "OPEN", SubIssues: []int{2, 3, 4}},
+		{Number: 2, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+		{Number: 3, Title: "Cookie", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
+		{Number: 4, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 1},
+	}, []map[string]any{{"number": 9, "headRefName": "3-cookie", "body": ""}}, true)
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+	tab := f.connectTab(c)
+
+	// /implement-spec's subagents pick their own branch names, so only the
+	// link can tell the board its Tickets are taken.
+	id := f.startSession(c, map[string]any{"project": repo, "branch": "1-spec-login", "agent": "claude",
+		"link": map[string]any{"feature": "1", "allTickets": true}})
+	waitState(t, tab, id, "idle")
+
+	spec := featureByID(t, boardRefresh(t, f, c, repo), "1")
+	for n, want := range map[string]string{"2": "implementing", "3": "review", "4": "shipped"} {
+		if tk := ticketByNumber(t, spec, n); tk["stage"] != want || tk["startable"] != false {
+			t.Errorf("#%s = %v, want %s and not Startable", n, tk, want)
+		}
+	}
+}

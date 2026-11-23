@@ -235,27 +235,36 @@ Each button opens New Session, prefilled with a Worktree, an Agent and a startin
 | --- | --- | --- | --- |
 | **Start Session** | a Startable Ticket | `implement` | new, on the Ticket's branch, e.g. `42-login-form` |
 | **Make tickets** | a Feature at Spec | `to-tickets` | the main tree |
-| **Implement spec** | a Feature at Tickets, Implementing or Review | `implement-spec` | new, on the Spec's branch |
+| **Implement spec** | a Feature at Tickets, Implementing or Review | `implement-spec` | new, on the Spec's branch, which the prompt names as the integration branch |
 | **Retro** | a Shipped Feature | `retro` | the main tree |
 | **Write spec** | the board header | `to-spec` | the main tree |
 | **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
 
-A Session started from a Ticket or Feature shows that link in its header, and the Ticket counts as Implementing, also once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
+A Session started from a Ticket or Feature shows that link in its header. A Session started from a Ticket makes that Ticket Implementing; an Implement spec Session does the same for every open Ticket of its Feature that isn't in Review. Both hold once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
 
 Each Agent names skills its own way, so fh looks for the skill among the slash commands the Agent last reported: by its exact name, or as `<plugin>:<name>` (Claude Code lists plugin skills as `mattpocock-skills:implement`).
 
 - An Agent without the skill is greyed out in New Session, with a note such as "`/implement` isn't installed for Copilot CLI".
-- fh learns an Agent's slash commands from its first Session and keeps them across restarts. Until then the Agent can still be picked, and the dialog warns once that fh can't tell whether the skill is installed.
+- fh learns an Agent's slash commands from its first Session and keeps them across restarts. Until then the Agent can still be picked, with the plain skill name (`/implement`), and the dialog warns once: start any Session of that Agent so fh learns its commands.
 
-Copilot CLI and OpenCode see Matt's skills only once they're installed where those Agents look for skills, `~/.agents/skills`:
+Copilot CLI and OpenCode see Matt's skills only once they're installed where each Agent looks for skills:
+
+| Agent | Skills folder |
+| --- | --- |
+| Copilot CLI | `~/.copilot/skills` |
+| OpenCode | `~/.claude/skills` (it reads Claude Code's folder) |
+
+For Copilot CLI:
 
 ```bash
 git clone https://github.com/mattpocock/skills.git ~/src/mattpocock-skills
-mkdir -p ~/.agents/skills
-ln -s ~/src/mattpocock-skills/skills/engineering/* ~/.agents/skills/
-ls ~/.agents/skills   # code-review  implement  implement-spec  …  to-spec  to-tickets
+mkdir -p ~/.copilot/skills
+ln -s ~/src/mattpocock-skills/skills/engineering/* ~/.copilot/skills/
+ls ~/.copilot/skills   # code-review  implement  implement-spec  …  to-spec  to-tickets
 # then start a new Session of that Agent, so fh learns its commands
 ```
+
+For OpenCode, link the same folders into `~/.claude/skills`. Claude Code then lists each skill twice, as `implement` and as `mattpocock-skills:implement`.
 
 ### Agents
 
