@@ -39,6 +39,7 @@ We triage new issues with these labels:
 - Branch from `main` and open a PR against it.
 - Run `make check` before you open it.
 - Merge only when the PR's checks are green (`gh pr checks <number>`). GitHub doesn't enforce this yet, because the repo is private on the free plan.
+- If the PR's branch is checked out in an fh Worktree, merge with `gh pr merge <number> --squash`, then run `git push origin --delete <branch>`. `--delete-branch` also deletes the Worktree, along with its ignored files, and its Sessions can no longer reopen. Remove the Worktree in fh instead.
 - Link the issue the PR closes, for example `Closes #42`.
 - Name decisions with the terms in [`GLOSSARY.md`](GLOSSARY.md). Record new decisions as an ADR in [`docs/adr/`](docs/adr/).
 
