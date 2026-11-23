@@ -41,11 +41,15 @@ type Hunk struct {
 type Line struct {
 	Op   string `json:"op"`
 	Text string `json:"text"`
+	// NoNewline marks a last line with no newline after it, which unified
+	// diffs show as "\ No newline at end of file".
+	NoNewline bool `json:"noNewline,omitempty"`
 }
 
 // Lines diffs oldText against newText. Empty old text means a new file and
 // empty new text a deleted one. "\r\n" and "\n" count as the same line end,
-// but any other whitespace change shows.
+// but any other whitespace change shows, including a missing newline at the
+// end.
 func Lines(path, oldText, newText string) File {
 	a, b := split(oldText), split(newText)
 	ops := script(a, b)
@@ -62,14 +66,24 @@ func Lines(path, oldText, newText string) File {
 	return f
 }
 
+// split returns text's lines. A last line with no newline after it keeps
+// noNewline as a suffix, so it differs from the same line with one; no other
+// line can contain "\n".
 func split(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.TrimSuffix(text, "\n")
 	if text == "" {
 		return nil
 	}
-	return strings.Split(text, "\n")
+	lines := strings.Split(text, "\n")
+	if last := len(lines) - 1; lines[last] == "" {
+		lines = lines[:last]
+	} else {
+		lines[last] += noNewline
+	}
+	return lines
 }
+
+const noNewline = "\n"
 
 // edit is one line of the edit script, with its 0-based line numbers in the
 // old and new text (the next line's number on the side it is missing from).
@@ -239,7 +253,8 @@ func hunks(ops []edit) ([]Hunk, bool) {
 func hunk(ops []edit) Hunk {
 	h := Hunk{OldStart: ops[0].a + 1, NewStart: ops[0].b + 1}
 	for _, o := range ops {
-		h.Lines = append(h.Lines, Line{Op: string(o.op), Text: o.text})
+		text, cut := strings.CutSuffix(o.text, noNewline)
+		h.Lines = append(h.Lines, Line{Op: string(o.op), Text: text, NoNewline: cut})
 		if o.op != '+' {
 			h.OldLines++
 		}

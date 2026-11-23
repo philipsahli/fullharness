@@ -23,6 +23,6 @@ Mechanical rules live in the linters, which `make lint` runs (see [ADR 0007](doc
 This file holds only the rules a linter can't check:
 
 - **An ignored error says why.** When code drops an error on purpose, write `_ =` and a short comment giving the reason, for example `_ = resp.Body.Close() // only the status matters`. A linter suppression (`//nolint`) needs the same kind of comment.
-- **Tests go through the API.** Tests drive fh over HTTP and WebSocket, as the UI does, and never call unexported code (spec #1, Testing Decisions).
+- **Tests go through the API.** Tests drive fh over HTTP and WebSocket, as the UI does, and never call unexported code (spec #1, Testing Decisions). The exception is a package of pure logic with no I/O, such as `internal/diff`: it can have table tests of its exported functions, in a `_test` package, when edge cases are too many to reach over HTTP (spec #81).
 
 Add a rule here when `/retro` or a review finds a judgement call worth enforcing. Turn mechanical rules into linter config instead.

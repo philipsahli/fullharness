@@ -758,7 +758,9 @@ function diffText(files: DiffFile[]): string {
       const hunks = f.hunks.map(
         (h) =>
           `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n` +
-          h.lines.map((l) => l.op + l.text).join("\n"),
+          h.lines
+            .map((l) => l.op + l.text + (l.noNewline ? "\n\\ No newline at end of file" : ""))
+            .join("\n"),
       );
       const cut = f.truncated ? [`… cut; ${f.added + f.removed} lines changed in all`] : [];
       return [`${f.path} +${f.added} −${f.removed}`, ...hunks, ...cut].join("\n");

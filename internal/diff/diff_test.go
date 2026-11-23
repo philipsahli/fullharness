@@ -104,6 +104,24 @@ func TestLines(t *testing.T) {
 				Lines: []diff.Line{ctx("a"), {Op: "-", Text: "b"}, {Op: "+", Text: "b "}},
 			}}},
 		},
+		{
+			name: "a missing newline at the end shows",
+			old:  "a\nb",
+			new:  "a\nb\n",
+			want: diff.File{Path: "f", Added: 1, Removed: 1, Hunks: []diff.Hunk{{
+				OldStart: 1, OldLines: 2, NewStart: 1, NewLines: 2,
+				Lines: []diff.Line{ctx("a"), {Op: "-", Text: "b", NoNewline: true}, {Op: "+", Text: "b"}},
+			}}},
+		},
+		{
+			name: "both missing the newline at the end",
+			old:  "a\nb",
+			new:  "A\nb",
+			want: diff.File{Path: "f", Added: 1, Removed: 1, Hunks: []diff.Hunk{{
+				OldStart: 1, OldLines: 2, NewStart: 1, NewLines: 2,
+				Lines: []diff.Line{{Op: "-", Text: "a"}, {Op: "+", Text: "A"}, {Op: " ", Text: "b", NoNewline: true}},
+			}}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := diff.Lines("f", tc.old, tc.new)

@@ -92,7 +92,7 @@ export type DiffHunk = {
   oldLines: number;
   newStart: number;
   newLines: number;
-  lines: { op: " " | "-" | "+"; text: string }[];
+  lines: { op: " " | "-" | "+"; text: string; noNewline?: boolean }[]; // noNewline: last line, no newline after it
 };
 
 export type Tool = {
