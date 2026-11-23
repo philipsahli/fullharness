@@ -11,6 +11,9 @@
 #             first run downloads Chromium; CI sets PLAYWRIGHT_INSTALL_FLAGS=--with-deps
 #             to also install its system libraries on Linux.
 # make check: everything CI runs. Run it before opening a PR.
+# make smoke: the release smoke test against the real Claude Code, Copilot CLI
+#             and OpenCode (scripts/smoke). Needs them installed and logged in,
+#             spends real tokens, never runs in CI (ADR 0007). Run before tagging.
 
 DEV_PORT ?= 4816
 DEV_DIR  ?= $(CURDIR)/.dev
@@ -23,7 +26,7 @@ TOOLS_HASH := $(shell cat tools/go.mod tools/go.sum | shasum -a 256 | cut -c1-12
 TOOLS      := bin/tools/$(TOOLS_HASH)
 PLAYWRIGHT_INSTALL_FLAGS ?=
 
-.PHONY: build dev lint test e2e check web-deps install
+.PHONY: ui build dev lint test e2e check smoke web-deps install
 
 web/node_modules: web/package-lock.json
 	cd web && npm ci
@@ -31,12 +34,15 @@ web/node_modules: web/package-lock.json
 
 web-deps: web/node_modules
 
-build: web-deps
+# ui builds the UI into web/dist, which fh embeds. GoReleaser runs it too.
+ui: web-deps
 	cd web && npm run build
 	touch web/dist/.gitkeep  # vite empties dist/; keep the placeholder go:embed needs
+
+build: ui
 	go build -o bin/fh ./cmd/fh
 
-# install copies fh onto PATH, to run it from source until releases exist (#16).
+# install copies fh onto PATH, to run it from source.
 PREFIX ?= $(HOME)/.local/bin
 install: build
 	mkdir -p "$(PREFIX)"
@@ -70,3 +76,6 @@ e2e: build
 	cd web && npm run e2e
 
 check: lint test e2e
+
+smoke:
+	go run ./scripts/smoke

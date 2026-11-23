@@ -15,6 +15,7 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | `make test` | Runs the Go tests with the race detector. |
 | `make e2e` | Builds `bin/fh` and runs the Playwright smoke tests in Chromium. The first run downloads Chromium (about 150 MB). |
 | `make check` | Runs `lint`, `test` and `e2e`, the same as CI. Run it before you open a PR. |
+| `make smoke` | Runs the release smoke test against the real Claude Code, Copilot CLI and OpenCode. It needs all three installed and logged in, and spends real tokens, so CI never runs it. See [Releasing](README.md#releasing). |
 
 The lint tool versions are pinned in `tools/go.mod` (Go) and `web/package.json` (UI). `cd web && npm run format` fixes Prettier findings.
 

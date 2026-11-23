@@ -46,11 +46,13 @@ type action struct {
 	Stderr     string      `json:"stderr,omitempty"` // write a line to stderr
 	Exit       *int        `json:"exit,omitempty"`   // exit the process with this code
 	WriteFile  string      `json:"writeFile,omitempty"`
-	PIDFile    string      `json:"pidFile,omitempty"`   // write the process ID to this path
-	ExitAfter  int         `json:"exitAfter,omitempty"` // exit with code 3 this many ms later, without blocking
-	AuthError  bool        `json:"authError,omitempty"` // fail the request with ACP's "authentication required"
-	Fail       string      `json:"fail,omitempty"`      // fail the request with this message (an ordinary error)
-	Stop       string      `json:"stop,omitempty"`      // end the turn with this stop reason instead of end_turn
+	ReadFile   string      `json:"readFile,omitempty"` // ask the client for fs/read_text_file of this path, which fh refuses
+
+	PIDFile   string `json:"pidFile,omitempty"`   // write the process ID to this path
+	ExitAfter int    `json:"exitAfter,omitempty"` // exit with code 3 this many ms later, without blocking
+	AuthError bool   `json:"authError,omitempty"` // fail the request with ACP's "authentication required"
+	Fail      string `json:"fail,omitempty"`      // fail the request with this message (an ordinary error)
+	Stop      string `json:"stop,omitempty"`      // end the turn with this stop reason instead of end_turn
 	// Stream sends Count chunks, PerSecond a second, each "t=<unix nanos>;"
 	// so a test can measure how long fh takes to deliver them.
 	Stream *struct {
@@ -383,6 +385,10 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			}(s.ExitAfter)
 		case s.PIDFile != "":
 			err = os.WriteFile(s.PIDFile, []byte(fmt.Sprint(os.Getpid())), 0o644)
+		case s.ReadFile != "":
+			// fh offers no fs capability, so the request fails; carry on like
+			// an Agent that falls back to its own tools.
+			_, _ = a.conn.ReadTextFile(ctx, acp.ReadTextFileRequest{SessionId: sid, Path: a.cwd + "/" + s.ReadFile})
 		case s.WriteFile != "":
 			err = os.WriteFile(a.cwd+"/"+s.WriteFile, []byte("written by fakeagent\n"), 0o644)
 		}

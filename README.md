@@ -1,6 +1,18 @@
 # fullharness (fh)
 
-fullharness (fh) is a local app for developers who run several coding agents in parallel across their repos. It has two halves:
+fullharness (fh) is a local Mac app for developers who run several coding agents in parallel across their repos: one browser tab shows every agent's Session, its permission requests, and where each Feature stands.
+
+[![CI](https://github.com/philipsahli/fullharness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/philipsahli/fullharness/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/philipsahli/fullharness)](https://github.com/philipsahli/fullharness/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/philipsahli/fullharness)](LICENSE)
+
+## Why this exists
+
+When you run several coding agents at once, each one sits in its own terminal, and you have to check them one by one to see which is waiting for you. fh puts every Session in one list sorted by state and collects pending permission requests in one Inbox. Its board shows, per repo, where each Feature is between idea and shipped.
+
+## What fh does
+
+fh has two halves:
 
 - **Sessions**
   - A chat view for each running agent (Claude Code, Copilot CLI, OpenCode).
@@ -10,17 +22,13 @@ fullharness (fh) is a local app for developers who run several coding agents in 
   - A board per repo shows where each Feature is in the flow from idea to shipped (Idea → Spec → Tickets → Implementing → Review → Shipped).
   - Buttons start a Session that runs the next skill, for example `/to-spec` or `/implement #42`.
 
-> **Status:** early build. `fh` starts and opens an empty UI; Sessions and the Software factory come next (see [v1 scope and build order](#v1-scope-and-build-order)). The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
+> **Status:** v1 is in progress (see [v1 scope and build order](#v1-scope-and-build-order)). The decisions so far are in [`GLOSSARY.md`](GLOSSARY.md) and [`docs/adr/`](docs/adr/). A clickable mockup with example data is in [`docs/design/fh-mockup.html`](docs/design/fh-mockup.html).
 
 Planned after v1:
 
 - **Roadmap**: Features from all repos ordered into Now / Next / Later. See [ADR 0005](docs/adr/0005-fh-writes-roadmap-group-to-tracker.md).
 - **Readiness**: fixed checks plus an optional Agent Assessment that tell you whether a Spec and its Tickets are ready for `/implement-spec`.
 - **Child Sessions**: an Agent asks fh to start another Agent in a new Worktree, and you approve each request in the Inbox. See [ADR 0006](docs/adr/0006-agents-start-child-sessions-via-fh-mcp.md).
-
-## Why this exists
-
-When you run several coding agents at once, each one sits in its own terminal, and you have to check them one by one to see which is waiting for you. fh puts every Session in one list sorted by state and collects pending permission requests in one Inbox. Its board shows, per repo, where each Feature is between idea and shipped.
 
 ## How it works (planned v1)
 
@@ -75,7 +83,7 @@ Testing:
 
 Target: 10 Sessions at once without lag. v1 is done when it has been the only way to run agents for a week, across two real repos.
 
-## Requirements (planned)
+## Requirements
 
 - macOS
 - `git`, and `gh` (logged in) for repos that track work in GitHub Issues
@@ -84,7 +92,40 @@ Target: 10 Sessions at once without lag. v1 is done when it has been the only wa
 
 ## Quickstart
 
-There is no release yet, so you build fh from source. You need Go 1.27.2 or later, and Node 22.12 or later with npm.
+Install fh with Homebrew and start it:
+
+```bash
+brew install philipsahli/tap/fh
+fh
+# level=INFO msg="fh started" port=4815 ...   (and your browser opens the UI)
+```
+
+`fh` starts the server on `127.0.0.1:4815` and opens the UI in your browser: add a Project, start a Session with an Agent, and open the Software factory for its board. Stop fh with Ctrl+C.
+
+Running `fh` again while it runs opens another tab on the running instance instead of starting a second server.
+
+### Without Homebrew
+
+From the [latest release](https://github.com/philipsahli/fullharness/releases/latest), download `checksums.txt` and the archive for your Mac:
+
+- `fh_darwin_arm64.tar.gz` for Apple Silicon
+- `fh_darwin_amd64.tar.gz` for Intel
+
+Then, in the folder you downloaded them to (shown for Apple Silicon):
+
+```bash
+shasum -a 256 -c checksums.txt --ignore-missing   # fh_darwin_arm64.tar.gz: OK
+tar -xzf fh_darwin_arm64.tar.gz fh
+xattr -d com.apple.quarantine fh                  # once; see below
+mkdir -p ~/.local/bin && mv fh ~/.local/bin/
+fh --version                                      # fh 0.1.0
+```
+
+The fh binaries are not signed by an Apple developer ID, so macOS blocks a downloaded `fh` until you remove its quarantine flag with `xattr`. If `xattr` prints `No such xattr`, the file was never flagged (for example, you downloaded it with `curl`), and you can go on. Homebrew removes the flag for you.
+
+### From source
+
+You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 
 ```bash
 git clone https://github.com/philipsahli/fullharness.git
@@ -93,9 +134,7 @@ make install
 fh
 ```
 
-`make install` builds fh and copies it to `~/.local/bin` (set `PREFIX` for another folder). `fh` starts the server on `127.0.0.1:4815` and opens the UI in your browser: add a Project, start a Session with an Agent, and open the Software factory for its board. Stop fh with Ctrl+C.
-
-Running `fh` again while it runs opens another tab on the running instance instead of starting a second server.
+`make install` builds fh and copies it to `~/.local/bin` (set `PREFIX` for another folder).
 
 ## Configuration / Usage
 
@@ -361,7 +400,45 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to file issues and open pull re
 
 Development follows [Matt Pocock's engineering skills](https://github.com/mattpocock/skills). [`AGENTS.md`](AGENTS.md) and [`docs/agents/`](docs/agents/) configure them: issues live in GitHub Issues on this repo, with the five default triage labels.
 
-The ACP spike passed: all three agents work over ACP from Go (see [ADR 0003](docs/adr/0003-acp-first-conversational-interface.md)). Next step: `/to-spec` and `/to-tickets` for v1.
+### Releasing
+
+Pushing a version tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml). GoReleaser ([`.goreleaser.yaml`](.goreleaser.yaml)) then:
+
+- builds `fh` for Apple Silicon and Intel;
+- attaches both archives and `checksums.txt` to a GitHub Release;
+- updates the `fh` cask in [`philipsahli/homebrew-tap`](https://github.com/philipsahli/homebrew-tap).
+
+The binaries are unsigned in v1. Go's linker ad-hoc signs the Apple Silicon build, which is enough for it to run, and the cask removes the quarantine flag on install.
+
+Before each release, on your Mac:
+
+1. Check that CI is green on `main`: `gh run list --workflow ci.yml --branch main --limit 1`.
+2. Log in to Claude Code, Copilot CLI and OpenCode, and set a model in your OpenCode config (see [Agents](#agents)).
+3. Run `make smoke` from `main`. It must end with `smoke: PASS`.
+4. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+5. Watch the release build: `gh run watch $(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')`.
+6. Check the install: `brew update && brew install philipsahli/tap/fh && fh --version`.
+
+`make smoke` runs the ACP spike's checks against each real Agent, in a fresh scratch git repo, using fh's built-in Agent definitions:
+
+| Check | Passes when |
+| --- | --- |
+| 1 drive over ACP | A prompt gets the expected reply and ends with `end_turn`. |
+| 2 slash skills | The scratch repo's skill is listed as a slash command and runs. |
+| 3 permission and turn end | Asked to run a command, the Agent sends a permission request, then ends its turn. |
+| 4 reopen | After the Agent restarts, `session/load` brings the conversation back. |
+| 5 no fs/terminal | Checks 1–4 pass with no client capabilities, and the Agent asks for no `fs` or `terminal` calls. |
+| 6 claude adapter | Check 1 passes through the pinned Claude Code ACP adapter. |
+| 7 `.claude/skills/` loading | The skill in the scratch repo's `.claude/skills/` runs. |
+| 8 `OPENCODE_PERMISSION` | OpenCode sends a permission request with only that variable telling it to ask. |
+
+It spends real tokens and needs your logins, so CI never runs it ([ADR 0007](docs/adr/0007-quality-gates.md)). Run one Agent with `go run ./scripts/smoke -agent opencode`. If a check fails after an Agent update, don't tag: file an issue with the output, and keep the Agent's stderr log, whose folder the last lines print.
+
+One-time setup, before the first release:
+
+- Create the public repo `philipsahli/homebrew-tap`.
+- Add a fine-grained token with Contents read and write on that repo only, as the Actions secret `HOMEBREW_TAP_GITHUB_TOKEN` on this repo.
+- Make this repo public, then protect `main` with branch protection that requires the CI checks.
 
 ## Community & Support
 
