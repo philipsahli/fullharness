@@ -713,10 +713,7 @@ export function PermissionCard({
       )}
       {request.content && <pre>{request.content}</pre>}
       {request.diffs && request.diffs.length > 0 && (
-        <Diffs
-          files={request.diffs}
-          fullURL={`/api/sessions/${request.session}/diffs/${request.id}`}
-        />
+        <Diffs files={request.diffs} session={request.session} item={request.id} />
       )}
       {pending ? (
         <div className="row">
@@ -775,9 +772,7 @@ function ToolCard({ tool, session }: { tool: Tool; session: string }) {
         <span className={`status ${tool.status}`}>{tool.status.replace("_", " ")}</span>
       </summary>
       {output && <pre>{output}</pre>}
-      {diffs.length > 0 && (
-        <Diffs files={diffs} fullURL={`/api/sessions/${session}/diffs/${tool.id}`} />
-      )}
+      {diffs.length > 0 && <Diffs files={diffs} session={session} item={tool.id} />}
       {!output && diffs.length === 0 && <p className="empty">No output yet.</p>}
     </details>
   );

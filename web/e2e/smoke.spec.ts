@@ -638,12 +638,15 @@ test("an edit tool card shows +N −M collapsed and its diff opened; a failed ca
             id: "t3",
             title: "Write big.txt",
             kind: "edit",
-            status: "completed",
+            status: "in_progress",
             path: "big.txt",
             diffNew: numbered(400),
           },
         },
         { say: "done" },
+        { sleepMs: 3000 },
+        // Re-sends the card with the same diffs: the full diff must stay.
+        { toolUpdate: { id: "t3", status: "completed" } },
       ],
     },
   });
@@ -675,6 +678,8 @@ test("an edit tool card shows +N −M collapsed and its diff opened; a failed ca
     await expect(bigDiff.locator(".add")).toHaveCount(400);
     await expect(bigDiff.locator(".add").last()).toHaveText("+line 400");
     await expect(big.getByRole("button", { name: "Show full diff" })).toHaveCount(0);
+    await expect(big.locator(".status")).toHaveText("completed");
+    await expect(bigDiff.locator(".add")).toHaveCount(400);
   } finally {
     await fh.dispose();
   }

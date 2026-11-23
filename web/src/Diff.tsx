@@ -20,18 +20,32 @@ export function ChangeCounts({ files }: { files: DiffFile[] }) {
   );
 }
 
-// Diffs shows a tool call's diffs as line diffs. The server cuts a diff
-// after 300 changed lines; fullURL fetches them all for Show full diff.
-export function Diffs({ files, fullURL }: { files: DiffFile[]; fullURL: string }) {
-  // The full diffs belong to the files they were fetched for: a tool call
-  // update that sends new diffs shows those, cut again.
-  const [full, setFull] = useState<{ of: DiffFile[]; files: DiffFile[] }>();
+// Diffs shows the diffs of a tool card or permission request (item, in
+// session) as line diffs. The server cuts a diff after diff.MaxChanged
+// changed lines; Show full diff fetches them all.
+export function Diffs({
+  files,
+  session,
+  item,
+}: {
+  files: DiffFile[];
+  session: string;
+  item: string;
+}) {
+  // The full diffs belong to the diffs they were fetched for, compared by
+  // content: every Inbox broadcast and card update sends new arrays of the
+  // same diffs, which must not cut them again. Only a tool call update with
+  // different diffs does.
+  const key = JSON.stringify(files);
+  const [full, setFull] = useState<{ of: string; files: DiffFile[] }>();
   const [error, setError] = useState("");
-  const shown = full?.of === files ? full.files : files;
+  const shown = full?.of === key ? full.files : files;
   const showFull = async () => {
-    const got = await get<DiffFile[]>(fullURL);
+    const got = await get<DiffFile[]>(
+      `/api/sessions/${encodeURIComponent(session)}/diffs/${encodeURIComponent(item)}`,
+    );
     if (got) {
-      setFull({ of: files, files: got });
+      setFull({ of: key, files: got });
       setError("");
     } else {
       setError("Couldn't load the full diff.");

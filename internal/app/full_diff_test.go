@@ -86,18 +86,9 @@ func TestShowFullDiffGetsTheLinesPastTheCut(t *testing.T) {
 			t.Fatalf("%s: GET full diffs: status %d, want 200", name, status)
 		}
 		if len(full) != 1 || full[0].Truncated || full[0].Path != "big.txt" || changedLines(full[0]) != it.changed {
-			t.Errorf("%s: full diffs = %d files, truncated %v, %d changed lines; want 1, false, %d", name,
-				len(full), len(full) == 1 && full[0].Truncated, sumChanged(full), it.changed)
+			t.Errorf("%s: full diffs = %+v, want 1 file, not truncated, with %d changed lines", name, full, it.changed)
 		}
 	}
-}
-
-func sumChanged(files []diff.File) int {
-	n := 0
-	for _, f := range files {
-		n += changedLines(f)
-	}
-	return n
 }
 
 func TestFullDiffOfAnUnknownItemIsNotFound(t *testing.T) {
