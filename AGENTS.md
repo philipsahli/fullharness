@@ -14,7 +14,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 
 ## Pull requests
 
-Run `make check` before opening a PR; it runs exactly what CI runs. A PR is done when `gh pr checks <number>` is green. Until the repo is public (#16), GitHub can't require checks, so report a PR as done only after that command passes.
+Run `make check` before opening a PR; it runs exactly what CI runs. A PR is done when `gh pr checks <number>` is green. GitHub requires only the ubuntu job before a merge (#37), so report a PR as done only after that command shows the macOS job passed too.
 
 ## Documentation
 
