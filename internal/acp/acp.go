@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"slices"
 	"syscall"
@@ -39,6 +40,12 @@ type Process struct {
 func Start(command, env []string, dir string, stderr io.Writer, log *slog.Logger, h Handler) (*Process, error) {
 	if len(command) == 0 {
 		return nil, errors.New("empty Agent command")
+	}
+	// With Setpgid, Go reports a missing cmd.Dir as the command not
+	// existing ("fork/exec /opt/homebrew/bin/npx: no such file or
+	// directory"), which reads like an Agent crash (#62). Name the folder.
+	if _, err := os.Stat(dir); err != nil {
+		return nil, fmt.Errorf("the Worktree's folder %s: %w", dir, err)
 	}
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Dir = dir

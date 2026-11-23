@@ -49,6 +49,7 @@ export type SessionSummary = {
   since: string; // when the state last changed; orders the list
   login?: string; // the command to run when the reason is "login needed"
   canReopen: boolean; // its Agent can reload it (session/load) once Exited
+  folderGone?: boolean; // Exited and its Worktree's folder no longer exists
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
   link?: Link; // started from the board (#13), or an Idea's Spec (#14)

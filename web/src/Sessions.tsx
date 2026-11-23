@@ -468,6 +468,7 @@ export function Conversation(props: {
               </p>
             )}
             {session.stderr && session.stderr.length > 0 && <pre>{session.stderr.join("\n")}</pre>}
+            {session.folderGone && <p>Can't reopen: the Worktree's folder is gone.</p>}
             {session.canReopen && (
               <p>
                 <button type="button" onClick={() => void reopen()}>

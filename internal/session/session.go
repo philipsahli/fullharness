@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -104,6 +105,9 @@ type Summary struct {
 	// CanReopen is set when the Session can be reopened once Exited: its
 	// Agent offered session/load.
 	CanReopen bool `json:"canReopen"`
+	// FolderGone is set when the Worktree's folder no longer exists (a
+	// merge removed it, say), so the page can say why Reopen is missing.
+	FolderGone bool `json:"folderGone,omitempty"`
 	// Title is the Worktree's branch until the Agent names the Session.
 	Title string `json:"title"`
 	// Reason and Stderr explain an Exited Session.
@@ -510,6 +514,10 @@ func (m *Manager) Reopen(id string) error {
 	if !s.reopenableLocked() {
 		s.mu.Unlock()
 		return ErrNoReopen
+	}
+	if folderGone(worktree) {
+		s.mu.Unlock()
+		return ErrFolderGone
 	}
 	load := s.acpID != ""
 	s.resetRunLocked()
@@ -1530,7 +1538,19 @@ func (s *session) summary() Summary {
 func (s *session) summaryLocked() Summary {
 	sum := s.sum
 	sum.CanReopen, sum.Idea = s.reopenableLocked(), s.idea.Name
+	// Checked on every summary, not stored: the folder can go while fh
+	// runs or while it is stopped.
+	if sum.State == Exited && folderGone(sum.Worktree) {
+		sum.CanReopen, sum.FolderGone = false, true
+	}
 	return sum
+}
+
+// folderGone reports whether dir no longer exists. Other Stat errors
+// (permissions, say) leave Reopen to report what the Agent start hits.
+func folderGone(dir string) bool {
+	_, err := os.Stat(dir)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // emit sends a conversation event: kind "item" (a new or replaced item at
