@@ -123,6 +123,29 @@ func TestToolCallsShowStatusAndOutput(t *testing.T) {
 	}
 }
 
+// The UI picks a read card's language from its file's extension.
+func TestAToolCallCarriesItsLocations(t *testing.T) {
+	f := startFhWithAgent(t, script{"default": []any{
+		map[string]any{"tool": map[string]any{"id": "t1", "title": "Read", "kind": "read", "status": "pending", "path": "/w/a.go"}},
+		map[string]any{"toolUpdate": map[string]any{"id": "t1", "status": "completed", "path": "/w/main.go", "text": "package main"}},
+	}})
+	c, _, id, _ := newSessionIn(t, f, "")
+	tab := f.connectTab(c)
+	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "read"})
+	waitTurn(t, tab, id)
+
+	var tool map[string]any
+	for _, it := range f.transcript(c, id) {
+		if it["type"] == "tool" {
+			tool = it["tool"].(map[string]any)
+		}
+	}
+	// The update's locations replace the start's.
+	if tool == nil || !reflect.DeepEqual(tool["paths"], []any{"/w/main.go"}) {
+		t.Errorf("tool card = %v, want paths [/w/main.go]", tool)
+	}
+}
+
 func TestAnEditToolCallCarriesAStructuredDiff(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"tool": map[string]any{"id": "t1", "title": "Write notes.md", "kind": "edit", "status": "pending",

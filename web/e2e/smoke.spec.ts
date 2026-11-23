@@ -724,3 +724,58 @@ test("a permission request to edit a file shows its diff in the Session and in t
     await fh.dispose();
   }
 });
+
+test("fenced code and a read file are highlighted by language; an unknown language is plain", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [
+        {
+          say:
+            '```go\nfunc main() { fmt.Println("hi") }\n```\n\n' +
+            "```ts\nconst n: number = 1;\n```\n\n" +
+            "```cobol\nDISPLAY 'HI'.\n```",
+        },
+        {
+          tool: {
+            id: "r1",
+            title: "Read main.go",
+            kind: "read",
+            status: "completed",
+            path: "/w/main.go",
+            // As Claude Code's adapter sends a read: the Agent's own line
+            // numbers, in a fence.
+            text: "```\n1\tpackage main\n2\t\n3\t// entry\n4\tfunc main() {}\n```",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const conversation = await startSession(page, fh, "show me");
+    const reply = conversation.locator(".msg.agent");
+    const keyword = (code: string) => reply.locator(`pre code.language-${code} .hljs-keyword`);
+
+    await expect(keyword("go").first()).toHaveText("func");
+    await expect(reply.locator("pre code.language-go .hljs-string")).toHaveText('"hi"');
+    await expect(keyword("ts").first()).toHaveText("const");
+    const plain = reply.locator("pre code.language-cobol");
+    await expect(plain).toHaveText("DISPLAY 'HI'.");
+    await expect(plain.locator("*")).toHaveCount(0);
+
+    // A keyword is coloured apart from the code around it.
+    const colour = (l: typeof plain) => l.evaluate((el) => getComputedStyle(el).color);
+    expect(await colour(keyword("go").first())).not.toBe(await colour(plain));
+
+    const card = conversation.locator(".toolcard", { hasText: "Read main.go" });
+    await card.locator("summary").click();
+    await expect(card.locator("pre code .hljs-keyword").first()).toHaveText("package");
+    await expect(card.locator("pre code .hljs-comment")).toHaveText("// entry");
+    await expect(card.locator("pre code")).toHaveText(
+      /^1\tpackage main\n.*\n4\tfunc main\(\) \{\}$/s,
+    );
+  } finally {
+    await fh.dispose();
+  }
+});

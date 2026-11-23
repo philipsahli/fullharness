@@ -11,6 +11,11 @@
   --waiting-soft: #fdecd3;
   --bad: #b91c1c;
   --good: #15803d;
+  --code-keyword: #a14a06;
+  --code-string: #1b7040;
+  --code-comment: #5b6863;
+  --code-literal: #6d3fc0;
+  --code-title: #1f5fa6;
   --f-body: system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -28,6 +33,11 @@
     --waiting-soft: #3a2a12;
     --bad: #f87171;
     --good: #4ade80;
+    --code-keyword: #f2a541;
+    --code-string: #7dd3a8;
+    --code-comment: #8a9a94;
+    --code-literal: #c4a5f5;
+    --code-title: #7cc4f0;
     color-scheme: dark;
   }
 }
@@ -43,6 +53,11 @@
   --waiting-soft: #3a2a12;
   --bad: #f87171;
   --good: #4ade80;
+  --code-keyword: #f2a541;
+  --code-string: #7dd3a8;
+  --code-comment: #8a9a94;
+  --code-literal: #c4a5f5;
+  --code-title: #7cc4f0;
   color-scheme: dark;
 }
 
@@ -644,6 +659,46 @@ button:disabled {
 .msg.agent hr {
   border: 0;
   border-top: 1px solid var(--line);
+}
+/* Highlighted code (Code.tsx). Colours are tokens, set for light and dark. */
+.hljs-keyword,
+.hljs-section,
+.hljs-doctag {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-addition {
+  color: var(--code-string);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-built_in,
+.hljs-type,
+.hljs-variable.language_ {
+  color: var(--code-literal);
+}
+.hljs-title,
+.hljs-attr,
+.hljs-attribute,
+.hljs-meta,
+.hljs-bullet {
+  color: var(--code-title);
+}
+.hljs-deletion {
+  color: var(--bad);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
 }
 .notice pre,
 .toolcard pre {

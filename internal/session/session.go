@@ -186,6 +186,7 @@ type Tool struct {
 	Diffs     []diff.File `json:"diffs,omitempty"`   // the edits the tool call makes
 	fullDiffs []diff.File // Diffs uncut, kept only when one is cut; see Manager.FullDiffs
 	RawOutput string      `json:"rawOutput,omitempty"` // raw output, plain
+	Paths     []string    `json:"paths,omitempty"`     // the files it touches; a read card's language comes from these
 }
 
 // Detail is a Session with its whole conversation.
@@ -1164,6 +1165,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 			}
 			t.Content, t.Diffs, t.fullDiffs = toolContent(tc.Content)
 			t.RawOutput = rawText(tc.RawOutput)
+			t.Paths = locationPaths(tc.Locations)
 		})
 	case u.ToolCallUpdate != nil:
 		tu := u.ToolCallUpdate
@@ -1182,6 +1184,9 @@ func (s *session) Update(n sdk.SessionNotification) {
 			}
 			if v, ok := tu.RawOutput.Value(); ok {
 				t.RawOutput = rawText(v)
+			}
+			if v, ok := tu.Locations.Value(); ok {
+				t.Paths = locationPaths(v)
 			}
 		})
 	case u.SessionInfoUpdate != nil:
@@ -1263,9 +1268,7 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 		}
 	}
 	if locs, ok := tc.Locations.Value(); ok {
-		for _, l := range locs {
-			req.Paths = append(req.Paths, l.Path)
-		}
+		req.Paths = locationPaths(locs)
 	}
 	if cs, ok := tc.Content.Value(); ok {
 		req.Content, req.Diffs, req.fullDiffs = toolContent(cs)
@@ -1609,6 +1612,14 @@ func (s *session) waitingForLocked() string {
 		return s.sum.AgentName + " asks to run " + oldest.Title
 	}
 	return s.sum.AgentName + " is waiting"
+}
+
+func locationPaths(locs []sdk.ToolCallLocation) []string {
+	var paths []string
+	for _, l := range locs {
+		paths = append(paths, l.Path)
+	}
+	return paths
 }
 
 // toolContent splits a tool call's content into its text, joined, and its
