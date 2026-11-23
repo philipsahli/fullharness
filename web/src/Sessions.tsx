@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
+import { AgentMarkdown } from "./Markdown";
 import { byListOrder, projectName, tabID } from "./events";
 import type {
   Command,
@@ -648,7 +649,11 @@ function ItemView({ item }: { item: Item }) {
     case "user":
       return <div className="msg user">{item.text}</div>;
     case "agent":
-      return <div className="msg agent">{item.text}</div>;
+      return (
+        <div className="msg agent">
+          <AgentMarkdown text={item.text} />
+        </div>
+      );
     case "notice":
       return (
         <div className="notice" role="note">

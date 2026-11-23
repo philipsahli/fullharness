@@ -560,6 +560,85 @@ button:disabled {
 .notice.bad {
   border-color: var(--bad);
 }
+/* Agent messages are Markdown (Markdown.tsx): block elements carry the
+   spacing, so the source's line breaks must not show twice. */
+.msg.agent {
+  white-space: normal;
+}
+.msg.agent > :first-child {
+  margin-top: 0;
+}
+.msg.agent > :last-child {
+  margin-bottom: 0;
+}
+.msg.agent :is(p, ul, ol, table, pre, blockquote, h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 8px;
+}
+.msg.agent :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 12px;
+  line-height: 1.25;
+}
+.msg.agent h1 {
+  font-size: 18px;
+}
+.msg.agent h2 {
+  font-size: 16px;
+}
+.msg.agent :is(h3, h4, h5, h6) {
+  font-size: 14px;
+}
+.msg.agent :is(ul, ol) {
+  padding-left: 22px;
+}
+.msg.agent li > :is(ul, ol) {
+  margin-bottom: 0;
+}
+.msg.agent li.task-list-item {
+  list-style: none;
+}
+.msg.agent li.task-list-item input {
+  margin: 0 6px 0 -18px;
+}
+.msg.agent a {
+  color: var(--accent);
+}
+.msg.agent :not(pre) > code {
+  background: var(--sunken);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.msg.agent pre {
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+.msg.agent pre code {
+  font-size: 12px;
+}
+.msg.agent table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.msg.agent :is(th, td) {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+}
+.msg.agent th {
+  background: var(--sunken);
+}
+.msg.agent blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+  color: var(--muted);
+}
+.msg.agent hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
 .notice pre,
 .toolcard pre {
   font-family: var(--f-mono);
