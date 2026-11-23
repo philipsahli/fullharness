@@ -143,3 +143,37 @@ func TestTheModeCanBeChangedAmongTheModesTheAgentOffers(t *testing.T) {
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "build it"})
 	waitFor(t, tab, id, "mode default", func(s map[string]any) bool { return s["mode"] == "default" })
 }
+
+func TestChoosingTheAllowWithoutAskingSettingTurnsAutoApproveOnAndOff(t *testing.T) {
+	for _, tc := range []struct {
+		agent, path, key, auto, ask string
+	}{
+		{"claude", "mode", "mode", "auto", "default"}, // Claude Code's mode
+		{"copilot", "option", "value", "on", "off"},   // Copilot CLI's allow_all option
+	} {
+		t.Run(tc.agent, func(t *testing.T) {
+			f := startFhWithAgents(t, map[string]script{tc.agent: {"allowAll": true}}, nil)
+			c := f.authorisedClient()
+			repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+			f.addProject(c, repo)
+			tab := f.connectTab(c)
+			id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": tc.agent})
+			waitState(t, tab, id, "idle")
+			choose := func(value string) {
+				t.Helper()
+				body := map[string]string{tc.key: value}
+				if tc.path == "option" {
+					body["option"] = "allow_all"
+				}
+				if status, resp := f.post(c, "/api/sessions/"+id+"/"+tc.path, body); status != http.StatusNoContent {
+					t.Fatalf("choose %s: status %d (%v), want 204", value, status, resp)
+				}
+			}
+
+			choose(tc.auto)
+			waitFor(t, tab, id, "auto-approve on", func(s map[string]any) bool { return s["autoApprove"] == true })
+			choose(tc.ask)
+			waitFor(t, tab, id, "auto-approve off", func(s map[string]any) bool { return s["autoApprove"] == false })
+		})
+	}
+}

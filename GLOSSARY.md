@@ -60,6 +60,10 @@ _Avoid_: backlog, board
 One piece of work moving through the Software factory, from Idea to Shipped; matches a spec and its Tickets in the Issue tracker.
 _Avoid_: effort (that is wayfinder's term), initiative, work item, epic
 
+**Idea**:
+The first Stage of a Feature, and a Feature at that Stage. Until it has a Spec, an Idea is the named Session that Grill new idea started; fh, not the Issue tracker, keeps it. Linking the Spec its grilling wrote moves the Feature on to Spec.
+_Avoid_: draft, proposal; and never call the Session itself the Idea once it has a Spec
+
 **Stage**:
 Where a Feature is in the Software factory: Idea, Spec, Tickets, Implementing, Review or Shipped. A Feature is at the earliest Stage of its open Tickets, and Shipped once its Spec is closed.
 _Avoid_: status, phase, column
