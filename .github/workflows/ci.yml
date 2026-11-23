@@ -1,6 +1,6 @@
 # ADR 0007: CI only calls make targets, so `make check` locally runs exactly
-# what CI runs. PRs run on ubuntu (macOS minutes cost 10x on a private repo);
-# pushes to main also run on macOS, fh's only target OS.
+# what CI runs. Every run uses ubuntu and macOS, fh's only target OS; macOS
+# minutes are free since the repo went public (#38).
 name: CI
 
 on:
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:

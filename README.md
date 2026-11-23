@@ -466,7 +466,7 @@ One-time setup, before the first release:
 
 - Create the public repo `philipsahli/homebrew-tap`.
 - Add a fine-grained token with Contents read and write on that repo only, as the Actions secret `HOMEBREW_TAP_GITHUB_TOKEN` on this repo.
-- Make this repo public, then protect `main` with branch protection that requires the CI checks.
+- Require both CI jobs, ubuntu and macOS, in `main`'s branch protection (#37).
 
 ## Community & Support
 
