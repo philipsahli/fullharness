@@ -255,10 +255,18 @@ Each button opens New Session, prefilled with a Worktree, an Agent and a startin
 | **Make tickets** | a Feature at Spec | `to-tickets` | the main tree |
 | **Implement spec** | a Feature at Tickets, Implementing or Review | `implement-spec` | new, on the Spec's branch, which the prompt names as the integration branch |
 | **Retro** | a Shipped Feature | `retro` | the main tree |
+| **Grill new idea** | the board header | `grill-with-docs` | new, on `idea/<name>`; the dialog asks for the Idea's name |
 | **Write spec** | the board header | `to-spec` | the main tree |
 | **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
 
 A Session started from a Ticket or Feature shows that link in its header. A Session started from a Ticket makes that Ticket Implementing; an Implement spec Session does the same for every open Ticket of its Feature that isn't in Review. Both hold once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
+
+An Idea is a Grill new idea Session; it waits in the Idea column until it has a Spec:
+
+- Each Idea gets its own Worktree, so two Ideas grilled at once don't overwrite each other's glossary edits.
+- Once a Spec appears that wasn't on the board when the Idea started, and no other Idea has it, the Idea's card offers **Link #N**. One click links them.
+- The linked Spec names its Idea, and fh keeps the link in `state.json` across restarts.
+- Closing the Idea's Session removes the Idea.
 
 Each Agent names skills its own way, so fh looks for the skill among the slash commands the Agent last reported: by its exact name, or as `<plugin>:<name>` (Claude Code lists plugin skills as `mattpocock-skills:implement`).
 

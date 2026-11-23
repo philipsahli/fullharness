@@ -51,7 +51,8 @@ export type SessionSummary = {
   canReopen: boolean; // its Agent can reload it (session/load) once Exited
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
-  link?: Link; // started from the board (#13)
+  link?: Link; // started from the board (#13), or an Idea's Spec (#14)
+  idea?: string; // the Idea a Grill new idea Session is for (#14)
   commands?: Command[]; // the Agent's latest slash commands
   mode?: string; // the current session mode, one of modes
   modes?: Choice[];
