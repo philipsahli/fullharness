@@ -282,8 +282,8 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 			return session.Summary{}, err
 		}
 		req.Branch, launch.Prompt = branch, prompt
-		launch.Idea = name
-		launch.KnownSpecs, launch.SpecsRead = d.specs(p.Path)
+		launch.Idea.Name = name
+		launch.Idea.KnownSpecs, launch.Idea.SpecsRead = d.specs(p.Path)
 	}
 	if (req.Worktree == "") == (req.Branch == "") {
 		return session.Summary{}, badRequest("pick an existing Worktree or a new branch, not both")

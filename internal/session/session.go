@@ -204,8 +204,6 @@ var (
 	ErrRemoving    = errors.New("this Worktree is being removed")
 	ErrLinked      = errors.New("a Session is linked to it; close the Session first")
 	ErrFolderGone  = errors.New("the Worktree's folder is gone")
-	ErrNotIdea     = errors.New("this Session is not an Idea")
-	ErrIdeaLinked  = errors.New("this Idea is already linked to a Spec")
 	ErrNotOffered  = errors.New("the Agent doesn't offer that setting")
 )
 
@@ -223,10 +221,7 @@ type Saved struct {
 	// Link is kept so a Ticket stays Implementing after a restart, and an
 	// Idea keeps its Spec.
 	Link *tracker.Link `json:"link,omitempty"`
-	// Idea, KnownSpecs and SpecsRead are an Idea's record (see IdeaRecord).
-	Idea       string   `json:"idea,omitempty"`
-	KnownSpecs []string `json:"knownSpecs,omitempty"`
-	SpecsRead  bool     `json:"specsRead,omitempty"`
+	Idea
 	Settings
 }
 
@@ -244,21 +239,6 @@ type Settings struct {
 type OptionValue struct {
 	ID    string `json:"id"`
 	Value string `json:"value"`
-}
-
-// IdeaRecord is an Idea-stage Feature: a named Session that grills an idea
-// until `/to-spec` writes its Spec (spec #1, story 74). fh keeps it because
-// the tracker has nothing to show for an Idea yet (ADR 0004).
-type IdeaRecord struct {
-	Session string
-	Name    string
-	// Spec is the Spec you linked the Idea to; empty until then.
-	Spec string
-	// KnownSpecs are the Specs the tracker had when the Idea started; only a
-	// Spec that appears later can be the Idea's. SpecsRead is false until
-	// the tracker was read once, e.g. while gh was logged out at the start.
-	KnownSpecs []string
-	SpecsRead  bool
 }
 
 // Config wires a Manager into fh.
@@ -327,9 +307,7 @@ type session struct {
 	// settings are the mode and options to set again on Reopen; the live
 	// ones are in sum while the Agent has reported them (settingsLocked).
 	settings Settings
-	// An Idea's Specs at its start (IdeaRecord); unused for other Sessions.
-	knownSpecs []string
-	specsRead  bool
+	idea     Idea // empty for a Session that is no Idea
 }
 
 // pending is an open permission request: where its card is, which option
@@ -349,11 +327,8 @@ type Launch struct {
 	// AutoApprove starts the Agent in its auto mode.
 	AutoApprove bool
 	Link        *tracker.Link
-	// Idea names the Idea a Grill new idea Session is for; KnownSpecs and
-	// SpecsRead start its record (IdeaRecord).
-	Idea       string
-	KnownSpecs []string
-	SpecsRead  bool
+	// Idea is set for a Grill new idea Session.
+	Idea Idea
 }
 
 // Start creates a Session as l says and launches its Agent.
@@ -382,8 +357,8 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 		return Summary{}, ErrFolderGone
 	}
 	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
-		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link, Idea: l.Idea})
-	s.knownSpecs, s.specsRead = l.KnownSpecs, l.SpecsRead
+		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
+	s.idea = l.Idea
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
 
@@ -462,9 +437,8 @@ func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definit
 			def = agent.Definition{ID: sv.Agent, Name: sv.Agent}
 		}
 		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
-			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link, Idea: sv.Idea})
-		s.knownSpecs, s.specsRead = sv.KnownSpecs, sv.SpecsRead
-		s.settings = sv.Settings
+			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link})
+		s.idea, s.settings = sv.Idea, sv.Settings
 		// canLoad is kept as saved even while the Agent is missing, so
 		// Reopen comes back when the Agent is configured again.
 		s.acpID, s.canLoad, s.agentKnown = sdk.SessionId(sv.ACPID), sv.CanLoad, ok
@@ -483,7 +457,7 @@ func (m *Manager) persist() {
 		if !s.closed {
 			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
 				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link,
-				Idea: s.sum.Idea, KnownSpecs: s.knownSpecs, SpecsRead: s.specsRead, Settings: s.settingsLocked()})
+				Idea: s.idea, Settings: s.settingsLocked()})
 		}
 		s.mu.Unlock()
 	}
@@ -500,66 +474,6 @@ func (m *Manager) Links(project string) []tracker.Link {
 		}
 	}
 	return out
-}
-
-// Ideas returns project's Ideas: its Grill new idea Sessions, live or
-// Exited. Closing the Session drops its Idea.
-func (m *Manager) Ideas(project string) []IdeaRecord {
-	var out []IdeaRecord
-	for _, s := range m.all() {
-		s.mu.Lock()
-		if s.sum.Project == project && s.sum.Idea != "" && !s.closed {
-			r := IdeaRecord{Session: s.sum.ID, Name: s.sum.Idea, KnownSpecs: slices.Clone(s.knownSpecs), SpecsRead: s.specsRead}
-			if s.sum.Link != nil {
-				r.Spec = s.sum.Link.Feature
-			}
-			out = append(out, r)
-		}
-		s.mu.Unlock()
-	}
-	return out
-}
-
-// SetKnownSpecs records the Specs the tracker has, for an Idea whose start
-// couldn't read them; an Idea that has them keeps its own.
-func (m *Manager) SetKnownSpecs(id string, specs []string) error {
-	s, err := m.find(id)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	if s.specsRead || s.sum.Idea == "" {
-		s.mu.Unlock()
-		return nil
-	}
-	s.knownSpecs, s.specsRead = slices.Clone(specs), true
-	s.mu.Unlock()
-	m.persist()
-	return nil
-}
-
-// LinkSpec links Idea Session id to the Spec its grilling produced: the
-// Idea leaves the board's Idea column, and the Session shows its Spec.
-func (m *Manager) LinkSpec(id, spec string) error {
-	s, err := m.find(id)
-	if err != nil {
-		return err
-	}
-	s.mu.Lock()
-	switch {
-	case s.sum.Idea == "":
-		s.mu.Unlock()
-		return ErrNotIdea
-	case s.sum.Link != nil:
-		s.mu.Unlock()
-		return ErrIdeaLinked
-	}
-	s.sum.Link = &tracker.Link{Feature: spec}
-	s.mu.Unlock()
-	m.cfg.Log.Info("idea linked", "session", id, "spec", spec)
-	m.persist()
-	s.publish()
-	return nil
 }
 
 // Reopen restarts an Exited Session's Agent in the same Worktree, Agent and
@@ -1612,7 +1526,7 @@ func (s *session) summary() Summary {
 
 func (s *session) summaryLocked() Summary {
 	sum := s.sum
-	sum.CanReopen = s.reopenableLocked()
+	sum.CanReopen, sum.Idea = s.reopenableLocked(), s.idea.Name
 	return sum
 }
 
