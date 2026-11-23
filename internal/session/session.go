@@ -1130,7 +1130,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 			if t.Status == "" {
 				t.Status = "pending"
 			}
-			t.Content, t.Diffs = contentText(tc.Content), contentDiffs(tc.Content)
+			t.Content, t.Diffs = toolContent(tc.Content)
 			t.RawOutput = rawText(tc.RawOutput)
 		})
 	case u.ToolCallUpdate != nil:
@@ -1146,7 +1146,7 @@ func (s *session) Update(n sdk.SessionNotification) {
 				t.Status = string(v)
 			}
 			if v, ok := tu.Content.Value(); ok {
-				t.Content, t.Diffs = contentText(v), contentDiffs(v)
+				t.Content, t.Diffs = toolContent(v)
 			}
 			if v, ok := tu.RawOutput.Value(); ok {
 				t.RawOutput = rawText(v)
@@ -1236,7 +1236,7 @@ func (s *session) Permission(ctx context.Context, r sdk.RequestPermissionRequest
 		}
 	}
 	if cs, ok := tc.Content.Value(); ok {
-		req.Content, req.Diffs = contentText(cs), contentDiffs(cs)
+		req.Content, req.Diffs = toolContent(cs)
 	}
 	p := &pending{options: map[string]sdk.PermissionOptionId{}, answer: make(chan sdk.PermissionOptionId, 1)}
 	for _, o := range r.Options {
@@ -1579,32 +1579,24 @@ func (s *session) waitingForLocked() string {
 	return s.sum.AgentName + " is waiting"
 }
 
-// contentText joins a tool call's text content. Diffs are left out:
-// contentDiffs gives them.
-func contentText(cs []sdk.ToolCallContent) string {
+// toolContent splits a tool call's content into its text, joined, and its
+// diffs as line diffs. No old text means a new file.
+func toolContent(cs []sdk.ToolCallContent) (string, []diff.File) {
 	var parts []string
-	for _, c := range cs {
-		if c.Content != nil && c.Content.Content.Text != nil {
-			parts = append(parts, c.Content.Content.Text.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-// contentDiffs gives a tool call's diffs as line diffs. No old text means a
-// new file.
-func contentDiffs(cs []sdk.ToolCallContent) []diff.File {
 	var files []diff.File
 	for _, c := range cs {
-		if d := c.Diff; d != nil {
+		switch {
+		case c.Content != nil && c.Content.Content.Text != nil:
+			parts = append(parts, c.Content.Content.Text.Text)
+		case c.Diff != nil:
 			old := ""
-			if d.OldText != nil {
-				old = *d.OldText
+			if c.Diff.OldText != nil {
+				old = *c.Diff.OldText
 			}
-			files = append(files, diff.Lines(d.Path, old, d.NewText))
+			files = append(files, diff.Lines(c.Diff.Path, old, c.Diff.NewText))
 		}
 	}
-	return files
+	return strings.Join(parts, "\n"), files
 }
 
 // rawText shows raw output as plain text: a JSON string unquoted, anything

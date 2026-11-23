@@ -252,3 +252,27 @@ func apply(t *testing.T, old []string, f diff.File) []string {
 	}
 	return append(out, old[next:]...)
 }
+
+// A cut that falls where a new hunk would start leaves no hunk of only
+// context lines.
+func TestLinesCutBetweenHunks(t *testing.T) {
+	var a, b strings.Builder
+	for i := range 150 {
+		fmt.Fprintf(&a, "old %d\n", i)
+		fmt.Fprintf(&b, "new %d\n", i)
+	}
+	for i := range 10 {
+		fmt.Fprintf(&a, "same %d\n", i)
+		fmt.Fprintf(&b, "same %d\n", i)
+	}
+	a.WriteString("last\n")
+	b.WriteString("LAST\n")
+
+	got := diff.Lines("f", a.String(), b.String())
+	if !got.Truncated || got.Added != 151 || got.Removed != 151 {
+		t.Errorf("Truncated, Added, Removed = %v, %d, %d, want true, 151, 151", got.Truncated, got.Added, got.Removed)
+	}
+	if len(got.Hunks) != 1 {
+		t.Errorf("%d hunks, want 1: the second change is past the cut", len(got.Hunks))
+	}
+}

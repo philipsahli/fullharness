@@ -78,13 +78,13 @@ export type Usage = {
 };
 
 // DiffFile matches internal/diff.File: a line diff of one file, as unified
-// hunks with 3 lines of context.
+// hunks with context around each change.
 export type DiffFile = {
   path: string;
   added: number; // every added line, also when the hunks are cut
   removed: number;
   hunks: DiffHunk[];
-  truncated?: boolean; // the hunks stop after 300 changed lines
+  truncated?: boolean; // the hunks stop after diff.MaxChanged changed lines
 };
 
 export type DiffHunk = {

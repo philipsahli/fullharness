@@ -4,8 +4,8 @@ package diff
 
 import "strings"
 
-// Context is how many unchanged lines a hunk shows around a change.
-const Context = 3
+// contextLines is how many unchanged lines a hunk shows around a change.
+const contextLines = 3
 
 // MaxChanged is how many added and removed lines a File shows at most. A
 // longer diff is cut there and Truncated is set; Added and Removed still
@@ -49,7 +49,7 @@ type Line struct {
 func Lines(path, oldText, newText string) File {
 	a, b := split(oldText), split(newText)
 	ops := script(a, b)
-	f := File{Path: path, Hunks: []Hunk{}}
+	f := File{Path: path}
 	for _, o := range ops {
 		switch o.op {
 		case '+':
@@ -189,7 +189,7 @@ func replaceAll(a, b []string, off int) []edit {
 	return ops
 }
 
-// hunks groups the edit script into hunks with Context lines around each
+// hunks groups the edit script into hunks with contextLines of context around each
 // change, stopping after MaxChanged changed lines.
 func hunks(ops []edit) ([]Hunk, bool) {
 	out := []Hunk{}
@@ -199,9 +199,12 @@ func hunks(ops []edit) ([]Hunk, bool) {
 			i++
 			continue
 		}
-		// A hunk starts Context lines before this change and runs until a
-		// gap of more than 2*Context unchanged lines.
-		start := max(0, i-Context)
+		if changed == MaxChanged {
+			return out, true // a hunk here would hold only context
+		}
+		// A hunk starts contextLines before this change and runs until a gap
+		// of more than 2*contextLines unchanged lines.
+		start := max(0, i-contextLines)
 		end := i
 		cut := false
 		for end < len(ops) {
@@ -218,8 +221,8 @@ func hunks(ops []edit) ([]Hunk, bool) {
 			for gap < len(ops) && ops[gap].op == ' ' {
 				gap++
 			}
-			if gap == len(ops) || gap-end > 2*Context {
-				end = min(gap, end+Context)
+			if gap == len(ops) || gap-end > 2*contextLines {
+				end = min(gap, end+contextLines)
 				break
 			}
 			end = gap
