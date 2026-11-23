@@ -1,6 +1,6 @@
 // Package state keeps fh's runtime-state file, state.json: facts fh needs
-// across restarts that aren't the user's configuration. In #4 that is the
-// Worktrees fh created; Sessions follow with Reopen (#9).
+// across restarts that aren't the user's configuration: the Worktrees fh
+// created (#4), Sessions (#9) and each Agent's slash commands (#13).
 package state
 
 import (
@@ -33,6 +33,9 @@ type data struct {
 	// Sessions is what fh keeps of each Session across restarts (#9); the
 	// session package owns its shape.
 	Sessions json.RawMessage `json:"sessions,omitempty"`
+	// AgentCommands are each Agent's slash command names, as its latest
+	// Session reported them, so skill buttons know them after a restart.
+	AgentCommands map[string][]string `json:"agentCommands,omitempty"`
 }
 
 // Open reads state.json from dir; a missing file is an empty state.
@@ -106,4 +109,28 @@ func (s *Store) CreatedWorktree(path string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Contains(s.data.CreatedWorktrees, path)
+}
+
+// SetCommands records agentID's slash command names; an unchanged list is
+// not written again.
+func (s *Store) SetCommands(agentID string, names []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if old, ok := s.data.AgentCommands[agentID]; ok && slices.Equal(old, names) {
+		return nil
+	}
+	if s.data.AgentCommands == nil {
+		s.data.AgentCommands = map[string][]string{}
+	}
+	s.data.AgentCommands[agentID] = slices.Clone(names)
+	return s.save()
+}
+
+// Commands returns agentID's recorded slash command names; ok is false when
+// none of its Sessions has reported them yet.
+func (s *Store) Commands(agentID string) (names []string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	names, ok = s.data.AgentCommands[agentID]
+	return slices.Clone(names), ok
 }

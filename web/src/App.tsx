@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./events";
 import { Projects } from "./Projects";
-import { Conversation, Inbox, NewSession, SessionList } from "./Sessions";
+import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./Sessions";
 import { Switcher } from "./Switcher";
 import { Board } from "./Board";
 
@@ -11,6 +11,13 @@ export function App() {
   const [view, setView] = useState<View>("sessions");
   // What the Sessions view shows: the New Session dialog, or a Session.
   const [opened, setOpened] = useState<"new" | string | undefined>();
+  // A board button's prefill for the New Session dialog (#13).
+  const [startFrom, setStartFrom] = useState<StartFrom | undefined>();
+  const newSession = (from?: StartFrom) => {
+    setStartFrom(from);
+    setView("sessions");
+    setOpened("new");
+  };
   const [notifyPermission, setNotifyPermission] = useState(() =>
     "Notification" in window ? Notification.permission : "denied",
   );
@@ -93,10 +100,7 @@ export function App() {
             setView("sessions");
             setOpened(id);
           }}
-          onNew={() => {
-            setView("sessions");
-            setOpened("new");
-          }}
+          onNew={() => newSession()}
           onClose={() => setSwitcher(false)}
         />
       )}
@@ -111,17 +115,16 @@ export function App() {
                 setView("sessions");
                 setOpened(id);
               }}
-              onNew={() => {
-                setView("sessions");
-                setOpened("new");
-              }}
+              onNew={() => newSession()}
             />
           )}
           {snapshot && <Projects projects={snapshot.projects} />}
         </nav>
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
           {view === "sessions" && sessionsView()}
-          {view === "factory" && snapshot && <Board projects={snapshot.projects} />}
+          {view === "factory" && snapshot && (
+            <Board projects={snapshot.projects} onStart={newSession} />
+          )}
           {view === "inbox" && snapshot && (
             <Inbox
               inbox={snapshot.inbox}
@@ -143,8 +146,11 @@ export function App() {
     if (opened === "new") {
       return (
         <NewSession
+          // A new prefill starts the form over.
+          key={startFrom ? JSON.stringify(startFrom) : "new"}
           projects={snapshot.projects}
           sessions={snapshot.sessions}
+          from={startFrom}
           onStarted={setOpened}
           onCancel={() => setOpened(undefined)}
         />

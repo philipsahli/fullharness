@@ -23,6 +23,7 @@ import (
 
 	"github.com/philipsahli/fullharness/internal/acp"
 	"github.com/philipsahli/fullharness/internal/agent"
+	"github.com/philipsahli/fullharness/internal/tracker"
 )
 
 // Session states (GLOSSARY.md). Waiting here means a permission request is
@@ -105,6 +106,9 @@ type Summary struct {
 	// Reason and Stderr explain an Exited Session.
 	Reason string   `json:"reason,omitempty"`
 	Stderr []string `json:"stderr,omitempty"`
+	// Link is the Feature (and Ticket) the Session was started from on the
+	// board; nil for a Session started from New Session.
+	Link *tracker.Link `json:"link,omitempty"`
 }
 
 // Item is one entry of a conversation.
@@ -172,6 +176,8 @@ type Saved struct {
 	Title       string `json:"title"`
 	AutoApprove bool   `json:"autoApprove"`
 	CanLoad     bool   `json:"canLoad"` // the Agent offered session/load
+	// Link is kept so a Ticket stays Implementing after a restart.
+	Link *tracker.Link `json:"link,omitempty"`
 }
 
 // Config wires a Manager into fh.
@@ -188,6 +194,10 @@ type Config struct {
 	StartTimeout time.Duration
 	// Persist saves every Session that can come back after a restart.
 	Persist func([]Saved)
+	// Commands receives an Agent's slash command names each time one of its
+	// Sessions reports them (available_commands_update), for skill
+	// resolution (#13).
+	Commands func(agentID string, names []string)
 }
 
 // Manager holds all Sessions.
@@ -238,11 +248,19 @@ type pending struct {
 	answer  chan sdk.PermissionOptionId // "" means cancelled
 }
 
-// Start creates a Session for worktree in project and launches its Agent.
-// The Worktree must already exist; the caller checked it may be used.
-// branch is the Worktree's branch, the Session's first title. autoApprove
-// starts the Agent in its auto mode.
-func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt string, autoApprove bool) (Summary, error) {
+// Launch is what a new Session starts with.
+type Launch struct {
+	Project  string
+	Worktree string // must already exist; the caller checked it may be used
+	Branch   string // the Worktree's branch, the Session's first title
+	Prompt   string // the starting prompt; may be empty
+	// AutoApprove starts the Agent in its auto mode.
+	AutoApprove bool
+	Link        *tracker.Link
+}
+
+// Start creates a Session as l says and launches its Agent.
+func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -251,22 +269,22 @@ func (m *Manager) Start(def agent.Definition, project, worktree, branch, prompt 
 	for _, s := range m.sessions {
 		// An Exited Session frees its Worktree, so a crashed or quit Session
 		// doesn't block it until someone closes it.
-		if sum := s.summary(); sum.Worktree == worktree && sum.State != Exited {
+		if sum := s.summary(); sum.Worktree == l.Worktree && sum.State != Exited {
 			m.mu.Unlock()
 			return Summary{}, ErrWorktreeUse
 		}
 	}
-	s := m.newSession(def, Summary{ID: newID(), Project: project, Worktree: worktree, Agent: def.ID,
-		State: Starting, Title: branch, AutoApprove: autoApprove})
+	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
+		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
 
-	m.cfg.Log.Info("session starting", "session", s.sum.ID, "agent", def.ID, "worktree", worktree)
+	m.cfg.Log.Info("session starting", "session", s.sum.ID, "agent", def.ID, "worktree", l.Worktree)
 	// Saved from the start, so even a Session that fails before it has an
 	// ACP session (login needed, say) is listed after a restart.
 	m.persist()
 	s.publish()
-	go s.run(false, prompt)
+	go s.run(false, l.Prompt)
 	return s.summary(), nil
 }
 
@@ -296,7 +314,7 @@ func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definit
 			def = agent.Definition{ID: sv.Agent, Name: sv.Agent}
 		}
 		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
-			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove})
+			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link})
 		// canLoad is kept as saved even while the Agent is missing, so
 		// Reopen comes back when the Agent is configured again.
 		s.acpID, s.canLoad, s.agentKnown = sdk.SessionId(sv.ACPID), sv.CanLoad, ok
@@ -314,11 +332,23 @@ func (m *Manager) persist() {
 		s.mu.Lock()
 		if !s.closed {
 			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
-				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad})
+				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link})
 		}
 		s.mu.Unlock()
 	}
 	m.cfg.Persist(saved)
+}
+
+// Links returns the links of project's Sessions, live or Exited; a closed
+// Session is gone and no longer counts.
+func (m *Manager) Links(project string) []tracker.Link {
+	var out []tracker.Link
+	for _, s := range m.all() {
+		if sum := s.summary(); sum.Project == project && sum.Link != nil {
+			out = append(out, *sum.Link)
+		}
+	}
+	return out
 }
 
 // Reopen restarts an Exited Session's Agent in the same Worktree, Agent and
@@ -831,6 +861,15 @@ func (s *session) Update(n sdk.SessionNotification) {
 		if title, ok := u.SessionInfoUpdate.Title.Value(); ok && title != "" {
 			s.retitle(title)
 		}
+	case u.AvailableCommandsUpdate != nil:
+		if s.m.cfg.Commands == nil {
+			return
+		}
+		names := []string{}
+		for _, c := range u.AvailableCommandsUpdate.AvailableCommands {
+			names = append(names, c.Name)
+		}
+		s.m.cfg.Commands(s.def.ID, names)
 	}
 }
 

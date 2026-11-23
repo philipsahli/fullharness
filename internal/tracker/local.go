@@ -13,7 +13,7 @@ import (
 // .scratch/<feature>/issues/<NN>-<slug>.md, as Matt's skills write them.
 // aheadBranches are the Project's branches with commits ahead of its base,
 // prBranches the source branches of its open PRs (when it has a GitHub
-// remote and gh).
+// remote and gh). Stages are left to Derive.
 func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 	features := []Feature{}
 	dirs, err := os.ReadDir(filepath.Join(repo, ".scratch"))
@@ -30,7 +30,10 @@ func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 		if err != nil {
 			continue // a folder without spec.md isn't a Feature (e.g. a Wayfinder map)
 		}
-		f := Feature{ID: d.Name(), Title: heading(string(spec), d.Name()), Closed: isClosed(status(string(spec)))}
+		// Local Specs have no number: the folder names the branch, and the
+		// prompt names the file, relative to the Project.
+		f := Feature{ID: d.Name(), Title: heading(string(spec), d.Name()), Closed: isClosed(status(string(spec))),
+			Branch: d.Name(), Ref: filepath.ToSlash(filepath.Join(".scratch", d.Name(), "spec.md"))}
 		files, _ := filepath.Glob(filepath.Join(dir, "issues", "*.md")) // a bad pattern is impossible here
 		for _, file := range files {
 			b, err := os.ReadFile(file)
@@ -38,6 +41,9 @@ func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 				continue // unreadable file: skip it rather than fail the board
 			}
 			t := readLocalTicket(filepath.Base(file), string(b))
+			// The file's own name is a branch localBranchFor matches.
+			t.Branch = strings.TrimSuffix(filepath.Base(file), ".md")
+			t.Ref = filepath.ToSlash(filepath.Join(".scratch", d.Name(), "issues", filepath.Base(file)))
 			mine := func(br string) bool { return localBranchFor(br, filepath.Base(file)) }
 			t.BranchAhead = slices.ContainsFunc(aheadBranches, mine)
 			t.OpenPR = slices.ContainsFunc(prBranches, mine)
@@ -46,7 +52,6 @@ func ReadLocal(repo string, aheadBranches, prBranches []string) []Feature {
 		slices.SortFunc(f.Tickets, func(a, b Ticket) int { return strings.Compare(a.Number, b.Number) })
 		features = append(features, f)
 	}
-	Derive(features)
 	return features
 }
 

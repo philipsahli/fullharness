@@ -22,6 +22,11 @@ export type Project = {
   worktrees: Worktree[];
 };
 
+// Link matches internal/tracker.Link: the Feature (and Ticket) a Session
+// was started from on the board.
+// allTickets marks Implement spec, whose Session takes every open Ticket.
+export type Link = { feature: string; ticket?: string; allTickets?: boolean };
+
 // SessionSummary, Tool and Item match internal/session.
 export type SessionState = "starting" | "working" | "waiting" | "idle" | "exited";
 
@@ -40,6 +45,7 @@ export type SessionSummary = {
   canReopen: boolean; // its Agent can reload it (session/load) once Exited
   reason?: string; // why it Exited
   stderr?: string[]; // the Agent's last stderr lines, when it crashed
+  link?: Link; // started from the board (#13)
 };
 
 export type Tool = {

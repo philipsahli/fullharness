@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/philipsahli/fullharness/internal/agent"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
 	"github.com/philipsahli/fullharness/internal/session"
 	"github.com/philipsahli/fullharness/internal/state"
+	"github.com/philipsahli/fullharness/internal/tracker"
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
 
@@ -23,11 +25,17 @@ type sessionDeps struct {
 	log      *slog.Logger
 }
 
-// agentInfo is an Agent as the New Session dialog lists it.
+// agentInfo is an Agent as the New Session and Start dialogs list it.
 type agentInfo struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Missing string `json:"missing,omitempty"` // why it can't start, with the install command
+	// With ?skill=<name> (a board button, #13): the slash command that runs
+	// the skill for this Agent, or why it can't, or that none of the Agent's
+	// Sessions has reported its commands yet.
+	Skill           string `json:"skill,omitempty"`
+	NoSkill         string `json:"noSkill,omitempty"`
+	CommandsUnknown bool   `json:"commandsUnknown,omitempty"`
 }
 
 // newSession is a New Session request: an existing Worktree, or a new one on
@@ -40,6 +48,8 @@ type newSession struct {
 	Prompt   string `json:"prompt"`
 	// AutoApprove starts the Agent in its auto mode instead of asking.
 	AutoApprove bool `json:"autoApprove"`
+	// Link ties a Session started from the board to its Feature and Ticket.
+	Link *tracker.Link `json:"link"`
 }
 
 // badRequest is a New Session request fh refuses, with the reason.
@@ -49,9 +59,22 @@ func (e badRequest) Error() string { return string(e) }
 
 func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 	srv.Handle("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
+		skill := r.URL.Query().Get("skill")
 		out := []agentInfo{}
 		for _, a := range d.agents {
-			out = append(out, agentInfo{ID: a.ID, Name: a.Name, Missing: a.Missing()})
+			info := agentInfo{ID: a.ID, Name: a.Name, Missing: a.Missing()}
+			if skill != "" {
+				names, known := d.state.Commands(a.ID)
+				switch cmd, ok := findSkill(names, skill); {
+				case !known:
+					info.CommandsUnknown = true
+				case ok:
+					info.Skill = "/" + cmd
+				default:
+					info.NoSkill = "`/" + skill + "` isn't installed for " + a.Name
+				}
+			}
+			out = append(out, info)
 		}
 		server.WriteJSON(w, http.StatusOK, out)
 	})
@@ -211,7 +234,23 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 			branch = wt.Branch
 		}
 	}
-	return d.sessions.Start(def, p.Path, wtPath, branch, req.Prompt, req.AutoApprove)
+	if req.Link != nil && req.Link.Feature == "" {
+		return session.Summary{}, badRequest("a link names the Feature, and the Ticket if any")
+	}
+	return d.sessions.Start(def, session.Launch{Project: p.Path, Worktree: wtPath, Branch: branch,
+		Prompt: req.Prompt, AutoApprove: req.AutoApprove, Link: req.Link})
+}
+
+// findSkill finds skill among an Agent's slash command names: by exact name,
+// or as a plugin's "<plugin>:<skill>" (spec #1, skill resolution). It
+// returns the command name.
+func findSkill(names []string, skill string) (string, bool) {
+	for _, n := range names {
+		if n == skill || strings.HasSuffix(n, ":"+skill) {
+			return n, true
+		}
+	}
+	return "", false
 }
 
 // createWorktree records the new Worktree in state.json before git creates

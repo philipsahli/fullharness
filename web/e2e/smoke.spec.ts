@@ -354,3 +354,65 @@ test("a Worktree fh created is not labelled an Agent worktree", async ({ page })
     await fh.dispose();
   }
 });
+
+test("Start Session on a Startable ticket runs the implement skill, linked to the Ticket", async ({
+  page,
+}) => {
+  const ref = ".scratch/login/issues/01-form.md";
+  const fh = await Fh.start({
+    agentScript: {
+      onStart: [{ commands: ["mattpocock-skills:implement"] }],
+      prompts: { [`/implement ${ref}`]: [{ say: "implementing 01" }] },
+    },
+  });
+  try {
+    const repo = tempRepoWith("shop", {
+      ".scratch/login/spec.md": "# Login\n",
+      ".scratch/login/issues/01-form.md":
+        "# 01: Login form\n\n**Blocked by:** None\n\n**Status:** ready-for-agent\n",
+    });
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page.getByRole("button", { name: /Login/ }).click();
+    const detail = page.getByRole("region", { name: "Feature Login" });
+    await detail.getByRole("button", { name: "Start Session" }).click();
+
+    // No Session has reported Claude Code's commands yet: the plain skill
+    // name, with a warning.
+    const form = page.getByRole("form", { name: `Start Session on ${ref}` });
+    await expect(form.getByLabel("New branch name")).toHaveValue("01-form");
+    await expect(form.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
+      `/implement ${ref}`,
+    );
+    await expect(form).toContainText("fh doesn't know Claude Code's slash commands yet");
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const conversation = page.getByRole("region", { name: "Session 01-form" });
+    await expect(conversation).toContainText("implementing 01");
+    await expect(conversation).toContainText("started from Ticket 01 of Spec login");
+
+    // Now fh knows Claude Code's commands: it has implement, not implement-spec.
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const board = page.getByRole("region", { name: "Software factory" });
+    await board.getByRole("button", { name: "Refresh" }).click();
+    await expect(board.locator('.column[aria-label="Implementing"]')).toContainText("Login");
+    await board.getByRole("button", { name: /Login/ }).click();
+    await detail.getByRole("button", { name: "Implement spec" }).click();
+    const spec = page.getByRole("form", { name: /Implement spec/ });
+    await expect(spec).toContainText("`/implement-spec` isn't installed for Claude Code");
+    // Its new Worktree's branch is the integration branch the skill works on.
+    await expect(spec.getByLabel("New branch name")).toHaveValue("login");
+    await expect(spec.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
+      "/implement-spec .scratch/login/spec.md (use this Worktree's branch, login, as the integration branch)",
+    );
+  } finally {
+    await fh.dispose();
+  }
+});

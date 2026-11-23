@@ -208,7 +208,7 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 - A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
 - `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
 
-A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base: `origin/<default branch>`, or the local default branch without a remote. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
+A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
 For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
@@ -226,6 +226,45 @@ A local markdown Project with a GitHub remote gets its open PRs the same way, ma
 A board with no Specs says so, with a hint to run `/to-spec` in a Session.
 
 Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
+
+#### Starting Sessions from the board
+
+Each button opens New Session, prefilled with a Worktree, an Agent and a starting prompt that runs one of [Matt Pocock's skills](https://github.com/mattpocock/skills). Change anything before you click **Start Session**.
+
+| Button | Where | Skill | Worktree |
+| --- | --- | --- | --- |
+| **Start Session** | a Startable Ticket | `implement` | new, on the Ticket's branch, e.g. `42-login-form` |
+| **Make tickets** | a Feature at Spec | `to-tickets` | the main tree |
+| **Implement spec** | a Feature at Tickets, Implementing or Review | `implement-spec` | new, on the Spec's branch, which the prompt names as the integration branch |
+| **Retro** | a Shipped Feature | `retro` | the main tree |
+| **Write spec** | the board header | `to-spec` | the main tree |
+| **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
+
+A Session started from a Ticket or Feature shows that link in its header. A Session started from a Ticket makes that Ticket Implementing; an Implement spec Session does the same for every open Ticket of its Feature that isn't in Review. Both hold once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
+
+Each Agent names skills its own way, so fh looks for the skill among the slash commands the Agent last reported: by its exact name, or as `<plugin>:<name>` (Claude Code lists plugin skills as `mattpocock-skills:implement`).
+
+- An Agent without the skill is greyed out in New Session, with a note such as "`/implement` isn't installed for Copilot CLI".
+- fh learns an Agent's slash commands from its first Session and keeps them across restarts. Until then the Agent can still be picked, with the plain skill name (`/implement`), and the dialog warns once: start any Session of that Agent so fh learns its commands.
+
+Copilot CLI and OpenCode see Matt's skills only once they're installed where each Agent looks for skills:
+
+| Agent | Skills folder |
+| --- | --- |
+| Copilot CLI | `~/.copilot/skills` |
+| OpenCode | `~/.claude/skills` (it reads Claude Code's folder) |
+
+For Copilot CLI:
+
+```bash
+git clone https://github.com/mattpocock/skills.git ~/src/mattpocock-skills
+mkdir -p ~/.copilot/skills
+ln -s ~/src/mattpocock-skills/skills/engineering/* ~/.copilot/skills/
+ls ~/.copilot/skills   # code-review  implement  implement-spec  …  to-spec  to-tickets
+# then start a new Session of that Agent, so fh learns its commands
+```
+
+For OpenCode, link the same folders into `~/.claude/skills`. Claude Code then lists each skill twice, as `implement` and as `mattpocock-skills:implement`.
 
 ### Agents
 

@@ -3,6 +3,7 @@ import { command, get } from "./api";
 import { byListOrder, projectName, tabID } from "./events";
 import type {
   Item,
+  Link,
   PermissionRequest,
   Project,
   SessionState,
@@ -54,6 +55,15 @@ export function SessionList(props: {
   );
 }
 
+// linkText names a Session's Feature and Ticket the way its tracker does:
+// "Ticket #42 of Spec #1" on GitHub, whose Specs are numbered, or "Ticket
+// 01 of Spec login" for a local .scratch folder.
+function linkText(l: Link): string {
+  const hash = /^\d+$/.test(l.feature) ? "#" : "";
+  const spec = `Spec ${hash}${l.feature}`;
+  return l.ticket ? `Ticket ${hash}${l.ticket} of ${spec}` : spec;
+}
+
 const stateNames: Record<SessionState, string> = {
   starting: "Starting",
   working: "Working",
@@ -66,34 +76,105 @@ function StateBadge({ state }: { state: SessionState }) {
   return <span className={`state ${state}`}>{stateNames[state]}</span>;
 }
 
-type AgentInfo = { id: string; name: string; missing?: string };
+type AgentInfo = {
+  id: string;
+  name: string;
+  missing?: string;
+  // With ?skill= (see StartFrom):
+  skill?: string; // the slash command, e.g. "/mattpocock-skills:implement"
+  noSkill?: string; // why the Agent can't run the skill
+  commandsUnknown?: boolean; // none of its Sessions reported its commands yet
+};
+
+// StartFrom is a board button's Session: which skill it runs, on what, and
+// where. The New Session dialog opens prefilled with it (#13).
+export type StartFrom = {
+  title: string; // the dialog's heading, e.g. "Start Session on #42"
+  project: string;
+  branch?: string; // a new Worktree on this branch…
+  worktree?: string; // …or this existing one (the main tree)
+  skill: string; // the skill's name, resolved per Agent, e.g. "implement"
+  ref?: string; // what the skill works on, e.g. "#42"
+  note?: string; // added after ref, e.g. which branch to integrate on
+  link?: Link;
+};
+
+// Agents whose unknown commands were already pointed out in this tab: the
+// warning shows once per Agent (spec #1, skill resolution).
+const warnedUnknown = new Set<string>();
+
+function startPrompt(from: StartFrom, a: AgentInfo | undefined): string {
+  const cmd = a?.skill ?? `/${from.skill}`;
+  const text = [cmd, from.ref, from.note].filter(Boolean).join(" ");
+  return from.ref ? text : `${text} `;
+}
 
 // NewSession is the New Session dialog: Project, a new or free Worktree,
 // Agent and an optional starting prompt. Choices that can't be used are
 // shown disabled with the reason, so the rules are visible, not surprising.
+// With from, it is a board button's Start dialog: prefilled, and Agents
+// that don't have the skill are disabled.
 export function NewSession(props: {
   projects: Project[];
   sessions: SessionSummary[];
+  from?: StartFrom;
   onStarted: (id: string) => void;
   onCancel: () => void;
 }) {
+  const { from } = props;
   const usable = props.projects.filter((p) => !p.missing);
-  const [project, setProject] = useState(usable[0]?.path ?? "");
-  const [worktree, setWorktree] = useState(""); // "" means a new Worktree
-  const [branch, setBranch] = useState("");
+  const [project, setProject] = useState(from?.project ?? usable[0]?.path ?? "");
+  // The prefilled Worktree (the main tree) may already have a live Session;
+  // then the dialog offers a new Worktree instead, and says why.
+  const [prefillBusy] = useState(
+    () =>
+      !!from?.worktree &&
+      props.sessions.some((s) => s.worktree === from.worktree && s.state !== "exited"),
+  );
+  const [worktree, setWorktree] = useState(prefillBusy ? "" : (from?.worktree ?? "")); // "" means a new Worktree
+  const [branch, setBranch] = useState(from?.branch ?? "");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
   const [autoApprove, setAutoApprove] = useState(false);
   const [error, setError] = useState("");
+  // Agents already warned about before this dialog opened.
+  const [alreadyWarned] = useState(() => new Set(warnedUnknown));
 
   useEffect(() => {
+    const url = from ? `/api/agents?skill=${encodeURIComponent(from.skill)}` : "/api/agents";
     // get never rejects: a failure resolves to undefined, shown as no Agents.
-    void get<AgentInfo[]>("/api/agents").then((list) => {
-      setAgents(list ?? []);
-      setAgent((list ?? []).find((a) => !a.missing)?.id ?? "");
+    void get<AgentInfo[]>(url).then((list) => {
+      const all = list ?? [];
+      const first = all.find((a) => !a.missing && !a.noSkill);
+      setAgents(all);
+      setAgent(first?.id ?? "");
+      if (from) {
+        setPrompt(startPrompt(from, first));
+        // Only Agents that show the warning: a missing CLI hides it.
+        all.filter((a) => a.commandsUnknown && !a.missing).forEach((a) => warnedUnknown.add(a.id));
+      }
     });
-  }, []);
+  }, [from]);
+
+  const chooseAgent = (id: string) => {
+    // A board prompt follows the Agent, since each names the skill its own
+    // way, unless you've changed it.
+    if (from) {
+      const before = startPrompt(
+        from,
+        agents.find((a) => a.id === agent),
+      );
+      if (prompt === before)
+        setPrompt(
+          startPrompt(
+            from,
+            agents.find((a) => a.id === id),
+          ),
+        );
+    }
+    setAgent(id);
+  };
 
   const p = usable.find((x) => x.path === project);
   const reason = (w: Worktree): string => {
@@ -105,7 +186,7 @@ export function NewSession(props: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const req: Record<string, string | boolean> = { project, agent, prompt, autoApprove };
+    const req: Record<string, unknown> = { project, agent, prompt, autoApprove, link: from?.link };
     if (worktree) req.worktree = worktree;
     else req.branch = branch.trim();
     const r = await command("/api/sessions", req);
@@ -125,12 +206,18 @@ export function NewSession(props: {
     );
   }
   return (
-    <form className="panel newsession" onSubmit={(e) => void submit(e)} aria-label="New Session">
-      <h2>New Session</h2>
+    <form
+      className="panel newsession"
+      onSubmit={(e) => void submit(e)}
+      aria-label={from?.title ?? "New Session"}
+    >
+      <h2>{from?.title ?? "New Session"}</h2>
       <label>
         Project
         <select
           value={project}
+          // A board button's Session belongs to its Project's Feature.
+          disabled={!!from}
           onChange={(e) => {
             setProject(e.target.value);
             setWorktree("");
@@ -145,6 +232,11 @@ export function NewSession(props: {
       </label>
       <fieldset>
         <legend>Worktree</legend>
+        {prefillBusy && (
+          <p className="why">
+            The main tree already has a Session, so this one needs a new Worktree: name its branch.
+          </p>
+        )}
         <label className="choice">
           <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
           New Worktree on branch
@@ -175,18 +267,28 @@ export function NewSession(props: {
       </fieldset>
       <fieldset>
         <legend>Agent</legend>
-        {agents.map((a) => (
-          <label key={a.id} className="choice" data-disabled={a.missing ? true : undefined}>
-            <input
-              type="radio"
-              disabled={!!a.missing}
-              checked={agent === a.id}
-              onChange={() => setAgent(a.id)}
-            />
-            {a.name}
-            {a.missing && <span className="why">{a.missing}</span>}
-          </label>
-        ))}
+        {agents.map((a) => {
+          const why = a.missing ?? a.noSkill ?? "";
+          return (
+            <label key={a.id} className="choice" data-disabled={why !== "" || undefined}>
+              <input
+                type="radio"
+                disabled={why !== ""}
+                checked={agent === a.id}
+                onChange={() => chooseAgent(a.id)}
+              />
+              {a.name}
+              {why && <span className="why">{why}</span>}
+              {!why && a.commandsUnknown && !alreadyWarned.has(a.id) && (
+                <span className="why">
+                  fh doesn't know {a.name}'s slash commands yet, so it can't tell whether{" "}
+                  <code>/{from?.skill}</code> is installed. Start any Session of {a.name} once so fh
+                  learns them
+                </span>
+              )}
+            </label>
+          );
+        })}
       </fieldset>
       <label className="choice">
         <input
@@ -300,6 +402,7 @@ export function Conversation(props: {
         </button>
         <span className="crumb" title={session.worktree}>
           {session.agentName} · {session.worktree}
+          {session.link && ` · started from ${linkText(session.link)}`}
         </span>
       </header>
       <div className="items">

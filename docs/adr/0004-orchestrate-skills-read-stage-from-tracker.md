@@ -8,5 +8,5 @@ The Software factory GUI starts Sessions that run the existing skills (`/grill-w
 
 ## Consequences
 
-- The only local state fullharness keeps for the factory is Idea-stage Features (named Sessions without a spec yet) and their link to the spec once `/to-spec` creates it.
+- The only local state fullharness keeps for the factory is Idea-stage Features (named Sessions without a spec yet) and their link to the spec once `/to-spec` creates it, and which Feature and Ticket each Session was started from on the board (#13). That link makes a Ticket Implementing, also after its Session has Exited (spec #1, story 64), which the tracker can't show before a commit; closing the Session drops it.
 - Tracker detection reads the `# Issue tracker: ...` heading, which is prose written for agents; inference (`.scratch/`, a GitHub remote) is the fallback.

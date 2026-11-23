@@ -64,6 +64,7 @@ var (
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
 // only when open and labelled ready-for-agent. Wayfinder issues are left out.
 // aheadBranches are the Project's branches with commits ahead of its base.
+// Stages are left to Derive.
 func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 	byNum := map[int]Issue{}
 	for _, i := range issues {
@@ -96,7 +97,8 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 			// worth showing, and they would pile up in Shipped (#12).
 			continue
 		}
-		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED"}
+		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED",
+			Branch: branchName(strconv.Itoa(i.Number), i.Title), Ref: "#" + strconv.Itoa(i.Number)}
 		for _, k := range kids {
 			f.Tickets = append(f.Tickets, githubTicket(byNum[k], byNum, prs, aheadBranches))
 		}
@@ -104,12 +106,13 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 		features = append(features, f)
 	}
 	slices.SortFunc(features, func(a, b Feature) int { return atoi(a.ID) - atoi(b.ID) })
-	Derive(features)
 	return features
 }
 
 func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string) Ticket {
-	t := Ticket{Number: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED", Blockers: []Blocker{}}
+	n := strconv.Itoa(i.Number)
+	t := Ticket{Number: n, Title: i.Title, Closed: i.State == "CLOSED", Blockers: []Blocker{},
+		Branch: branchName(n, i.Title), Ref: "#" + n}
 	for _, l := range labels(i) {
 		if slices.Contains(triageRoles, l) {
 			t.Label = l
