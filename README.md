@@ -300,8 +300,9 @@ Each button opens New Session, prefilled with a Worktree, an Agent and a startin
 
 A Session started from a Ticket or Feature shows that link in its header. A Session started from a Ticket makes that Ticket Implementing; an Implement spec Session does the same for every open Ticket of its Feature that isn't in Review. Both hold once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
 
-An Idea is a Grill new idea Session; it waits in the Idea column until it has a Spec:
+An Idea is a Feature at the Idea Stage. Until it has a Spec, the Idea is the named Session that **Grill new idea** started, and it waits in the Idea column:
 
+- The Session's starting prompt always begins with the Agent's `grill-with-docs` command. An Agent that doesn't have the skill can't start an Idea.
 - Each Idea gets its own Worktree, so two Ideas grilled at once don't overwrite each other's glossary edits.
 - Once a Spec appears that wasn't on the board when the Idea started, and no other Idea has it, the Idea's card offers **Link #N**. One click links them.
 - The linked Spec names its Idea, and fh keeps the link in `state.json` across restarts.
@@ -412,12 +413,39 @@ The binaries are unsigned in v1. Go's linker ad-hoc signs the Apple Silicon buil
 
 Before each release, on your Mac:
 
-1. Check that CI is green on `main`: `gh run list --workflow ci.yml --branch main --limit 1`.
+1. Check that CI is green on `main`. The STATUS column must show `✓`:
+
+   ```bash
+   gh run list --workflow ci.yml --branch main --limit 1
+   # STATUS  TITLE           WORKFLOW  BRANCH  EVENT  ID           ELAPSED  AGE
+   # ✓       Merge PRs f...  CI        main    push   45144662355  2m29s    about 3 hours ago
+   ```
+
 2. Log in to Claude Code, Copilot CLI and OpenCode, and set a model in your OpenCode config (see [Agents](#agents)).
 3. Run `make smoke` from `main`. It must end with `smoke: PASS`.
-4. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-5. Watch the release build: `gh run watch $(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')`.
-6. Check the install: `brew update && brew install philipsahli/tap/fh && fh --version`.
+4. Tag and push:
+
+   ```bash
+   git tag v0.1.0 && git push origin v0.1.0
+   # * [new tag]         v0.1.0 -> v0.1.0
+   ```
+
+5. Watch the release build until it completes with `success`:
+
+   ```bash
+   gh run watch $(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+   # ...
+   # ✓ Run Release (45144662355) completed with 'success'
+   ```
+
+6. Check the install. The version must be the tag without its `v`:
+
+   ```bash
+   brew update && brew install philipsahli/tap/fh && fh --version
+   # ...
+   # 🍺  fh was successfully installed!
+   # fh 0.1.0
+   ```
 
 `make smoke` runs the ACP spike's checks against each real Agent, in a fresh scratch git repo, using fh's built-in Agent definitions:
 

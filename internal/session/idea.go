@@ -13,8 +13,8 @@ var (
 	ErrIdeaLinked = errors.New("this Idea is already linked to a Spec")
 )
 
-// Idea is what fh keeps of an Idea's Session: a Feature at the Idea Stage,
-// before it has a Spec, is the named Session that Grill new idea started
+// Idea is fh's record of an Idea: a Feature at the Idea Stage which, until
+// it has a Spec, is the named Session that Grill new idea started
 // (GLOSSARY.md). The tracker has nothing to show for it yet, so fh keeps it
 // (ADR 0004). A Session that is no Idea has an empty Name.
 type Idea struct {
