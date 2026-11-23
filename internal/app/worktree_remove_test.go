@@ -191,3 +191,20 @@ func TestTheMainTreeIsNeverRemoved(t *testing.T) {
 		t.Errorf("status %d, want 400", status)
 	}
 }
+
+func TestAWorktreeWhoseFolderIsGoneIsNotRemoved(t *testing.T) {
+	f := startFhWithAgent(t, script{})
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	f.addProject(c, repo)
+	wt := mergedWorktree(t, f, c, repo)
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+
+	status, msg := f.removeWorktree(c, repo, wt, true)
+
+	if status != http.StatusConflict || msg != "the Worktree's folder is gone" {
+		t.Errorf("status %d %q, want 409 saying the folder is gone", status, msg)
+	}
+}

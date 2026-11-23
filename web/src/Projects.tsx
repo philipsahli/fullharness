@@ -126,6 +126,12 @@ function RemoveWorktree({
   const reason = removeRefusal(wt, sessions);
   const name = wt.branch || wt.path;
   const remove = async () => {
+    // The button stays focusable when refused, so the reason is reachable
+    // by keyboard and screen reader, not only as a hover tooltip.
+    if (reason) {
+      onError(`Can't remove: ${reason}`);
+      return;
+    }
     if (!window.confirm(`Remove the Worktree ${wt.path}? Its branch ${name} stays.`)) return;
     const r = await command("/api/worktrees/remove", { project, path: wt.path, confirm: true });
     onError(r.ok ? "" : r.error);
@@ -134,7 +140,7 @@ function RemoveWorktree({
     <button
       type="button"
       className="link"
-      disabled={reason !== ""}
+      aria-disabled={reason !== ""}
       onClick={() => void remove()}
       aria-label={`Remove Worktree ${name}`}
       title={reason ? `Can't remove: ${reason}` : "Run git worktree remove; the branch stays"}

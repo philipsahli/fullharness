@@ -63,9 +63,11 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 	}
 	base := defaultBase(repo)
 	fetchedAt := lastFetch(repo)
-	// Two git calls per Worktree; run Worktrees in parallel so a refresh of
-	// 20 stays well under #3's 1 s target (measured on an M-series Mac with
-	// small repositories: about 480 ms one by one, 185 ms in parallel).
+	// Two git calls per Worktree, plus up to two for the merge check of
+	// fh's own Worktrees (more when HEAD or the base moved); run Worktrees in
+	// parallel so a refresh of 20 stays well under #3's 1 s target (measured
+	// before the merge check, on an M-series Mac with small repositories:
+	// about 480 ms one by one, 185 ms in parallel).
 	sem := make(chan struct{}, parallelGit)
 	var wg sync.WaitGroup
 	for i := range wts {
@@ -84,11 +86,14 @@ func List(repo string, created func(path string) bool) ([]Worktree, error) {
 			// These fail only if the folder vanishes mid-refresh; the next
 			// refresh marks it Missing, so zeros are fine meanwhile.
 			w.Uncommitted, _ = uncommitted(w.Path)
-			if base != "" {
-				w.Ahead, w.Behind, _ = aheadBehind(w.Path, base)
-				if !w.Main && !w.Agent {
-					w.Merged = w.Ahead == 0 || squashMerged(w.Path, base)
-				}
+			if base == "" {
+				return
+			}
+			var err error
+			// Merged stays false on an error: zero ahead from a failed
+			// read must not offer removal.
+			if w.Ahead, w.Behind, err = aheadBehind(w.Path, base); err == nil && !w.Main && !w.Agent {
+				w.Merged = w.Ahead == 0 || squashMerged(w.Path, base)
 			}
 		})
 	}
@@ -192,7 +197,7 @@ func squashMergedUncached(dir, base string) bool {
 	if err != nil || len(diff) == 0 {
 		return false
 	}
-	own, err := runIn(dir, diff, "patch-id", "--stable")
+	own, err := runStdin(dir, diff, "patch-id", "--stable")
 	if err != nil {
 		return false
 	}
@@ -204,7 +209,7 @@ func squashMergedUncached(dir, base string) bool {
 	if err != nil {
 		return false
 	}
-	theirs, err := runIn(dir, log, "patch-id", "--stable")
+	theirs, err := runStdin(dir, log, "patch-id", "--stable")
 	if err != nil {
 		return false
 	}
@@ -218,11 +223,11 @@ func squashMergedUncached(dir, base string) bool {
 
 // run runs git in dir and returns stdout. The error carries git's stderr.
 func run(dir string, args ...string) ([]byte, error) {
-	return runIn(dir, nil, args...)
+	return runStdin(dir, nil, args...)
 }
 
-// runIn is run with stdin, for git commands that read a patch.
-func runIn(dir string, stdin []byte, args ...string) ([]byte, error) {
+// runStdin is run with stdin, for git commands that read a patch.
+func runStdin(dir string, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	if stdin != nil {
