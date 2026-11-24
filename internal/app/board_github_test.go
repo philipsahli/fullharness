@@ -46,9 +46,8 @@ func (i ghIssue) node() map[string]any {
 }
 
 // fakeGh puts a gh first on PATH that answers fh's GraphQL query with
-// issues, `pr list` for every state capped at 500 with prs, and `auth
-// status` with authOK. It returns a
-// function that counts the GraphQL calls.
+// issues, `pr list --state all --limit 500` with prs, and `auth status`
+// with authOK. It returns a function that counts the GraphQL calls.
 func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) func() int {
 	t.Helper()
 	calls, _, _ := fakeGhLogged(t, issues, prs, authOK)
@@ -57,7 +56,7 @@ func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) f
 
 // fakeGhLogged is fakeGh that also returns the gh commands it didn't
 // expect, such as a merge or an issue edit, one per line, and a function
-// that changes the open PRs.
+// that replaces the PRs `pr list` answers with.
 func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) (calls func() int, unexpected func() string, setPRs func([]map[string]any)) {
 	t.Helper()
 	g := newFakeGh(t, issues, prs, authOK)
