@@ -1175,6 +1175,22 @@ button:disabled {
   font-size: 12px;
   color: var(--muted);
 }
+/* A Ticket's PR part (#128): `#21 ↗ Open ✓` per Pull request. */
+.tickets .prs {
+  display: inline-flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pr .checks.passed {
+  color: var(--good);
+}
+.pr .checks.failed {
+  color: var(--bad);
+}
+.pr .checks.running {
+  color: var(--waiting);
+}
 .tag.startable {
   background: var(--accent);
   color: var(--surface);

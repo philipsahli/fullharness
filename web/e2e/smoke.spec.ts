@@ -462,6 +462,55 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   ).toHaveCount(0);
 });
 
+test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {
+  const pr = (number: number, branch: string, state: string, conclusion: string) => ({
+    number,
+    headRefName: branch,
+    body: "",
+    state,
+    isDraft: false,
+    url: `https://github.com/someone/shop/pull/${number}`,
+    statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion }],
+  });
+  const fh = await Fh.start({
+    ghPRs: [pr(21, "01-form", "OPEN", "SUCCESS"), pr(20, "01-form-v1", "CLOSED", "FAILURE")],
+  });
+  const ticket = (n: string, title: string) =>
+    `# ${n}: ${title}\n\n**Blocked by:** None\n\n**Status:** ready-for-agent\n`;
+  const repo = withOrigin(
+    tempRepoWith("shop", {
+      ".scratch/login/spec.md": "# Login\n",
+      ".scratch/login/issues/01-form.md": ticket("01", "Login form"),
+      ".scratch/login/issues/02-cookie.md": ticket("02", "Session cookie"),
+    }),
+    "git@github.com:someone/shop.git",
+  );
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page.locator(".fcard", { hasText: "Login" }).click();
+    const detail = page.getByRole("region", { name: "Feature Login" });
+    const form = detail.getByRole("listitem").filter({ hasText: "Login form" });
+    await expect(form.getByRole("link", { name: "#21" })).toHaveAttribute(
+      "href",
+      "https://github.com/someone/shop/pull/21",
+    );
+    await expect(form).toContainText("#21 ↗ Open ✓");
+    await expect(form).toContainText("#20 ↗ Closed ✗");
+    await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
+      "No PR yet",
+    );
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a Spec without Tickets offers Make tickets and a shipped Spec offers Retro", async ({
   page,
   fh,

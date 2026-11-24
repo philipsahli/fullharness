@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,6 +13,7 @@ const fakeAgent = path.resolve(import.meta.dirname, "../../bin/fakeagent");
 // the way a user runs it, minus opening the browser.
 export class Fh {
   private proc?: ChildProcess;
+  private path = process.env.PATH ?? "";
   launchURL = "";
 
   private constructor(
@@ -21,13 +22,28 @@ export class Fh {
     readonly dev: boolean,
   ) {}
 
-  // start launches fh; dev adds --dev (the token survives restarts), and
-  // agentScript makes the "claude" Agent the fake agent running that script.
+  // start launches fh; dev adds --dev (the token survives restarts),
+  // agentScript makes the "claude" Agent the fake agent running that script,
+  // and ghPRs puts a logged-in fake gh on fh's PATH whose `gh pr list`
+  // answers with those PRs (as `gh pr list --json` gives them); any other gh
+  // command fails.
   static async start({
     dev = false,
     agentScript = undefined as object | undefined,
+    ghPRs = undefined as object[] | undefined,
   } = {}): Promise<Fh> {
     const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev);
+    if (ghPRs) {
+      const bin = path.join(fh.dir, "bin");
+      mkdirSync(bin);
+      writeFileSync(path.join(fh.dir, "prs.json"), JSON.stringify(ghPRs));
+      writeFileSync(
+        path.join(bin, "gh"),
+        `#!/bin/sh\ncase "$*" in\n  *"auth status"*) exit 0 ;;\n  *"pr list"*) cat ${JSON.stringify(path.join(fh.dir, "prs.json"))} ;;\n  *) exit 1 ;;\nesac\n`,
+      );
+      chmodSync(path.join(bin, "gh"), 0o755);
+      fh.path = `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
+    }
     if (agentScript) {
       writeFileSync(
         path.join(fh.dir, "config.toml"),
@@ -70,6 +86,7 @@ export class Fh {
     if (this.dev) args.push("--dev");
     const proc = spawn(binary, args, {
       stdio: ["ignore", "pipe", "inherit"],
+      env: { ...process.env, PATH: this.path },
     });
     this.proc = proc;
     return new Promise((resolve, reject) => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { command, get } from "./api";
 import type { Project } from "./events";
+import { LinkOrText } from "./LinkOrText";
 import type { StartFrom } from "./Sessions";
 
 // These types match internal/tracker.
@@ -8,6 +9,14 @@ type Stage = "idea" | "spec" | "tickets" | "implementing" | "review" | "shipped"
 type Blocker = { number: string; known: boolean; open: boolean };
 // Step is one row of the server's next-step rule (internal/tracker/next.go).
 type Step = { skill: string; label: string; implements?: boolean };
+// PR is a Pull request with its PR state (internal/tracker/pr.go, PRRecord);
+// the server has already turned GitHub's check rollup into one result.
+export type PR = {
+  number: number;
+  url: string;
+  state: "draft" | "open" | "merged" | "closed";
+  checks: "passed" | "failed" | "running" | "";
+};
 type Ticket = {
   number: string;
   title: string;
@@ -19,6 +28,7 @@ type Ticket = {
   branch: string; // Start Session's new Worktree
   ref: string; // how a skill prompt names it, e.g. "#42"
   next?: Step; // offered only while startable
+  prs: PR[]; // newest first; empty means No PR yet
 };
 type Feature = {
   id: string;
@@ -355,6 +365,11 @@ function FeatureDetail({
                   {next.label}
                 </button>
               )}
+              <span className="prs">
+                {t.prs.length === 0
+                  ? "No PR yet"
+                  : t.prs.map((p) => <PRPart key={p.number} pr={p} />)}
+              </span>
               {t.blockers.some((b) => b.open) && (
                 <span className="s">
                   blocked by{" "}
@@ -369,5 +384,39 @@ function FeatureDetail({
         })}
       </ul>
     </section>
+  );
+}
+
+// The glossary words for PR states and the marks for checks results.
+const prStateName: Record<PR["state"], string> = {
+  draft: "Draft",
+  open: "Open",
+  merged: "Merged",
+  closed: "Closed",
+};
+const checksMark: Record<PR["checks"], string> = {
+  passed: "✓",
+  failed: "✗",
+  running: "…",
+  "": "",
+};
+
+// PRPart is one Pull request as `#21 ↗ Open ✓`: the number links to GitHub.
+export function PRPart({ pr }: { pr: PR }) {
+  return (
+    <span className={`pr ${pr.state}`}>
+      <LinkOrText url={pr.url} title={`Pull request #${pr.number} on GitHub`}>
+        #{pr.number} ↗
+      </LinkOrText>{" "}
+      {prStateName[pr.state]}
+      {pr.checks && (
+        <>
+          {" "}
+          <span className={`checks ${pr.checks}`} title={`checks ${pr.checks}`}>
+            {checksMark[pr.checks]}
+          </span>
+        </>
+      )}
+    </span>
   );
 }
