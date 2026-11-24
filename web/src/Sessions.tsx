@@ -641,8 +641,6 @@ export function Conversation(props: {
   );
 }
 
-// joinMessages puts more after what the composer holds, a blank line apart,
-// as fh joins a Queued message.
 // BranchLine is the Session header's branch and PR (#129): the branch
 // links to GitHub once origin has it, then the branch's Pull request, or
 // No PR yet. When fh can't know the PR, the PR part is left out.
@@ -665,6 +663,8 @@ function BranchLine({ worktree: w }: { worktree?: Worktree }) {
   );
 }
 
+// joinMessages puts more after what the composer holds, a blank line apart,
+// as fh joins a Queued message.
 function joinMessages(held: string, more: string): string {
   return held.trim() ? `${held}\n\n${more}` : more;
 }
