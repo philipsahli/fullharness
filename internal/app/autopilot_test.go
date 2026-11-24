@@ -17,9 +17,9 @@ import (
 // a time.
 
 // startAutopilotFh starts fh with the fake Agent running s and a fake
-// turn-end classifier that always answers verdict. Autopilot looks at the
-// Projects every 50 ms.
-func startAutopilotFh(t *testing.T, s script, verdict string) *fh {
+// turn-end classifier that answers verdicts in turn, repeating the last.
+// Autopilot looks at the Projects every 50 ms.
+func startAutopilotFh(t *testing.T, s script, verdicts ...string) *fh {
 	t.Helper()
 	dir := t.TempDir()
 	raw, err := json.Marshal(s)
@@ -27,8 +27,12 @@ func startAutopilotFh(t *testing.T, s script, verdict string) *fh {
 		t.Fatal(err)
 	}
 	classifier := filepath.Join(dir, "fake-classifier")
+	// The count file numbers the calls; the Nth call answers the Nth
+	// verdict, or the last.
 	writeFile(t, classifier, "#!/bin/sh\ncat >/dev/null\n"+
-		`echo '{"is_error":false,"result":"`+verdict+`","total_cost_usd":0,"usage":{}}'`+"\n")
+		"n=$(cat "+filepath.Join(dir, "classifier-calls")+" 2>/dev/null || echo 0); n=$((n+1)); echo $n >"+filepath.Join(dir, "classifier-calls")+"\n"+
+		"set -- "+strings.Join(verdicts, " ")+"; while [ $n -gt 1 ] && [ $# -gt 1 ]; do shift; n=$((n-1)); done\n"+
+		`echo '{"is_error":false,"result":"'$1'","total_cost_usd":0,"usage":{}}'`+"\n")
 	if err := os.Chmod(classifier, 0o755); err != nil {
 		t.Fatal(err)
 	}
