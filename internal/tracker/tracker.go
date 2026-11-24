@@ -32,8 +32,12 @@ const (
 
 var stageOrder = []string{StageIdea, StageSpec, StageTickets, StageImplementing, StageReview, StageShipped}
 
-// ReadyLabel marks a Ticket an Agent can pick up (docs/agents/triage-labels.md).
+// ReadyLabel marks a Ticket an Agent can pick up (docs/agents/triage-labels.md),
+// and an approved Spec.
 const ReadyLabel = "ready-for-agent"
+
+// RoadmapNow is the Roadmap group Autopilot works on (ADR-0009).
+const RoadmapNow = "now"
 
 // Board is one Project's Software factory board.
 type Board struct {
@@ -57,6 +61,12 @@ type Feature struct {
 	Ref    string `json:"ref"`
 	// Idea names the Idea linked to this Spec, if any (#14).
 	Idea string `json:"idea,omitempty"`
+	// Roadmap is the Spec's Roadmap group (ADR 0005): now, next or later,
+	// or empty. Autopilot works only on Features in Now (ADR-0009).
+	Roadmap string `json:"roadmap,omitempty"`
+	// Approved: the Spec is labelled ready-for-agent, so its Tickets can
+	// be written (the Spec approval Stop point, ADR-0009).
+	Approved bool `json:"approved,omitempty"`
 	// Next is the skill that moves it on from its Stage (next.go).
 	Next *Step `json:"next,omitempty"`
 }

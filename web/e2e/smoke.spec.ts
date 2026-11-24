@@ -109,6 +109,31 @@ test("a Worktree branch origin has links to it on GitHub; one origin lacks is pl
   await expect(projects.getByText("main", { exact: true })).toHaveCount(2);
 });
 
+test("the Autopilot switch is per Project and stays on after a reload", async ({ page, fh }) => {
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+
+  const autopilot = projects.getByRole("checkbox", { name: "Autopilot" });
+  await expect(autopilot).not.toBeChecked();
+  // The box shows fh's setting, so it turns on once fh has saved it.
+  await autopilot.click();
+  await expect(autopilot).toBeChecked();
+
+  const pick = projects.getByRole("combobox", { name: "Autopilot Agent" });
+  await expect(pick).toHaveValue("claude");
+  await pick.selectOption("copilot");
+  await expect(pick).toHaveValue("copilot");
+
+  await page.reload();
+  const after = page.getByRole("region", { name: "Projects" });
+  await expect(after.getByRole("checkbox", { name: "Autopilot" })).toBeChecked();
+  await expect(after.getByRole("combobox", { name: "Autopilot Agent" })).toHaveValue("copilot");
+});
+
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {
   const fh = await Fh.start({ dev: true });
   try {

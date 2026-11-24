@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import type { Project, Worktree } from "./events";
 import { LinkOrText } from "./LinkOrText";
@@ -40,6 +40,10 @@ function ProjectItem({ project }: { project: Project }) {
     const r = await command("/api/projects/remove", { path: project.path });
     setError(r.ok ? "" : r.error);
   };
+  const setAutopilot = async (on: boolean, agent = project.agent) => {
+    const r = await command("/api/projects/autopilot", { path: project.path, on, agent });
+    setError(r.ok ? "" : r.error);
+  };
   return (
     <li className="proj">
       <div>
@@ -56,6 +60,21 @@ function ProjectItem({ project }: { project: Project }) {
           Remove
         </button>
       </div>
+      {!project.missing && (
+        <div className="autopilot">
+          <label title="fh starts the next step of this Project's Features in Roadmap Now by itself, and stops where it needs you">
+            <input
+              type="checkbox"
+              checked={project.autopilot}
+              onChange={(e) => void setAutopilot(e.target.checked)}
+            />
+            Autopilot
+          </label>
+          {project.autopilot && (
+            <AutopilotAgent value={project.agent} onChange={(a) => void setAutopilot(true, a)} />
+          )}
+        </div>
+      )}
       {project.missing ? (
         <p className="warn">
           Folder not found: <code>{project.path}</code>
@@ -69,6 +88,34 @@ function ProjectItem({ project }: { project: Project }) {
       )}
       {error && <p className="error">{error}</p>}
     </li>
+  );
+}
+
+// AutopilotAgent picks the Agent Autopilot starts; none picked is Claude
+// Code.
+function AutopilotAgent({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange: (agent: string) => void;
+}) {
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    void get<{ id: string; name: string }[]>("/api/agents").then((a) => a && setAgents(a));
+  }, []);
+  return (
+    <select
+      aria-label="Autopilot Agent"
+      value={value ?? "claude"}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {agents.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

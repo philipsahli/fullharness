@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/philipsahli/fullharness/internal/agent"
+	"github.com/philipsahli/fullharness/internal/autopilot"
 	"github.com/philipsahli/fullharness/internal/classify"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
@@ -55,6 +56,9 @@ type Options struct {
 	// RefreshInterval is how often Worktree state is re-read while a tab is
 	// connected; zero means DefaultRefreshInterval.
 	RefreshInterval time.Duration
+	// AutopilotInterval is how often Autopilot looks at the tracker; zero
+	// means DefaultAutopilotInterval.
+	AutopilotInterval time.Duration
 	// BeforeWorktreeRemove runs right before git removes a Worktree, while
 	// the removal is reserved; tests use it to hold a removal open. nil
 	// means nothing runs.
@@ -68,6 +72,10 @@ const DefaultAgentStartTimeout = 2 * time.Minute
 // DefaultRefreshInterval keeps Worktree state about as fresh as a glance
 // needs, at a few git calls per Worktree per tick (#3).
 const DefaultRefreshInterval = 10 * time.Second
+
+// DefaultAutopilotInterval is how often Autopilot looks for new work in the
+// tracker, next to looking whenever a turn of its own ends.
+const DefaultAutopilotInterval = time.Minute
 
 // Instance is the result of a launch. If another fh was already running, the
 // Instance only opened a tab on it: Wait returns at once and Close does nothing.
@@ -160,7 +168,8 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if err != nil {
 		return fail(err)
 	}
-	var notes *notifier // set once srv exists; nothing enters Waiting before that
+	var notes *notifier         // set once srv exists; nothing enters Waiting before that
+	var pilot *autopilot.Runner // set once srv exists; no turn ends before that
 	startTimeout := opts.AgentStartTimeout
 	if startTimeout == 0 {
 		startTimeout = DefaultAgentStartTimeout
@@ -170,7 +179,13 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		LogDir:       logDir,
 		Broadcast:    func(ev any) { srv.Broadcast(ev) },
 		// A turn usually changes files; show it without waiting for a tick.
-		TurnEnded: func(session.TurnEnd) { reg.Refresh() },
+		TurnEnded: func(e session.TurnEnd) {
+			reg.Refresh()
+			// pilot is set before fh serves, so before any turn can end.
+			// The time is taken here, in turn order; the classifier runs
+			// in its own goroutine.
+			go pilot.TurnEnded(e, time.Now())
+		},
 		Persist: func(saved []session.Saved) {
 			if err := st.SetSessions(saved); err != nil {
 				log.Info("save sessions failed", "err", err)
@@ -216,14 +231,19 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return fail(err)
 	}
 	registerClassifierRoutes(srv, classifier)
-	registerSessionRoutes(srv, sessionDeps{
+	deps := sessionDeps{
 		projects: reg,
 		sessions: sessions,
 		state:    st,
 		agents:   agents,
 		specs:    boards.specs,
 		log:      log,
-	})
+	}
+	registerSessionRoutes(srv, deps)
+	if pilot, err = newAutopilot(deps, boards, classifier); err != nil {
+		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
+	}
+	registerAutopilotRoutes(srv, reg, agents, pilot)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
 	// quiet spell gets the last state read, then the current one at once.
@@ -235,6 +255,11 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		interval = DefaultRefreshInterval
 	}
 	go refreshLoop(reg, srv, interval, inst.stop)
+	pilotInterval := opts.AutopilotInterval
+	if pilotInterval == 0 {
+		pilotInterval = DefaultAutopilotInterval
+	}
+	go runAutopilot(pilot, pilotInterval, inst.stop)
 	go func() {
 		inst.serveErr = inst.srv.Serve()
 		close(inst.done)
