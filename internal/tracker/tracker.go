@@ -57,6 +57,8 @@ type Feature struct {
 	Ref    string `json:"ref"`
 	// Idea names the Idea linked to this Spec, if any (#14).
 	Idea string `json:"idea,omitempty"`
+	// URL opens the Spec in its tracker; empty shows plain text (#86).
+	URL string `json:"url,omitempty"`
 }
 
 // Ticket is one buildable piece of a Feature.
@@ -73,6 +75,7 @@ type Ticket struct {
 	// skill's prompt names the Ticket, e.g. "#42" (#13).
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
+	URL    string `json:"url,omitempty"` // opens the Ticket in its tracker (#86)
 	// Inputs to the Stage, filled by the adapter, and by Derive from links:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
 	OpenPR      bool `json:"-"` // a linked PR is open
@@ -84,8 +87,9 @@ type Blocker struct {
 	Number string `json:"number"`
 	// Known: the Ticket exists. An adapter that sees blockers outside the
 	// Feature (GitHub) sets Known and Open itself; unknown counts as open.
-	Known bool `json:"known"`
-	Open  bool `json:"open"`
+	Known bool   `json:"known"`
+	Open  bool   `json:"open"`
+	URL   string `json:"url,omitempty"` // opens the blocker in its tracker (#86)
 }
 
 // Detect finds the Project's Issue tracker: the `# Issue tracker: …`

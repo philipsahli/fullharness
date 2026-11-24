@@ -283,6 +283,9 @@ tr:last-child td { border-bottom: 0; }
 .fphead .acts { margin-left: auto; }
 .ext { color: var(--accent); text-decoration: none; font-family: var(--f-mono); font-size: 12.5px; }
 .ext:hover { text-decoration: underline; }
+/* Ticket numbers and blocker refs link to their GitHub issues (#101). */
+td.mono a { color: var(--accent); }
+td a:focus-visible, .ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stepper { display: flex; list-style: none; margin: 0; padding: 0; gap: 4px; flex-wrap: wrap; }
 .stepper li { flex: 1 1 110px; font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); display: grid; gap: 1px; }
 .stepper li small { font-family: var(--f-mono); font-size: 10.5px; }
@@ -586,6 +589,8 @@ const proj = id => projects.find(p => p.id === id);
 const sess = id => sessions.find(s => s.id === id);
 const allFeats = () => Object.entries(factory).flatMap(([pid, fs]) => fs.map(f => ({ pid, f })));
 const feat = id => allFeats().find(x => x.f.id === id);
+// issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text.
+const issueLink = (pid, n, text = `#${n}`) => { const p = proj(pid); return p && p.url ? `<a href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : text; };
 const featSessions = fid => sessions.filter(s => s.fid === fid);
 const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
 const sorted = list => [...list].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
@@ -804,7 +809,7 @@ function ticketRow(fid, t) {
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">#${t.n}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note)}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note).replace(/#(\d+)/g, (m, n) => issueLink(feat(fid).pid, n))}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -833,7 +838,7 @@ function renderFeature() {
   const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
-    <div class="fphead"><h2>${esc(f.name)}</h2><a class="ext" href="#">${f.ref} ↗</a><span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
+    <div class="fphead"><h2>${esc(f.name)}</h2>${(n => n && p.url ? `<a class="ext" href="${p.url}/issues/${n}" target="_blank" rel="noopener">${f.ref} ↗</a>` : `<span class="ext">${f.ref}</span>`)((f.ref.match(/#(\d+)/) || [])[1])}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
     ${stepper}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 

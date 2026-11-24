@@ -19,15 +19,18 @@ export class Fh {
     readonly port: number,
     readonly dir: string,
     readonly dev: boolean,
+    readonly env: Record<string, string>,
   ) {}
 
-  // start launches fh; dev adds --dev (the token survives restarts), and
-  // agentScript makes the "claude" Agent the fake agent running that script.
+  // start launches fh; dev adds --dev (the token survives restarts),
+  // agentScript makes the "claude" Agent the fake agent running that script,
+  // and env is added to fh's environment, e.g. a PATH with a fake gh first.
   static async start({
     dev = false,
     agentScript = undefined as object | undefined,
+    env = {} as Record<string, string>,
   } = {}): Promise<Fh> {
-    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev);
+    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev, env);
     if (agentScript) {
       writeFileSync(
         path.join(fh.dir, "config.toml"),
@@ -70,6 +73,7 @@ export class Fh {
     if (this.dev) args.push("--dev");
     const proc = spawn(binary, args, {
       stdio: ["ignore", "pipe", "inherit"],
+      env: { ...process.env, ...this.env },
     });
     this.proc = proc;
     return new Promise((resolve, reject) => {

@@ -52,6 +52,11 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 		}
 		board, read := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
 		tracker.Derive(board.Features, sessions.Links(p.Path))
+		// p.URL is set only for a github.com origin, so a GitHub tracker
+		// on another host gets no links (#101).
+		if board.Tracker == tracker.KindGitHub && p.URL != "" {
+			tracker.LinkIssues(board.Features, p.URL)
+		}
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
 }
