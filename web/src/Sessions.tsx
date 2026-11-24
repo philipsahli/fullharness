@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
+import { LinkOrText } from "./LinkOrText";
 import { AgentMarkdown } from "./Markdown";
+import { SessionPRPart } from "./PR";
 import {
   byListOrder,
   loadedConversation,
@@ -512,6 +514,11 @@ export function Conversation(props: {
               ? ` → ${linkText(session.link)}`
               : ` · started from ${linkText(session.link)}`)}
         </span>
+        <BranchLine
+          worktree={props.snapshot.projects
+            .flatMap((p) => p.worktrees)
+            .find((w) => w.path === session.worktree)}
+        />
         <SessionSettings session={session} onSet={(p, b) => void setting(p, b)} />
       </header>
       <div className="items">
@@ -636,6 +643,28 @@ export function Conversation(props: {
 
 // joinMessages puts more after what the composer holds, a blank line apart,
 // as fh joins a Queued message.
+// BranchLine is the Session header's branch and PR (#129): the branch
+// links to GitHub once origin has it, then the branch's Pull request, or
+// No PR yet. When fh can't know the PR, the PR part is left out.
+function BranchLine({ worktree: w }: { worktree?: Worktree }) {
+  if (!w?.branch) return null;
+  return (
+    <span className="crumb branchline">
+      <LinkOrText url={w.url} title={w.url && `Branch ${w.branch} on GitHub`}>
+        {w.branch}
+        {w.url && " ↗"}
+      </LinkOrText>
+      {w.pr && (
+        <>
+          {" · "}
+          <SessionPRPart pr={w.pr} />
+        </>
+      )}
+      {w.noPR && " · No PR yet"}
+    </span>
+  );
+}
+
 function joinMessages(held: string, more: string): string {
   return held.trim() ? `${held}\n\n${more}` : more;
 }

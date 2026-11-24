@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PR } from "./PR";
 
 // Worktree and Project match the JSON from internal/worktree and
 // internal/project.
@@ -6,6 +7,10 @@ export type Worktree = {
   path: string;
   branch: string; // empty when HEAD is detached
   url?: string; // the branch on GitHub; absent unless origin has the branch
+  // The branch's Pull request (#129): pr when it has one, noPR when gh says
+  // it has none; neither when fh can't know (no GitHub origin, gh failed).
+  pr?: PR;
+  noPR?: boolean;
   main: boolean; // the Project's own tree
   agent: boolean; // not created by fh: fh never starts a Session in it
   missing: boolean; // git lists it, but its folder is gone
