@@ -115,6 +115,9 @@ func TestASpecWaitingForApprovalIsOneStopPoint(t *testing.T) {
 	if got := eventsOf(t, f.waitEvents(c, repo, "search", 2), "search", keys...); !reflect.DeepEqual(got[:2], want) {
 		t.Errorf("events after the approval\n%v\nwant them to start with\n%v", got, want)
 	}
+	// Let the to-tickets turn end, so the Session no longer writes to
+	// fh's folder when the test removes it (macOS CI failed on that).
+	f.waitTurnEnded(c, f.waitAutopilotSessions(c, 1)[0]["id"].(string))
 }
 
 func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
