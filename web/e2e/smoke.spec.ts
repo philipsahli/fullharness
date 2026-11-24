@@ -2,7 +2,7 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Fh, runFh } from "./fh";
-import { tempFolder, tempRepo, tempRepoWith, withOrigin } from "./repo";
+import { tempFolder, tempRepo, tempRepoWith, withOrigin, withRemoteBranch } from "./repo";
 
 // Browser smoke tests (ADR 0007): the UI logic no Go test can reach.
 const test = base.extend<{ fh: Fh }>({
@@ -79,6 +79,34 @@ test("a Project on GitHub links its name to the repo; one without a GitHub remot
   await expect(shop).toBeFocused(); // reachable with the keyboard
   await expect(projects.getByText("tools", { exact: true })).toBeVisible();
   await expect(projects.getByRole("link")).toHaveCount(1);
+});
+
+test("a Worktree branch origin has links to it on GitHub; one origin lacks is plain text", async ({
+  page,
+  fh,
+}) => {
+  await page.goto(fh.launchURL);
+  const projects = page.getByRole("region", { name: "Projects" });
+  const add = async (repo: string) => {
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+  };
+
+  await add(
+    withRemoteBranch(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"), "main"),
+  );
+  await add(withOrigin(tempRepo("tools"), "git@github.com:someone/tools.git"));
+
+  const pushed = projects.getByRole("link", { name: "main", exact: true });
+  await expect(pushed).toHaveAttribute("href", "https://github.com/someone/shop/tree/main");
+  await expect(pushed).toHaveAttribute("target", "_blank");
+  await expect(pushed).toHaveAttribute("rel", "noopener");
+  await expect(pushed).toHaveCSS("text-overflow", "ellipsis"); // a long branch stays in its row
+  // tools' main was never pushed: its name links, its branch doesn't.
+  await expect(projects.getByRole("link", { name: "tools", exact: true })).toBeVisible();
+  await expect(projects.getByRole("link", { name: "main", exact: true })).toHaveCount(1);
+  await expect(projects.getByText("main", { exact: true })).toHaveCount(2);
 });
 
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {

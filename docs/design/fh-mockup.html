@@ -100,8 +100,10 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .proj > div { display: flex; justify-content: space-between; align-items: baseline; padding: 0 8px; font-weight: 600; }
 .proj > div small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
 /* A Project with a GitHub origin links its name to the repo (#99); without one the name is plain text. */
-.proj > div a { color: var(--accent); }
-.proj > div a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A Worktree whose branch origin has links to it too (#100); an unpushed one stays plain. */
+.ptree a { color: var(--accent); }
+.ptree a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wt a:focus-visible { outline-offset: -2px; } /* the label clips overflow, so the ring goes inside */
 .wts { list-style: none; margin: 4px 0 0; padding: 0 0 0 8px; }
 .wt { display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 3px 8px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
 .wt span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -398,9 +400,9 @@ const STATE_LABEL = { waiting: "Waiting", working: "Working", starting: "Startin
 
 const projects = [
   { id: "fh", name: "fullharness", tracker: "GitHub", url: "https://github.com/example/fullharness", worktrees: [
-    { path: "fullharness", branch: "main" },
+    { path: "fullharness", branch: "main", url: "https://github.com/example/fullharness/tree/main" },
     { path: "idea/acp-inbox", branch: "idea/acp-inbox" },
-    { path: "10-permission-card", branch: "10-permission-card" },
+    { path: "10-permission-card", branch: "10-permission-card", url: "https://github.com/example/fullharness/tree/10-permission-card" },
     { path: "12-pty-fallback", branch: "12-pty-fallback" },
     { path: "14-worktree-list", branch: "14-worktree-list" },
     { path: "impl-spec-7-t13", branch: "impl-spec-7-t13", agentWt: true },
@@ -643,7 +645,7 @@ function renderRail() {
     <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
         const s = sessions.find(x => x.project === p.id && x.wt === w.path);
-        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span title="${p.name}.worktrees/${w.path}">${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
+        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span title="${p.name}.worktrees/${w.path}">${w.url ? `<a href="${w.url}" target="_blank" rel="noopener">${w.path}</a>` : w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
       }).join("")}</ul></li>`).join("");
   const c = $("#inbox-count");
   const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length;

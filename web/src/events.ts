@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type Worktree = {
   path: string;
   branch: string; // empty when HEAD is detached
+  url?: string; // the branch on GitHub; absent unless origin has the branch
   main: boolean; // the Project's own tree
   agent: boolean; // not created by fh: fh never starts a Session in it
   missing: boolean; // git lists it, but its folder is gone

@@ -49,3 +49,13 @@ export function withOrigin(dir: string, url: string): string {
   execFileSync("git", ["remote", "add", "origin", url], { cwd: dir, env: gitEnv });
   return dir;
 }
+
+// withRemoteBranch makes origin/<branch> exist locally, as if the branch had
+// been pushed and fetched, without a network.
+export function withRemoteBranch(dir: string, branch: string): string {
+  execFileSync("git", ["update-ref", `refs/remotes/origin/${branch}`, "HEAD"], {
+    cwd: dir,
+    env: gitEnv,
+  });
+  return dir;
+}
