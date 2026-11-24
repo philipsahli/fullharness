@@ -281,6 +281,7 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs thr
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
+- Spec, Ticket and blocker numbers link to their GitHub issues. A blocker in another repo, or one fh can't read, shows as plain text.
 - An open PR puts its Ticket in Review.
 - A PR belongs to a Ticket by its branch `<N>-…`, or by `Closes`, `Fixes` or `Resolves #N` in its body.
 - fh reuses a Project's GitHub results for 50 seconds, so several tabs share one `gh` call.
