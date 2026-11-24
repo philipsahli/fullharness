@@ -334,7 +334,7 @@ func (i *Instance) Close() error {
 		// Agent processes end with fh (ADR 0002).
 		i.sessions.StopAll()
 		err = i.srv.Close()
-		// Waits for running PR fetches, so none outlives fh.
+		// Cancels running PR fetches and waits for them, so none outlives fh.
 		i.projects.Close()
 		defer func() { _ = i.logFile.Close() }() // nothing left to log the error to
 		if i.dev {

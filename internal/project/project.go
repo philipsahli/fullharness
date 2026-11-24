@@ -4,6 +4,7 @@ package project
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -68,12 +69,14 @@ type Registry struct {
 	// PRs come from gh, which can take seconds, so they are fetched in a
 	// goroutine and never while change is held: a turn end refreshes
 	// before the next Queued message is sent, and must not wait on gh.
-	prs      func(repo string) ([]tracker.PR, bool)
+	prs      func(ctx context.Context, repo string) ([]tracker.PR, bool)
 	known    map[string][]tracker.PR // repo → its PRs from the last gh read that worked
 	fetching map[string]bool         // repo → a PR fetch is running
 	again    map[string]bool         // repo → fetch once more when the running one ends
 	closed   bool                    // Close was called: no new fetches
 	fetches  sync.WaitGroup
+	stop     context.CancelFunc // ends ctx, which stops running gh calls
+	ctx      context.Context
 }
 
 // stored is projects.toml: one [[project]] table per Project.
@@ -93,6 +96,7 @@ type storedProject struct {
 func Open(dir string, created, linked func(path string) bool, onChange func([]Project)) (*Registry, error) {
 	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created, linked: linked,
 		known: map[string][]tracker.PR{}, fetching: map[string]bool{}, again: map[string]bool{}}
+	r.ctx, r.stop = context.WithCancel(context.Background())
 	var s stored
 	if _, err := toml.DecodeFile(r.file, &s); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("read %s: %w", r.file, err)
@@ -105,11 +109,11 @@ func Open(dir string, created, linked func(path string) bool, onChange func([]Pr
 
 // ReadPRs makes every later read of a GitHub Project start a background
 // fetch of its PRs from prs: a repo's PRs, and false when gh couldn't read
-// them. When a fetch works, each Worktree on a branch gets its Pull
+// them; prs stops when ctx ends. When a fetch works, each Worktree on a branch gets its Pull
 // request, or NoPR, and onChange is called if that changed something. It
 // is set after Open, so starting fh waits for no gh call; the first
 // Refresh, when a tab connects, starts the first fetch.
-func (r *Registry) ReadPRs(prs func(repo string) ([]tracker.PR, bool)) {
+func (r *Registry) ReadPRs(prs func(ctx context.Context, repo string) ([]tracker.PR, bool)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.prs = prs
@@ -122,12 +126,14 @@ func (r *Registry) FetchPRs(repo string) {
 	r.fetchPRs(repo)
 }
 
-// Close stops new PR fetches and waits for the running ones, so none calls
-// onChange after fh stopped. A fetch ends within gh's own timeout.
+// Close stops new PR fetches, cancels the running ones and waits for them
+// to end, so none calls onChange after fh stopped and a hung gh doesn't
+// hold up quitting.
 func (r *Registry) Close() {
 	r.mu.Lock()
 	r.closed = true
 	r.mu.Unlock()
+	r.stop()
 	r.fetches.Wait()
 }
 
@@ -357,7 +363,7 @@ func (r *Registry) fetchPRs(repo string) {
 	go func() {
 		defer r.fetches.Done()
 		for {
-			if prs, ok := read(repo); ok {
+			if prs, ok := read(r.ctx, repo); ok && r.ctx.Err() == nil {
 				r.setPRs(repo, prs)
 			}
 			r.mu.Lock()

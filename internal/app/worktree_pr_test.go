@@ -180,3 +180,30 @@ func TestAddingAProjectAndARefreshDoNotWaitForGh(t *testing.T) {
 		t.Errorf("pr list calls = %d after an add and a refresh, want 1", n)
 	}
 }
+
+func TestQuittingFhCancelsARunningPRFetch(t *testing.T) {
+	g := newFakeGh(t, nil, []map[string]any{ghPR(7, "form", "OPEN")}, true)
+	g.hold()
+	// Releases gh only after the test, so fh's Close below can't wait for it.
+	t.Cleanup(g.release)
+	f, repo, _ := prRepo(t, "form")
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for g.prListCalls() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("gh pr list never started")
+		}
+		time.Sleep(10 * time.Millisecond) // polling the fake's call log; gh runs in its own process
+	}
+
+	start := time.Now()
+	if err := f.inst.Close(); err != nil {
+		t.Fatalf("stop fh: %v", err)
+	}
+	// gh's own timeout is 30 s; a Close that waited for gh would take that.
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("Close took %v with gh held, want it to cancel the fetch", d)
+	}
+}

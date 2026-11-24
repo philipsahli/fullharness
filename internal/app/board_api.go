@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"sync"
@@ -145,7 +146,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 		var prs []tracker.PR
 		if tracker.HasGitHubRemote(repo) {
 			// Without gh the board skips Review; the Tickets still show.
-			if gr := b.gh(repo, false, refresh); gr.err == nil {
+			if gr := b.gh(context.Background(), repo, false, refresh); gr.err == nil {
 				prs = gr.prs
 			}
 		}
@@ -154,7 +155,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
 		}
 	case tracker.KindGitHub:
-		gr := b.gh(repo, true, refresh)
+		gr := b.gh(context.Background(), repo, true, refresh)
 		if gr.err != nil {
 			board.Note = tracker.Note(gr.err)
 			break
@@ -181,9 +182,9 @@ func (b *boards) specs(repo string) (ids []string, ok bool) {
 
 // prs is repo's PRs for its Worktrees, from the same cache as its board, so
 // the two share one `gh pr list` per cache period; ok is false when gh
-// failed.
-func (b *boards) prs(repo string) (prs []tracker.PR, ok bool) {
-	gr := b.gh(repo, false, false)
+// failed. Ending ctx stops a running gh call.
+func (b *boards) prs(ctx context.Context, repo string) (prs []tracker.PR, ok bool) {
+	gr := b.gh(ctx, repo, false, false)
 	return gr.prs, gr.err == nil
 }
 
@@ -209,7 +210,7 @@ func (b *boards) expire(repo string) {
 
 // gh returns the repo's gh read, from the cache when it's fresh and has
 // what's asked for.
-func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
+func (b *boards) gh(ctx context.Context, repo string, withIssues, refresh bool) ghResult {
 	e := b.entry(repo)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -223,17 +224,17 @@ func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
 		// so the Worktrees keep their PRs.
 		r := e.ghResult
 		r.withIssues = true
-		if r.issues, r.err = tracker.FetchIssues(repo); r.err == nil {
+		if r.issues, r.err = tracker.FetchIssues(ctx, repo); r.err == nil {
 			e.ghResult = r
 		}
 		return r
 	}
 	r := ghResult{at: time.Now(), withIssues: withIssues}
-	if r.err = tracker.CheckGh(repo); r.err == nil && withIssues {
-		r.issues, r.err = tracker.FetchIssues(repo)
+	if r.err = tracker.CheckGh(ctx, repo); r.err == nil && withIssues {
+		r.issues, r.err = tracker.FetchIssues(ctx, repo)
 	}
 	if r.err == nil {
-		r.prs, r.err = tracker.FetchPRs(repo)
+		r.prs, r.err = tracker.FetchPRs(ctx, repo)
 	}
 	e.ghResult = r
 	return r
