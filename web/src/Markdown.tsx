@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Highlighted, languageOf } from "./Code";
+import { isWebURL, LinkOrText } from "./LinkOrText";
 
 // AgentMarkdown renders an Agent message as Markdown (GFM). Raw HTML in the
 // text shows as text, never as markup. While a message streams, text changes
@@ -37,22 +38,16 @@ const components: Components = {
   },
   // Only http(s) links are links, and they open in a new tab. Anything else
   // (javascript:, file:, relative paths fh can't resolve) is plain text.
-  a: ({ href, children }) =>
-    href && /^https?:\/\//i.test(href) ? (
-      <a href={href} target="_blank" rel="noopener">
-        {children}
-      </a>
-    ) : (
-      <span>{children}</span>
-    ),
+  // isWebURL also keeps vscode:// out, which LinkOrText would allow.
+  a: ({ href, children }) => (
+    <LinkOrText url={href && isWebURL(href) ? href : undefined}>{children}</LinkOrText>
+  ),
   // An image would make the page fetch its URL without a click, so an
   // http(s) image is a link to it, named by its alt text, and any other image
   // is its alt text.
   img: ({ src, alt }) =>
-    typeof src === "string" && /^https?:\/\//i.test(src) ? (
-      <a href={src} target="_blank" rel="noopener">
-        {alt || src}
-      </a>
+    typeof src === "string" && isWebURL(src) ? (
+      <LinkOrText url={src}>{alt || src}</LinkOrText>
     ) : (
       <span>{alt}</span>
     ),

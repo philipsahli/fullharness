@@ -43,3 +43,9 @@ export function tempRepoWith(name: string, files: Record<string, string>): strin
   execFileSync("git", ["commit", "-q", "-m", "tracker"], { cwd: dir, env: gitEnv });
   return dir;
 }
+
+// withOrigin adds an origin remote to a repo; nothing is fetched or pushed.
+export function withOrigin(dir: string, url: string): string {
+  execFileSync("git", ["remote", "add", "origin", url], { cwd: dir, env: gitEnv });
+  return dir;
+}

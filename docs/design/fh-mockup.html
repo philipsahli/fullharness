@@ -99,6 +99,9 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .ptree { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .proj > div { display: flex; justify-content: space-between; align-items: baseline; padding: 0 8px; font-weight: 600; }
 .proj > div small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+/* A Project with a GitHub origin links its name to the repo (#99); without one the name is plain text. */
+.proj > div a { color: var(--accent); }
+.proj > div a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wts { list-style: none; margin: 4px 0 0; padding: 0 0 0 8px; }
 .wt { display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 3px 8px; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
 .wt span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -394,7 +397,7 @@ const STATE_ORDER = { waiting: 0, working: 1, starting: 2, idle: 3, exited: 4 };
 const STATE_LABEL = { waiting: "Waiting", working: "Working", starting: "Starting", idle: "Idle", exited: "Exited" };
 
 const projects = [
-  { id: "fh", name: "fullharness", tracker: "GitHub", worktrees: [
+  { id: "fh", name: "fullharness", tracker: "GitHub", url: "https://github.com/example/fullharness", worktrees: [
     { path: "fullharness", branch: "main" },
     { path: "idea/acp-inbox", branch: "idea/acp-inbox" },
     { path: "10-permission-card", branch: "10-permission-card" },
@@ -403,7 +406,7 @@ const projects = [
     { path: "impl-spec-7-t13", branch: "impl-spec-7-t13", agentWt: true },
     { path: "wt-porcelain-check", branch: "wt-porcelain-check" },
   ]},
-  { id: "io", name: "inventory-operator", tracker: "GitHub", worktrees: [
+  { id: "io", name: "inventory-operator", tracker: "GitHub", url: "https://github.com/example/inventory-operator", worktrees: [
     { path: "inventory-operator", branch: "main" },
     { path: "flaky-reconcile", branch: "flaky-reconcile" },
   ]},
@@ -637,7 +640,7 @@ function renderRail() {
   const loose = sessions.filter(s => !s.fid);
   $("#loose").innerHTML = loose.length ? sTree(loose) : `<li class="hint" style="padding:0 8px">None. Sessions started outside a Feature land here.</li>`;
   $("#ptree").innerHTML = projects.map(p => `
-    <li class="proj"><div>${p.name}<small>${p.tracker ?? "no tracker"}</small></div>
+    <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
         const s = sessions.find(x => x.project === p.id && x.wt === w.path);
         return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span title="${p.name}.worktrees/${w.path}">${w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;

@@ -361,6 +361,16 @@ func runStdin(dir string, stdin []byte, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// Origin returns the URL of the repo's origin remote, or "" when it has none.
+// It reads the local config only; there is no network call.
+func Origin(repo string) string {
+	out, err := run(repo, "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // RefusedError explains why fh refused what the user typed: a path that
 // can't become a Project, or a branch name a new Worktree can't use. Its
 // message is shown to the user as is.
