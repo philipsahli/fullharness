@@ -46,7 +46,8 @@ func (i ghIssue) node() map[string]any {
 }
 
 // fakeGh puts a gh first on PATH that answers fh's GraphQL query with
-// issues, `pr list` with prs, and `auth status` with authOK. It returns a
+// issues, `pr list` for every state capped at 500 with prs, and `auth
+// status` with authOK. It returns a
 // function that counts the GraphQL calls.
 func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) func() int {
 	t.Helper()
@@ -87,7 +88,7 @@ func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK b
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
-		"  *\"pr list\"*) cat \"" + dir + "/prs.json\" ;;\n" +
+		"  *\"pr list --state all --limit 500 \"*) cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
 	bin := filepath.Join(dir, "bin")

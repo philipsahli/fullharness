@@ -69,11 +69,39 @@ func (p PR) state() string {
 	}
 }
 
+// checks takes the rollup as one result (#127): any failed check wins,
+// then any still running, else passed; empty when there are no checks.
 func (p PR) checks() string {
 	if len(p.Checks) == 0 {
 		return ""
 	}
+	if slices.ContainsFunc(p.Checks, Check.failed) {
+		return ChecksFailed
+	}
+	if slices.ContainsFunc(p.Checks, Check.running) {
+		return ChecksRunning
+	}
 	return ChecksPassed
+}
+
+// failed: a CheckRun's conclusion, or a StatusContext's state, says it
+// failed. ERROR and STARTUP_FAILURE are GitHub's other words for a failed
+// run, so they count too.
+func (c Check) failed() bool {
+	switch c.Conclusion + c.State {
+	case "FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR":
+		return true
+	}
+	return false
+}
+
+// running: a CheckRun that hasn't completed (queued, in progress, waiting
+// or pending), or a StatusContext that is pending or expected.
+func (c Check) running() bool {
+	if c.State != "" {
+		return c.State == "PENDING" || c.State == "EXPECTED"
+	}
+	return c.Status != "COMPLETED"
 }
 
 // records are prs's records, newest (highest number) first; never nil, so
