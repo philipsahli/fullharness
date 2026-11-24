@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/philipsahli/fullharness/internal/agent"
+	"github.com/philipsahli/fullharness/internal/classify"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
 	"github.com/philipsahli/fullharness/internal/session"
@@ -210,6 +211,11 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	boards := &boards{cache: map[string]*ghEntry{}}
 	registerBoardRoutes(srv, reg, boards, sessions)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
+	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)
+	if err != nil {
+		return fail(err)
+	}
+	registerClassifierRoutes(srv, classifier)
 	registerSessionRoutes(srv, sessionDeps{
 		projects: reg,
 		sessions: sessions,

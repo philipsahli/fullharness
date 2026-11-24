@@ -376,6 +376,29 @@ env = { ANTHROPIC_API_KEY = "your-api-key" }   # only if you do want API billing
 command = ["my-agent", "--acp"]
 ```
 
+### Turn-end classifier
+
+Autopilot will use this to decide how a turn ended: when no fixed rule says, fh asks a model whether the Agent is asking you something, is done, or is stuck ([ADR 0010](./docs/adr/0010-turn-end-classifier.md)). Autopilot is not built yet ([#110](https://github.com/philipsahli/fullharness/issues/110)), so for now fh makes no classifier calls and records nothing.
+
+- By default fh runs `claude -p --model claude-haiku-5-5` on your Claude login.
+- Any `claude` command runs without `ANTHROPIC_API_KEY`, as fh's Claude Code Agents do.
+- `claude` must be on your `PATH` for that.
+- If the call fails, fh stops and asks you.
+
+To use another model, set a command in `config.toml`. fh sends it the Agent's message on stdin, adds `--system-prompt` with the question, and reads output in the shape `claude -p --output-format json` prints:
+
+```toml
+[classifier]
+name = "claude sonnet"                         # how the measurements record it
+command = ["claude", "-p", "--model", "claude-sonnet-5-5", "--output-format", "json", "--tools", ""]
+```
+
+fh records each call in `classifier.jsonl` next to `state.json`: the message, the verdict, the latency and the cost. The messages come from your repos and go only to the configured command. To see the totals, open `/api/classifier` in the browser where fh runs (shortened here):
+
+```json
+{ "provider": "claude -p claude-haiku-5-5", "calls": 12, "overrides": 1, "meanLatencyMs": 2100, "costUsd": 0.0014 }
+```
+
 ### Logs
 
 fh logs to the terminal and to `~/.config/fullharness/fh.log`, which it starts over at 10 MB. `fh.log` never contains the launch token or the text of your messages or the Agent's replies.
