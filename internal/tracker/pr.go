@@ -104,15 +104,19 @@ func (c Check) running() bool {
 	return c.Status != "COMPLETED"
 }
 
-// records are prs's records, newest (highest number) first; never nil, so
-// the UI can tell "No PR yet" from a list.
-func records(prs []PR) []PRRecord {
-	out := []PRRecord{}
+// linkPRs sets t.PRs to the records of the prs that linked keeps, newest
+// (highest number) first, and t.OpenPR when one of them is Open or Draft.
+// PRs is never nil, so the UI can tell "No PR yet" from a list.
+func (t *Ticket) linkPRs(prs []PR, linked func(PR) bool) {
+	t.PRs = []PRRecord{}
+	t.OpenPR = false
 	for _, p := range prs {
-		out = append(out, p.Record())
+		if linked(p) {
+			t.PRs = append(t.PRs, p.Record())
+			t.OpenPR = t.OpenPR || p.Open()
+		}
 	}
-	slices.SortFunc(out, func(a, b PRRecord) int { return b.Number - a.Number })
-	return out
+	slices.SortFunc(t.PRs, func(a, b PRRecord) int { return b.Number - a.Number })
 }
 
 // BranchPR is the Pull request of branch among prs (GLOSSARY.md: it

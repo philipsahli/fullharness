@@ -48,14 +48,7 @@ func ReadLocal(repo string, aheadBranches []string, prs []PR) []Feature {
 			t.Ref = filepath.ToSlash(filepath.Join(".scratch", d.Name(), "issues", filepath.Base(file)))
 			mine := func(br string) bool { return localBranchFor(br, filepath.Base(file)) }
 			t.BranchAhead = slices.ContainsFunc(aheadBranches, mine)
-			var linked []PR
-			for _, p := range prs {
-				if mine(p.HeadRefName) {
-					linked = append(linked, p)
-				}
-			}
-			t.PRs = records(linked)
-			t.OpenPR = slices.ContainsFunc(linked, PR.Open)
+			t.linkPRs(prs, func(p PR) bool { return mine(p.HeadRefName) })
 			f.Tickets = append(f.Tickets, t)
 		}
 		slices.SortFunc(f.Tickets, func(a, b Ticket) int { return strings.Compare(a.Number, b.Number) })

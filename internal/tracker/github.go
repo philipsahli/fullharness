@@ -129,14 +129,7 @@ func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string
 		}
 	}
 	t.BranchAhead = slices.ContainsFunc(aheadBranches, func(b string) bool { n, ok := numberOf(b); return ok && n == i.Number })
-	var mine []PR
-	for _, p := range prs {
-		if p.linksTo(i.Number) {
-			mine = append(mine, p)
-		}
-	}
-	t.PRs = records(mine)
-	t.OpenPR = slices.ContainsFunc(mine, PR.Open)
+	t.linkPRs(prs, func(p PR) bool { return p.linksTo(i.Number) })
 	return t
 }
 
