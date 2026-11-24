@@ -31,37 +31,19 @@ function ChecksMark({ checks }: { checks: PR["checks"] }) {
   );
 }
 
-// PRPart is one Pull request on a Ticket row as `#21 ↗ Open ✓`: the number
-// links to GitHub.
-export function PRPart({ pr }: { pr: PR }) {
+// PRPart is one Pull request as `#21 ↗ Open ✓`, as on a Ticket row; the
+// number links to GitHub. labelled spells it out for the Session header as
+// `PR #21 ↗ Open · checks ✓`. A PR without checks leaves the checks out.
+export function PRPart({ pr, labelled }: { pr: PR; labelled?: boolean }) {
   return (
     <span className={`pr ${pr.state}`}>
       <LinkOrText url={pr.url} title={`Pull request #${pr.number} on GitHub`}>
-        #{pr.number} ↗
+        {labelled && "PR "}#{pr.number} ↗
       </LinkOrText>{" "}
       {prStateName[pr.state]}
       {pr.checks && (
         <>
-          {" "}
-          <ChecksMark checks={pr.checks} />
-        </>
-      )}
-    </span>
-  );
-}
-
-// SessionPRPart is a Worktree's Pull request in the Session header as
-// `PR #21 ↗ Open · checks ✓`; a PR without checks leaves the checks out.
-export function SessionPRPart({ pr }: { pr: PR }) {
-  return (
-    <span className={`pr ${pr.state}`}>
-      <LinkOrText url={pr.url} title={`Pull request #${pr.number} on GitHub`}>
-        PR #{pr.number} ↗
-      </LinkOrText>{" "}
-      {prStateName[pr.state]}
-      {pr.checks && (
-        <>
-          {" · checks "}
+          {labelled ? " · checks " : " "}
           <ChecksMark checks={pr.checks} />
         </>
       )}

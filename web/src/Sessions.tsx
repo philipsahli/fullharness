@@ -4,7 +4,7 @@ import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
 import { LinkOrText } from "./LinkOrText";
 import { AgentMarkdown } from "./Markdown";
-import { SessionPRPart } from "./PR";
+import { PRPart } from "./PR";
 import {
   byListOrder,
   loadedConversation,
@@ -655,7 +655,7 @@ function BranchLine({ worktree: w }: { worktree?: Worktree }) {
       {w.pr && (
         <>
           {" · "}
-          <SessionPRPart pr={w.pr} />
+          <PRPart pr={w.pr} labelled />
         </>
       )}
       {w.noPR && " · No PR yet"}
