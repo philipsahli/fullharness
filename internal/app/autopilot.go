@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/philipsahli/fullharness/internal/agent"
 	"github.com/philipsahli/fullharness/internal/autopilot"
@@ -108,7 +107,7 @@ func autopilotProjects(reg *project.Registry) []autopilot.Project {
 
 // registerAutopilotRoutes adds the per-Project switch. Turning Autopilot on
 // looks at the Project at once rather than at the next tick.
-func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents []agent.Definition, pilot *autopilot.Runner) {
+func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents []agent.Definition, pilot *autopilot.Runner, background func(func(context.Context))) {
 	srv.Handle("POST /api/projects/autopilot", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Path  string `json:"path"`
@@ -134,7 +133,7 @@ func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents [
 		w.WriteHeader(http.StatusNoContent)
 		for _, p := range autopilotProjects(reg) {
 			if p.Path == req.Path {
-				go pilot.Step(p, true)
+				background(func(context.Context) { pilot.Step(p, true) })
 			}
 		}
 	})
@@ -146,11 +145,4 @@ func registerAutopilotHistoryRoute(srv *server.Server, pilot *autopilot.Runner) 
 	srv.Handle("GET /api/autopilot", func(w http.ResponseWriter, r *http.Request) {
 		server.WriteJSON(w, http.StatusOK, map[string]any{"features": pilot.History(r.URL.Query().Get("project"))})
 	})
-}
-
-// runAutopilot looks at the Projects every interval until stop closes.
-func runAutopilot(pilot *autopilot.Runner, interval time.Duration, stop <-chan struct{}) {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { <-stop; cancel() }()
-	pilot.Run(ctx, interval)
 }

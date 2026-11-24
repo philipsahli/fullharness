@@ -93,6 +93,26 @@ type Instance struct {
 	stop      chan struct{} // ends the refresh loop
 	serveErr  error
 	closeOnce sync.Once
+
+	// Autopilot's work runs in goroutines started by goBackground. Close
+	// cancels bgCtx and waits for them, so nothing writes to dir after
+	// Close returns (#68).
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+	bgMu     sync.Mutex
+	bgClosed bool // set by Close: goBackground starts nothing more
+	bg       sync.WaitGroup
+}
+
+// goBackground runs f in its own goroutine with a context that Close
+// cancels, unless Close has started.
+func (i *Instance) goBackground(f func(ctx context.Context)) {
+	i.bgMu.Lock()
+	defer i.bgMu.Unlock()
+	if i.bgClosed {
+		return
+	}
+	i.bg.Go(func() { f(i.bgCtx) })
 }
 
 // Start launches fh and opens the browser on an authorised URL.
@@ -136,6 +156,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 
 	inst := &Instance{dir: opts.Dir, token: token, dev: opts.Dev, done: make(chan struct{})}
+	inst.bgCtx, inst.bgCancel = context.WithCancel(context.Background())
 	fail := func(err error) (*Instance, error) {
 		_ = ln.Close()                        // the original error is the one worth reporting
 		_ = removeLaunchFile(opts.Dir, token) // as above
@@ -186,7 +207,8 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 			// pilot is set before fh serves, so before any turn can end.
 			// The time is taken here, in turn order; the classifier runs
 			// in its own goroutine.
-			go pilot.TurnEnded(e, time.Now())
+			at := time.Now()
+			inst.goBackground(func(ctx context.Context) { pilot.TurnEnded(ctx, e, at) })
 		},
 		Persist: func(saved []session.Saved) {
 			if err := st.SetSessions(saved); err != nil {
@@ -246,7 +268,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if pilot, err = newAutopilot(deps, boards, classifier); err != nil {
 		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
 	}
-	registerAutopilotRoutes(srv, reg, agents, pilot)
+	registerAutopilotRoutes(srv, reg, agents, pilot, inst.goBackground)
 	registerAutopilotHistoryRoute(srv, pilot)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
@@ -263,7 +285,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if pilotInterval == 0 {
 		pilotInterval = DefaultAutopilotInterval
 	}
-	go runAutopilot(pilot, pilotInterval, inst.stop)
+	inst.goBackground(func(ctx context.Context) { pilot.Run(ctx, pilotInterval) })
 	go func() {
 		inst.serveErr = inst.srv.Serve()
 		close(inst.done)
@@ -332,11 +354,16 @@ func (i *Instance) Close() error {
 	var err error
 	i.closeOnce.Do(func() {
 		close(i.stop)
+		i.bgMu.Lock()
+		i.bgClosed = true
+		i.bgMu.Unlock()
+		i.bgCancel()
 		// Agent processes end with fh (ADR 0002).
 		i.sessions.StopAll()
 		err = i.srv.Close()
 		// Cancels running PR fetches and waits for them, so none outlives fh.
 		i.projects.Close()
+		i.bg.Wait()
 		defer func() { _ = i.logFile.Close() }() // nothing left to log the error to
 		if i.dev {
 			return // the next dev launch reuses the token from this file
