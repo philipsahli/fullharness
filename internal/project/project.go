@@ -248,6 +248,14 @@ func (r *Registry) read(path string) Project {
 	}
 	if g, ok := gitremote.ParseGitHub(worktree.Origin(path)); ok {
 		p.URL = g.URL()
+		// A branch links only if origin has it, so the link doesn't 404 for
+		// a branch that was never pushed.
+		remote := worktree.RemoteBranches(path)
+		for i := range p.Worktrees {
+			if b := p.Worktrees[i].Branch; b != "" && remote[b] {
+				p.Worktrees[i].URL = g.BranchURL(b)
+			}
+		}
 	}
 	return p
 }

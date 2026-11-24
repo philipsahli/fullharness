@@ -278,11 +278,17 @@ h3 {
   font-size: 12px;
   color: var(--muted);
 }
-.wt > span:nth-child(2) {
+/* The branch: a span, or a link when origin has it (#100). */
+.wt > :nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg);
+}
+.wt > a:nth-child(2) {
+  color: var(--accent);
+  /* overflow: hidden would clip a ring drawn outside the box. */
+  outline-offset: -2px;
 }
 .wt .counts {
   grid-column: 2 / 4;

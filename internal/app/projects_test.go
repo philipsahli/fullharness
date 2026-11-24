@@ -233,3 +233,42 @@ func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
 		}
 	}
 }
+
+func TestAWorktreeBranchLinksToGitHubOnlyWhenOriginHasIt(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	parent := realPath(t, t.TempDir())
+	for name, origin := range map[string]string{
+		"shop":  "git@github.com:someone/shop.git",
+		"tools": "git@gitlab.com:someone/tools.git",
+	} {
+		repo := newRepo(t, parent, name)
+		git(t, repo, "remote", "add", "origin", origin)
+		// As if main had been pushed and fetched; feature/x never was.
+		git(t, repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+		git(t, repo, "worktree", "add", "-q", "-b", "feature/x", filepath.Join(parent, name+"-x"))
+		if status, body := f.post(c, "/api/projects", map[string]string{"path": repo}); status != http.StatusCreated {
+			t.Fatalf("add %s: status %d (%v)", name, status, body)
+		}
+	}
+	want := map[string]map[string]any{
+		"shop":  {"main": "https://github.com/someone/shop/tree/main", "feature/x": nil},
+		"tools": {"main": nil, "feature/x": nil}, // not GitHub: no links even with the ref
+	}
+
+	ps := projects(t, f.state(c))
+
+	for _, p := range ps {
+		name, _ := p["name"].(string)
+		wts := worktrees(t, p)
+		if len(wts) != len(want[name]) {
+			t.Fatalf("%s: got %d worktrees, want %d", name, len(wts), len(want[name]))
+		}
+		for _, w := range wts {
+			branch, _ := w["branch"].(string)
+			if w["url"] != want[name][branch] {
+				t.Errorf("%s %s: url = %v, want %v", name, branch, w["url"], want[name][branch])
+			}
+		}
+	}
+}

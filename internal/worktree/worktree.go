@@ -20,6 +20,9 @@ import (
 type Worktree struct {
 	Path   string `json:"path"`
 	Branch string `json:"branch"` // empty when HEAD is detached
+	// URL is the branch's GitHub page, set by package project only when
+	// origin is on GitHub and origin/<Branch> exists as of the last fetch.
+	URL string `json:"url,omitempty"`
 	// Main is the Project's own tree, the first entry git reports.
 	Main bool `json:"main"`
 	// Agent marks a Worktree fh didn't create (and isn't the main tree); fh
@@ -359,6 +362,24 @@ func runStdin(dir string, stdin []byte, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
+}
+
+// RemoteBranches returns the branches origin had at the last fetch, read
+// from the local refs/remotes/origin/ refs in one git call, with no network.
+// It is empty when the repo has no such refs or git fails.
+func RemoteBranches(repo string) map[string]bool {
+	branches := map[string]bool{}
+	out, err := run(repo, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/")
+	if err != nil {
+		return branches
+	}
+	for line := range strings.Lines(string(out)) {
+		name := strings.TrimPrefix(strings.TrimSpace(line), "refs/remotes/origin/")
+		if name != "" && name != "HEAD" {
+			branches[name] = true
+		}
+	}
+	return branches
 }
 
 // Origin returns the URL of the repo's origin remote, or "" when it has none.

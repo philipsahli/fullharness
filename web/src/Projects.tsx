@@ -81,7 +81,7 @@ function WorktreeItem({ project, wt }: { project: string; wt: Worktree }) {
   return (
     <li className="wt" title={`${wt.path}\n${fetchNote(wt)}`}>
       <span className="dot" aria-hidden="true" />
-      <span>{wt.branch || "(detached)"}</span>
+      <LinkOrText url={wt.url}>{wt.branch || "(detached)"}</LinkOrText>
       {/* fh's own Worktrees need no tag; the others say why they differ. */}
       {wt.main && <span className="tag">main tree</span>}
       {wt.agent && <span className="tag">Agent worktree</span>}

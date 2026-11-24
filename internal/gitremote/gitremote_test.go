@@ -50,3 +50,16 @@ func TestGitHubURL(t *testing.T) {
 		t.Errorf("URL() = %q", got)
 	}
 }
+
+func TestGitHubBranchURL(t *testing.T) {
+	shop := gitremote.GitHub{Owner: "someone", Repo: "shop"}
+	for branch, want := range map[string]string{
+		"main":         "https://github.com/someone/shop/tree/main",
+		"feature/x":    "https://github.com/someone/shop/tree/feature/x",
+		"fix#12/a%b?c": "https://github.com/someone/shop/tree/fix%2312/a%25b%3Fc",
+	} {
+		if got := shop.BranchURL(branch); got != want {
+			t.Errorf("BranchURL(%q) = %q, want %q", branch, got, want)
+		}
+	}
+}

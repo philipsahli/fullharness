@@ -19,6 +19,16 @@ func (g GitHub) URL() string {
 	return "https://github.com/" + g.Owner + "/" + g.Repo
 }
 
+// BranchURL is a branch's page. Each path segment is escaped: git allows
+// '#', '%' and '?' in branch names, which would otherwise end the path.
+func (g GitHub) BranchURL(branch string) string {
+	parts := strings.Split(branch, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return g.URL() + "/tree/" + strings.Join(parts, "/")
+}
+
 // GitHub's own rules: an owner is letters, digits and single hyphens; a repo
 // name is letters, digits, '.', '-' and '_'. Checking them also keeps
 // anything odd in a remote URL out of the links fh builds from it.
