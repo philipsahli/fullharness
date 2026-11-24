@@ -504,8 +504,8 @@ const factory = {
       tickets: [
         { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
         { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
-        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
-        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", sid: "s2" },
+        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
+        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
         { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
         { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", note: "blocked by #11" },
       ] },
@@ -794,11 +794,18 @@ function renderFactory() {
 }
 
 /* ---------- Feature page ---------- */
+/* A Ticket's PR part (#128): every PR that belongs to it, newest first, as `#n ↗ <PR state> <checks>`. */
+const PR_STATE = { draft: "Draft", open: "Open", merged: "Merged", closed: "Closed" };
+const CI_MARK = { pass: "✓", fail: "✗", run: "…" };
+function prPart(pr) {
+  const ci = pr.ci || (pr.state === "merged" ? "pass" : "");
+  return `<span style="white-space:nowrap"><a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${PR_STATE[pr.state]}</span>${ci ? ` <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}</span>`;
+}
 function ticketRow(fid, t) {
-  const s = t.sid && sess(t.sid), pr = t.pr;
+  const s = t.sid && sess(t.sid), pr = t.pr, prs = pr ? [pr, ...(t.older || [])] : [];
   const sessCell = s ? `<button class="btn small" data-open="${s.id}"><span class="dot ${s.state}" style="display:inline-block;margin-right:5px"></span>${STATE_LABEL[s.state]}</button>` : `<span class="chain">—</span>`;
-  const prCell = pr ? `<a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${pr.state}</span>` : `<span class="chain">—</span>`;
-  const ciCell = pr && pr.state === "open" ? `<span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : "✗"} ${pr.checks}</span>` : `<span class="chain">${pr ? "merged" : "—"}</span>`;
+  const prCell = prs.length ? prs.map(prPart).join("<br>") : `<span class="ci none">No PR yet</span>`;
+  const ciCell = pr && (pr.state === "open" || pr.state === "draft") ? `<span class="ci ${pr.ci}">${CI_MARK[pr.ci]} ${pr.checks}</span>` : `<span class="chain">${pr ? "merged" : "—"}</span>`;
   let act = "";
   if (t.stage === "Startable") act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
