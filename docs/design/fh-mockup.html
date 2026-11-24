@@ -155,6 +155,9 @@ dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; overflow-wrap: anywhere;
 .files { list-style: none; margin: 0; padding: 0; font-family: var(--f-mono); font-size: 12px; display: grid; gap: 3px; }
 .files b { display: inline-block; width: 16px; font-weight: 500; }
 .m { color: var(--waiting); } .a { color: var(--good); }
+.later-note { margin: 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 12px; color: var(--muted); }
+.later-note b { color: var(--fg); margin-right: 6px; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.detail:has(.later-note) > section { opacity: .5; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .ticketcard { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
 
@@ -424,7 +427,7 @@ const projects = [
 let sessions = [
   { id: "s1", title: "Grill: Inbox for permission requests", project: "fh", wt: "idea/acp-inbox", agent: "claude", state: "waiting", fid: "f-inbox",
     acp: "sess_7f3a…c21", started: "41 min ago", mode: "default", model: "Opus 5.5", usage: "31% context · $0.42",
-    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0009-inbox-batching.md"],["M","internal/acp/client.go"]], pr: null },
+    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0009-inbox-batching.md"],["M","internal/acp/client.go"]], pr: null, pushed: true },
     perm: { id: "p1", kind: "Run command", cmd: "go test ./internal/acp/...", why: "Run the ACP client tests after the change to permission handling." },
     msgs: [
       { r: "user", t: "/grill-with-docs Idea #31: the Inbox should batch permission requests across Sessions." },
@@ -455,7 +458,7 @@ let sessions = [
     ] },
   { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "12-pty-fallback", agent: "copilot", state: "working", view: "terminal", fid: "f-acp", ticket: 12,
     acp: "— (terminal fallback)", started: "26 min ago",
-    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: null },
+    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
     msgs: [] },
   { id: "s10", title: "#10 Permission request card", project: "fh", wt: "10-permission-card", agent: "claude", state: "idle", fid: "f-acp", ticket: 10,
     acp: "sess_19aa…f02", started: "3 h ago", mode: "default", model: "Opus 5.5", usage: "54% context · $1.87",
@@ -706,13 +709,21 @@ function prLine(pr) {
   return `<dd><a class="ext" href="#">#${pr.n} ↗</a> · <span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : pr.ci === "fail" ? "✗" : "●"} ${pr.checks}</span> · ${pr.review}</dd>`;
 }
 const FAKE_DIFF = { "internal/worktree/list.go": L("@@ func List(dir string) ([]Worktree, error)", "-\tout, err := git(dir, \"worktree\", \"list\")", "+\tout, err := git(dir, \"worktree\", \"list\", \"--porcelain\")", "+\tfor _, block := range strings.Split(out, \"\\n\\n\") {") };
+/* The Session header line (#129): the Worktree's branch, a link once pushed, then `PR #n ↗ <PR state> · checks <mark>`, or No PR yet. */
+function branchLine(s) {
+  const pr = s.git.pr;
+  const branch = pr || s.git.pushed ? `<a class="ext" href="#">${esc(s.wt)} ↗</a>` : `<span class="mono">${esc(s.wt)}</span>`;
+  if (!pr) return `${branch} · <span class="ci none">No PR yet</span>`;
+  const state = pr.state || "open", ci = pr.ci || (state === "merged" ? "pass" : "");
+  return `${branch} · <a class="ext" href="#">PR #${pr.n} ↗</a> ${PR_STATE[state]}${ci ? ` · checks <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}`;
+}
 function renderSession() {
   const s = sess(ui.current), p = proj(s.project), v = s.view || "chat", fx = s.fid && feat(s.fid);
   const crumb = fx ? `<button class="btn small" data-feat="${s.fid}">${esc(fx.f.name)}</button>${s.ticket ? ` / Ticket #${s.ticket}` : ""}` : `${p.name} / Loose Session`;
   const controls = s.mode ? `<select aria-label="Mode"><option>${s.mode}</option><option>plan</option><option>auto-accept edits</option></select><select aria-label="Model"><option>${s.model}</option></select><span class="usage">${s.usage}</span>` : "";
   $("#main").innerHTML = `
     <div class="mhead">
-      <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2></div>
+      <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2><span class="crumb">${branchLine(s)}</span></div>
       ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}${s.exit ? ` · ${s.exit}` : ""}</span>
       <div class="seg" role="group" aria-label="Session view">
         <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
@@ -731,6 +742,7 @@ function renderSession() {
   const tk = fx && s.ticket ? (fx.f.tickets || []).find(t => t.n === s.ticket) : null;
   const pr = s.git.pr;
   $("#detail").innerHTML = `
+    <p class="later-note" role="note"><b>Later</b> This pane isn't built yet (#127, Out of Scope). The branch and PR show in the Session header line.</p>
     <section><h3>Worktree</h3>
       <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
       <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
