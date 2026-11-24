@@ -32,12 +32,18 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// This test drives session.Manager directly, not the API: the TurnEnded hook
+// it checks is a Config callback (app.go hands it to Autopilot) that no HTTP
+// or WebSocket response shows.
 func TestEachTurnEndCallsTheHookWithItsSessionAndStopReason(t *testing.T) {
-	script, _ := json.Marshal(map[string]any{"prompts": map[string]any{
+	script, err := json.Marshal(map[string]any{"prompts": map[string]any{
 		"stop":   []any{map[string]any{"stop": "cancelled"}},
 		"fail":   []any{map[string]any{"fail": "boom"}},
 		"tokens": []any{map[string]any{"stop": "max_tokens"}},
 	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ends := make(chan session.TurnEnd, 4)
 	m := session.New(session.Config{
 		LogDir:       t.TempDir(),

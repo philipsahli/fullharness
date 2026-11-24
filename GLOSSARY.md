@@ -42,6 +42,10 @@ _Avoid_: status, busy, blocked, error (an error is an Exited reason)
 A message the user sent while the Agent was Starting, Working or Waiting. fullharness sends it as the Session's next turn once the current turn ends, never into the running turn. A Session has at most one; sending again adds to it.
 _Avoid_: pending message, draft; and never call the Inbox a queue
 
+**Cancel**:
+The button in the Session composer that ends the running turn. If the prompt hasn't gone out to the Agent yet, the turn ends at once and the Agent never sees that message; the conversation still shows it, followed by "Turn cancelled."
+_Avoid_: stop, abort, kill
+
 **Notification**:
 A desktop alert that a Session started Waiting while nobody was looking at it: shown by an fh tab, or natively by macOS when no tab can. It points to the Session; answering happens there or in the Inbox.
 _Avoid_: alert, ping; and never "notifications" for the Inbox

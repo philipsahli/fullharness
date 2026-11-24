@@ -590,7 +590,7 @@ func (s *session) resetRunLocked() {
 	s.sum.State, s.sum.Since = Starting, time.Now()
 	s.sum.Reason, s.sum.Stderr, s.sum.Login, s.sum.Waiting = "", nil, "", ""
 	s.proc, s.stopping, s.loginNeeded, s.ready = nil, false, false, false
-	s.inTurn, s.unseen, s.cancelRequested = false, false, false
+	s.inTurn, s.unseen, s.cancelRequested, s.promptSent = false, false, false, false
 	s.transcript, s.tools = nil, map[string]int{} // the Agent replays the conversation
 	// The reloaded Agent reports these again; run sets the mode and options
 	// back to what they were.
@@ -1275,11 +1275,7 @@ func (s *session) prompt(text string) {
 		// Cancelled before it went out (#56): end the turn as the Agent
 		// would have, without sending it.
 		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
-		next := s.endTurn(turnCancelled)
-		s.turnEnded(TurnEnd{Session: s.sum.ID, StopReason: string(sdk.StopReasonCancelled)})
-		if next != "" {
-			s.prompt(next)
-		}
+		s.finishTurn(turnCancelled, TurnEnd{Session: s.sum.ID, StopReason: string(sdk.StopReasonCancelled)})
 		return
 	}
 	// A cancel from here on is written to the Agent. It can still get
@@ -1301,8 +1297,7 @@ func (s *session) prompt(text string) {
 		// The Agent is alive but refused the turn; show it and let the
 		// user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.endTurn(turnFailed)
-		s.turnEnded(TurnEnd{Session: s.sum.ID, Err: err})
+		s.finishTurn(turnFailed, TurnEnd{Session: s.sum.ID, Err: err})
 		return
 	}
 	cancelledTurn := reason == sdk.StopReasonCancelled
@@ -1315,8 +1310,15 @@ func (s *session) prompt(text string) {
 	if cancelledTurn {
 		end = turnCancelled
 	}
+	s.finishTurn(end, TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+}
+
+// finishTurn ends the running turn, calls the TurnEnded hook, and sends the
+// Queued message when endTurn says it goes out next. A failed turn never
+// sends it: endTurn gives it back as unsent text.
+func (s *session) finishTurn(end turnEnd, e TurnEnd) {
 	next := s.endTurn(end)
-	s.turnEnded(TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+	s.turnEnded(e)
 	if next != "" {
 		s.prompt(next)
 	}
