@@ -34,13 +34,6 @@ type Issue struct {
 	} `json:"blockedBy"`
 }
 
-// PR is one open pull request.
-type PR struct {
-	Number      int    `json:"number"`
-	HeadRefName string `json:"headRefName"`
-	Body        string `json:"body"`
-}
-
 // triageRoles are the labels a Ticket's role comes from
 // (docs/agents/triage-labels.md).
 var triageRoles = []string{"needs-triage", "needs-info", ReadyLabel, "ready-for-human", "wontfix"}
@@ -59,7 +52,7 @@ var (
 	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
 
-// ReadGitHub builds Features from a repository's issues and open PRs
+// ReadGitHub builds Features from a repository's issues and PRs
 // (#12). A Spec is an issue with sub-issues, or that others name with
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
 // only when open and labelled ready-for-agent. Wayfinder issues are left out.
@@ -136,7 +129,14 @@ func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string
 		}
 	}
 	t.BranchAhead = slices.ContainsFunc(aheadBranches, func(b string) bool { n, ok := numberOf(b); return ok && n == i.Number })
-	t.OpenPR = slices.ContainsFunc(prs, func(p PR) bool { return p.linksTo(i.Number) })
+	var mine []PR
+	for _, p := range prs {
+		if p.linksTo(i.Number) {
+			mine = append(mine, p)
+		}
+	}
+	t.PRs = records(mine)
+	t.OpenPR = slices.ContainsFunc(mine, PR.Open)
 	return t
 }
 

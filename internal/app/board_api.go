@@ -131,16 +131,14 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 	switch kind {
 	case tracker.KindLocal:
 		ok = true
-		var prBranches []string
+		var prs []tracker.PR
 		if tracker.HasGitHubRemote(repo) {
 			// Without gh the board skips Review; the Tickets still show.
 			if gr := b.gh(repo, false, refresh); gr.err == nil {
-				for _, p := range gr.prs {
-					prBranches = append(prBranches, p.HeadRefName)
-				}
+				prs = gr.prs
 			}
 		}
-		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prBranches)
+		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
 		}

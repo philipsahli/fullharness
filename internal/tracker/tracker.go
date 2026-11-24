@@ -88,9 +88,12 @@ type Ticket struct {
 	// Next is the skill that moves it on from its Stage (next.go). The
 	// Board offers it only on a Startable Ticket.
 	Next *Step `json:"next,omitempty"`
+	// PRs are the Pull requests that belong to it, in every PR state,
+	// newest first; never nil. Only Open and Draft ones set OpenPR.
+	PRs []PRRecord `json:"prs"`
 	// Inputs to the Stage, filled by the adapter, and by Derive from links:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
-	OpenPR      bool `json:"-"` // a linked PR is open
+	OpenPR      bool `json:"-"` // a linked PR is Open or Draft
 	Linked      bool `json:"-"` // a Session (live or Exited) was started from it
 }
 

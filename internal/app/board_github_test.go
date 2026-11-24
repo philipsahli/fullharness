@@ -153,8 +153,8 @@ func TestAGitHubBoardPutsEachFeatureAtItsStage(t *testing.T) {
 		{Number: 61, Title: "Measure", State: "OPEN", Labels: []string{"wayfinder:research"}, Parent: 60},
 		{Number: 70, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
 	}, []map[string]any{
-		{"number": 100, "headRefName": "21-index", "body": "Adds the index"},
-		{"number": 101, "headRefName": "ranking", "body": "Ranks results.\n\ncloses #22"},
+		{"number": 100, "headRefName": "21-index", "body": "Adds the index", "state": "OPEN"},
+		{"number": 101, "headRefName": "ranking", "body": "Ranks results.\n\ncloses #22", "state": "OPEN"},
 	}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -235,7 +235,7 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 	repo := githubRepo(t)
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
-	fakeGh(t, nil, []map[string]any{{"number": 7, "headRefName": "1-form", "body": ""}}, true)
+	fakeGh(t, nil, []map[string]any{{"number": 7, "headRefName": "1-form", "body": "", "state": "OPEN", "url": "https://github.com/someone/shop/pull/7"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)
@@ -244,6 +244,9 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 
 	if s := ticketByNumber(t, login, "01")["stage"]; s != "review" {
 		t.Errorf("01 = %v, want review (open PR from branch 1-form)", s)
+	}
+	if got := asJSON(ticketByNumber(t, login, "01")["prs"]); got != `[{"checks":"","number":7,"state":"open","url":"https://github.com/someone/shop/pull/7"}]` {
+		t.Errorf("01 prs = %s, want PR #7, open, no checks", got)
 	}
 }
 
@@ -257,7 +260,7 @@ func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
 			Body: "## Blocked by\n\n- #3 (needs #9 first)\n- #5\n\n## Notes\n\n#7 is unrelated"},
 		{Number: 5, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 6, Title: "Linked by body", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
-	}, []map[string]any{{"number": 9, "headRefName": "3-part", "body": "Closes: #6"}}, true)
+	}, []map[string]any{{"number": 9, "headRefName": "3-part", "body": "Closes: #6", "state": "OPEN"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)
@@ -332,7 +335,7 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 		{Number: 2, Title: "In review", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 3, Title: "Implementing", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 4, Title: "Not started", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
-	}, []map[string]any{{"number": 9, "headRefName": "2-review", "body": ""}}, true)
+	}, []map[string]any{{"number": 9, "headRefName": "2-review", "body": "", "state": "OPEN"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)

@@ -76,7 +76,7 @@ func TestATicketAtReviewGetsCodeReviewNext(t *testing.T) {
 	fakeGh(t, []ghIssue{
 		{Number: 20, Title: "Search", State: "OPEN", SubIssues: []int{21}},
 		{Number: 21, Title: "Index", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 20},
-	}, []map[string]any{{"number": 100, "headRefName": "21-index", "body": "Adds the index"}}, true)
+	}, []map[string]any{{"number": 100, "headRefName": "21-index", "body": "Adds the index", "state": "OPEN"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)

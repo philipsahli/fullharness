@@ -86,9 +86,15 @@ func FetchIssues(repo string) ([]Issue, error) {
 	return issues, nil
 }
 
-// FetchPRs reads the repository's open PRs.
+// prLimit caps the PR read at the most recent PRs: enough for every open
+// one, while a long-closed Ticket's old Merged PR may drop off (#127).
+const prLimit = "500"
+
+// FetchPRs reads the repository's PRs in every state, the prLimit most
+// recent, with what a PRRecord needs.
 func FetchPRs(repo string) ([]PR, error) {
-	out, err := gh(repo, "pr", "list", "--state", "open", "--limit", "500", "--json", "number,headRefName,body")
+	out, err := gh(repo, "pr", "list", "--state", "all", "--limit", prLimit,
+		"--json", "number,headRefName,body,state,isDraft,url,statusCheckRollup")
 	if err != nil {
 		return nil, err
 	}

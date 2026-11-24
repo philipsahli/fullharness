@@ -235,7 +235,7 @@ func TestAnImplementSpecSessionCoversItsOpenTickets(t *testing.T) {
 		{Number: 2, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 3, Title: "Cookie", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 4, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 1},
-	}, []map[string]any{{"number": 9, "headRefName": "3-cookie", "body": ""}}, true)
+	}, []map[string]any{{"number": 9, "headRefName": "3-cookie", "body": "", "state": "OPEN"}}, true)
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	f.addProject(c, repo)
