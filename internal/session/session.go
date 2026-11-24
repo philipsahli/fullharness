@@ -256,11 +256,24 @@ type OptionValue struct {
 	Value string `json:"value"`
 }
 
+// TurnEnd is how one turn ended. A turn the Agent never answered (it
+// exited, or needs a login) has no TurnEnd: the Session goes Exited.
+type TurnEnd struct {
+	Session string
+	// StopReason is ACP's stop reason (end_turn, cancelled, max_tokens,
+	// refusal, ...); empty when Err is set.
+	StopReason string
+	// Err is set when the Agent refused the turn with an error.
+	Err error
+}
+
 // Config wires a Manager into fh.
 type Config struct {
 	LogDir    string          // holds logs/<session-id>.log
 	Broadcast func(event any) // sends an event to every tab
-	TurnEnded func()          // runs after each turn, e.g. a Worktree refresh
+	// TurnEnded runs after each turn the Agent answered, e.g. for a
+	// Worktree refresh and for Autopilot (#107) to pick the next step.
+	TurnEnded func(TurnEnd)
 	// EnteredWaiting runs when a Session starts Waiting, with what it waits
 	// for, for notifications (#8). viewed is set when a tab is looking at it.
 	EnteredWaiting func(sum Summary, what string, viewed bool)
@@ -1143,6 +1156,7 @@ func (s *session) prompt(text string) {
 		// user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
 		s.endTurn(false)
+		s.turnEnded(TurnEnd{Session: s.sum.ID, Err: err})
 		return
 	}
 	cancelledTurn := reason == sdk.StopReasonCancelled
@@ -1152,8 +1166,12 @@ func (s *session) prompt(text string) {
 	// A turn you cancelled needs no second look; any other ending (end_turn,
 	// max_tokens, refusal) waits for you.
 	s.endTurn(cancelledTurn)
+	s.turnEnded(TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+}
+
+func (s *session) turnEnded(e TurnEnd) {
 	if s.m.cfg.TurnEnded != nil {
-		s.m.cfg.TurnEnded()
+		s.m.cfg.TurnEnded(e)
 	}
 }
 

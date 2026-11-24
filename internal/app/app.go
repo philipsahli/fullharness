@@ -169,7 +169,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		LogDir:       logDir,
 		Broadcast:    func(ev any) { srv.Broadcast(ev) },
 		// A turn usually changes files; show it without waiting for a tick.
-		TurnEnded: reg.Refresh,
+		TurnEnded: func(session.TurnEnd) { reg.Refresh() },
 		Persist: func(saved []session.Saved) {
 			if err := st.SetSessions(saved); err != nil {
 				log.Info("save sessions failed", "err", err)
