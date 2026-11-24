@@ -689,10 +689,12 @@ const TERM = `╭─────────────────────
 function composer(s) {
   const a = AGENTS[s.agent].name;
   if (s.state === "exited" && s.canReopen) return `<div class="composer"><span class="crumb" style="flex:1">Exited: ${s.exit}. ${a} supports session/load, so the history comes back.</span><button class="btn" data-closesess="${s.id}">Close Session</button><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`;
+  // Starting again needs the branch; once the PR is merged there is nothing left to work on.
+  const gone = s.folderGone, merged = s.git.pr && s.git.pr.state === "merged";
   if (s.state === "exited") return `<div class="composer" style="display:grid;gap:8px;align-items:stretch">
-      <div class="notice"><strong>Exited: ${s.exit}. ${s.folderGone ? "Can't reopen: the Worktree's folder is gone." : "This Session can't be reopened."}</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
-      ${s.folderGone ? "" : `<span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span>`}</div>
-      <div class="acts" style="justify-content:flex-end">${s.ticket && !s.folderGone ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
+      <div class="notice"><strong>Exited: ${s.exit}. ${gone ? "Can't reopen: the Worktree's folder is gone." : "This Session can't be reopened."}</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
+      ${gone ? "" : `<span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span>`}</div>
+      <div class="acts" style="justify-content:flex-end">${s.ticket && !(gone && merged) ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
   if (s.state === "starting") return `<div class="composer"><input type="text" disabled placeholder="Starting ${a}…" aria-label="Message"><button class="btn primary" disabled>Send</button></div>`;
   const hint = s.turnDone ? `<span class="crumb">${a} finished its turn and is waiting for your reply.</span>` : "";
   return `<form class="composer" data-send="${s.id}" style="flex-wrap:wrap">${hint ? `<div style="flex:1 1 100%">${hint}</div>` : ""}<input id="composer-input" type="text" placeholder="Message ${a}… (/ for skills)" aria-label="Message">
@@ -727,21 +729,21 @@ function renderSession() {
     ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><button data-diff="${f}" aria-expanded="${!!ui.open[f]}"><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</button>${ui.open[f] ? diffView(FAKE_DIFF[f] || L("@@ " + f, "+ (example diff)")) : ""}</li>`).join("")}</ul><p class="hint">Click a file to see its diff.</p>`
     : `<p class="hint">No uncommitted changes.</p>`;
   const tk = fx && s.ticket ? (fx.f.tickets || []).find(t => t.n === s.ticket) : null;
-  const pr = s.git.pr;
+  const pr = s.git.pr, gone = s.folderGone;
   $("#detail").innerHTML = `
-    <section><h3>Worktree</h3>
+    <section><h3>Worktree${gone ? ` <span class="tag">Proposed — #156</span>` : ""}</h3>
       <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
-      <dt>Branch</dt><dd class="mono">${s.wt}</dd>${s.folderGone ? "" : `<dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>`}
+      <dt>Branch</dt><dd class="mono">${s.wt}</dd>${gone ? "" : `<dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>`}
       <dt>PR</dt>${prLine(pr)}</dl>
-      ${s.folderGone ? `<p class="hint">The folder is gone (removed after the merge). Close the Session to drop it from the list.</p>` : ""}
+      ${gone ? `<p class="hint">The folder is gone (removed after the merge). Close the Session to drop it from the list.</p><p class="hint">Proposed in #156: with the folder gone, this panel hides ahead/behind, Uncommitted and Remove Worktree.</p>` : ""}
       ${pr && pr.ci === "pass" && pr.state !== "merged" ? `<p class="hint"><button class="btn small primary" data-merge="${s.fid}:${s.ticket}">Merge #${pr.n}</button> <button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button></p>` : ""}</section>
-    ${s.folderGone ? "" : `<section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>`}
+    ${gone ? "" : `<section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>`}
     ${fx ? `<section><h3>${tk ? "Ticket" : "Feature"}</h3><div class="ticketcard">${tk ? `<span class="mono">#${tk.n}</span><strong>${esc(tk.t)}</strong>` : `<strong>${esc(fx.f.name)}</strong>`}<span class="crumb">${esc(fx.f.name)} · Stage: ${tk ? tk.stage : fx.f.stage}</span><button class="btn small" data-feat="${s.fid}" style="justify-self:start">Open Feature</button></div></section>`
       : `<section><h3>Feature</h3><p class="hint" style="margin:0 0 6px">Not part of a Feature.</p><button class="btn small" data-toast="Pick a Feature, or file this as a new Idea">Attach to a Feature…</button></section>`}
     ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${esc(sess(s.parent).title)}</button></section>`
       : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${esc(k.title)}</button></p>`).join("")}</section>` : ""}
     <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
-      ${s.folderGone ? "" : `<p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
+      ${gone ? "" : `<p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
       <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p>`}</section>`;
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
 }
@@ -1025,7 +1027,7 @@ document.addEventListener("click", e => {
   if (d.viewmode) { sess(ui.current).view = d.viewmode; return render(); }
   if (d.diff) { ui.open[d.diff] = !ui.open[d.diff]; return render(); }
   if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.exit = null; s.msgs.push({ r: "agent", t: "Session reopened via `session/load`. History restored." }); toast("Session reopened"); return render(); }
-  if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}The Worktree <span class="mono">${s.wt}</span> and its commits stay; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
+  if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}${s.folderGone ? `The Worktree's folder <span class="mono">${s.wt}</span> is already gone` : `The Worktree <span class="mono">${s.wt}</span> and its commits stay`}; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
       () => { sessions = sessions.filter(x => x.id !== s.id); toast(`Closed ${s.title}`); ui.view = s.fid ? "feature" : "factory"; if (s.fid) ui.feature = s.fid; render(); }, true); }
   if (d.rmwt) { const s = sess(d.rmwt); return confirmModal("Remove Worktree?", `<p style="margin:0">Closes the Session and deletes <span class="mono">${s.wt}</span>. The branch is merged, so nothing is lost. Ignored files deleted with it: <span class="mono">.env.local</span></p>`, "Remove Worktree", () => toast(`Removed ${s.wt}`), true); }
   if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }

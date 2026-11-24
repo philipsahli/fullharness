@@ -16,6 +16,7 @@ Every Software factory step in fh is started by the user, so a Feature stands st
   - a grilling question (the Session is Waiting),
   - approving a Spec (an Inbox item; Approve adds `ready-for-agent`),
   - merging a PR (fh never merges without the user's confirmation),
+  - reviewing the screen of a PR that changes a screen (Screenshot review; see `AGENTS.md`, UI changes),
   - permission requests (Autopilot Sessions never auto-approve),
   - a Feature that failed review after 2 rework rounds.
 - fh records every Autopilot action per Feature in its local state, so the Loop view can draw it after a restart.

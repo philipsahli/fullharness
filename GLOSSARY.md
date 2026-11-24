@@ -89,7 +89,7 @@ fullharness starting the next skill for a Feature by itself, for Features in the
 _Avoid_: pipeline, automation, bot, agent (an Agent is a CLI)
 
 **Stop point**:
-A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
+A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, reviewing the screen of a PR that changes a screen, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
 _Avoid_: gate, checkpoint, pause
 
 ## Planning

@@ -18,7 +18,7 @@ Run `make check` before opening a PR; it runs exactly what CI runs. A PR is done
 
 ## UI changes
 
-A PR that changes what a screen shows or how it behaves updates the mockup, `docs/design/fh-mockup.html`, in the same branch. The PR description names the changed mockup screen and how to reach it (which Session or Feature to click). Show the user a screenshot of that screen in chat; it stays out of the repo. The PR is done when its checks are green and the user has reviewed the screen. A PR that touches `web/src` without a visible change says "No visible UI change" in its description.
+A PR that changes what a screen shows or how it behaves updates the mockup, `docs/design/fh-mockup.html`, in the same branch. The PR description names the changed mockup screen and how to reach it (which Session or Feature to click). Show the user a screenshot of that screen in chat; it stays out of the repo. The PR is done when the Pull requests rule above is met, including the macOS job, and the user has reviewed the screen. A PR that Autopilot opens and that changes a screen stops at the **Screenshot review** Stop point until the user has reviewed it. A PR that touches `web/src` without a visible change says "No visible UI change" in its description.
 
 ## Documentation
 
