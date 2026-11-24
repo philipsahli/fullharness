@@ -714,7 +714,7 @@ function branchLine(s) {
   const pr = s.git.pr;
   const branch = pr || s.git.pushed ? `<a class="ext" href="#">${esc(s.wt)} ↗</a>` : `<span class="mono">${esc(s.wt)}</span>`;
   if (!pr) return `${branch} · <span class="ci none">No PR yet</span>`;
-  const state = pr.state || "open", ci = pr.ci || (state === "merged" ? "pass" : "");
+  const state = pr.state || "open", ci = pr.ci;
   return `${branch} · <a class="ext" href="#">PR #${pr.n} ↗</a> ${PR_STATE[state]}${ci ? ` · checks <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}`;
 }
 function renderSession() {
@@ -810,7 +810,7 @@ function renderFactory() {
 const PR_STATE = { draft: "Draft", open: "Open", merged: "Merged", closed: "Closed" };
 const CI_MARK = { pass: "✓", fail: "✗", run: "…" };
 function prPart(pr) {
-  const ci = pr.ci || (pr.state === "merged" ? "pass" : "");
+  const ci = pr.ci;
   return `<span style="white-space:nowrap"><a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${PR_STATE[pr.state]}</span>${ci ? ` <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}</span>`;
 }
 function ticketRow(fid, t) {
