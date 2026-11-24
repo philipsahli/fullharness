@@ -1175,3 +1175,17 @@ button:disabled {
     grid-template-columns: repeat(6, 200px);
   }
 }
+/* The Queued message (#93), under the transcript until the turn ends. */
+.queued {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.queued p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

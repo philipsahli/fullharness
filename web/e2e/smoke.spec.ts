@@ -832,3 +832,53 @@ test("fenced code and a read file are highlighted by language; an unknown langua
     await fh.dispose();
   }
 });
+
+test("a message sent while the Agent works is queued; cancel puts it back in the composer, every time", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: { prompts: { long: [{ waitCancel: true }] } },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("long");
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.locator(".state")).toHaveText("Working");
+    const message = conversation.getByRole("textbox", { name: "Message" });
+    await message.fill("and then this");
+    await message.press("Enter");
+
+    const queued = conversation.getByRole("status", { name: "Queued message" });
+    await expect(queued).toContainText("and then this");
+    await expect(message).toHaveValue("");
+
+    await conversation.getByRole("button", { name: "Cancel" }).click();
+    await expect(queued).toBeHidden();
+    await expect(message).toHaveValue("and then this");
+    await expect(conversation.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    // The same text coming back a second time comes back too.
+    await message.fill("long");
+    await message.press("Enter");
+    await expect(conversation.locator(".state")).toHaveText("Working");
+    await message.fill("and then this");
+    await message.press("Enter");
+    await expect(queued).toContainText("and then this");
+    await conversation.getByRole("button", { name: "Cancel" }).click();
+    await expect(queued).toBeHidden();
+    await expect(message).toHaveValue("and then this");
+  } finally {
+    await fh.dispose();
+  }
+});

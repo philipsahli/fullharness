@@ -145,6 +145,29 @@ func registerSessionRoutes(srv *server.Server, d sessionDeps) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// The Queued message (#93), one of session.QueuedAction: "edit" returns
+	// its text for the composer; the others answer 202 or 204.
+	srv.Handle("POST /api/sessions/{id}/queued", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action session.QueuedAction `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeSessionError(w, session.ErrQueuedVerb)
+			return
+		}
+		text, err := d.sessions.Queued(r.PathValue("id"), req.Action)
+		switch {
+		case err != nil:
+			writeSessionError(w, err)
+		case req.Action == session.QueuedEdit:
+			server.WriteJSON(w, http.StatusOK, map[string]string{"text": text})
+		case req.Action == session.QueuedSendNow:
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+
 	srv.Handle("POST /api/sessions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		accepted(w, d.sessions.Cancel(r.PathValue("id")))
 	})
@@ -249,11 +272,11 @@ func writeSessionError(w http.ResponseWriter, err error) {
 	var refused *worktree.RefusedError
 	switch {
 	case errors.As(err, &bad), errors.As(err, &refused), errors.Is(err, session.ErrChoice),
-		errors.Is(err, session.ErrNotOffered):
+		errors.Is(err, session.ErrNotOffered), errors.Is(err, session.ErrQueuedVerb):
 		server.WriteError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, session.ErrNotFound), errors.Is(err, session.ErrNoRequest), errors.Is(err, session.ErrNoItem):
 		server.WriteError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, session.ErrBusy), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
+	case errors.Is(err, session.ErrNoQueued), errors.Is(err, session.ErrNoTurn), errors.Is(err, session.ErrNotRunning), errors.Is(err, session.ErrWorktreeUse),
 		errors.Is(err, session.ErrAnswered), errors.Is(err, session.ErrConfirm), errors.Is(err, session.ErrNoReopen),
 		errors.Is(err, session.ErrNotExited), errors.Is(err, session.ErrRemoving), errors.Is(err, session.ErrFolderGone),
 		errors.Is(err, session.ErrNotIdea), errors.Is(err, session.ErrIdeaLinked):
