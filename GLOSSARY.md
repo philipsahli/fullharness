@@ -117,3 +117,13 @@ _Avoid_: score, quality, health, "plan" (say Spec and its Tickets)
 **Assessment**:
 An Agent's written verdict on a Spec's Readiness, posted to the Issue tracker by the `plan-readiness` skill. It is Stale once the Spec or one of its Tickets changes after it was posted.
 _Avoid_: review (that is `/code-review`), audit, evaluation
+
+## Distribution
+
+**Release channel**:
+Which releases an installed fullharness follows: **stable** (tags like `v0.3.0`) or **beta** (prerelease tags like `v0.3.0-beta.2`). It comes from the app's own version, and each channel has its own Homebrew cask (`fh`, `fh@beta`). To switch, the user installs the other cask. See ADR 0011.
+_Avoid_: track, ring, edition, branch (a branch is git)
+
+**Update notice**:
+The menu-bar item and the UI banner saying that a newer release exists on the user's Release channel. The update itself runs through Homebrew; fullharness never replaces itself.
+_Avoid_: notification (that is a Session's Notification), auto-update, updater
