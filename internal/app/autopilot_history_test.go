@@ -203,3 +203,25 @@ func TestAReviewThatEndedStuckIsNoMergeWaitOnceItsSessionIsClosed(t *testing.T) 
 		t.Errorf("events %v, want them to end with %v", events, want)
 	}
 }
+
+func TestASessionThatExitsMidTurnIsOneExitedStop(t *testing.T) {
+	f := startAutopilotFh(t, script{"default": []any{map[string]any{"exit": 3}}}, "done")
+	c := f.authorisedClient()
+	repo := twoTicketRepo(t)
+	f.addProject(c, repo)
+	f.setAutopilot(c, repo, true)
+	id := f.waitAutopilotSessions(c, 1)[0]["id"].(string)
+	f.waitAutopilotState(c, id, "exited")
+
+	// No turn end comes, so the history says the Feature waits for the user.
+	keys := []string{"kind", "ticket", "skill", "session", "reason"}
+	want := []map[string]any{
+		{"kind": "skill", "ticket": "01", "skill": "implement", "session": id},
+		{"kind": "stop", "ticket": "01", "skill": "implement", "session": id, "reason": "exited"},
+	}
+	f.waitEvents(c, repo, "login", len(want))
+	time.Sleep(300 * time.Millisecond) // more looks add no second exited stop
+	if got := eventsOf(t, f.autopilotFeatures(c, repo), "login", keys...); !reflect.DeepEqual(got, want) {
+		t.Errorf("events\n%v\nwant\n%v", got, want)
+	}
+}

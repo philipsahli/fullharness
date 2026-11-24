@@ -141,7 +141,7 @@ func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents [
 }
 
 // registerAutopilotHistoryRoute shows what Autopilot did per Feature (#112),
-// for the Loop view; ?project= narrows it to one Project.
+// for the Loop view (#114); ?project= narrows it to one Project.
 func registerAutopilotHistoryRoute(srv *server.Server, pilot *autopilot.Runner) {
 	srv.Handle("GET /api/autopilot", func(w http.ResponseWriter, r *http.Request) {
 		server.WriteJSON(w, http.StatusOK, map[string]any{"features": pilot.History(r.URL.Query().Get("project"))})
