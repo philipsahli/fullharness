@@ -28,6 +28,10 @@ export type Project = {
   missing: boolean; // folder not found
   url?: string; // the repo's GitHub page; absent when origin isn't on GitHub
   worktrees: Worktree[];
+  // Autopilot: fh starts the next step of Features in Roadmap Now itself
+  // (ADR-0009). agent is the Agent it starts; absent means Claude Code.
+  autopilot: boolean;
+  agent?: string;
 };
 
 // Link matches internal/tracker.Link: the Feature (and Ticket) a Session

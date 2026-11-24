@@ -50,6 +50,15 @@ func (i ghIssue) node() map[string]any {
 // function that counts the GraphQL calls.
 func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) func() int {
 	t.Helper()
+	calls, _, _ := fakeGhLogged(t, issues, prs, authOK)
+	return calls
+}
+
+// fakeGhLogged is fakeGh that also returns the gh commands it didn't
+// expect, such as a merge or an issue edit, one per line, and a function
+// that changes the open PRs.
+func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) (calls func() int, unexpected func() string, setPRs func([]map[string]any)) {
+	t.Helper()
 	dir := t.TempDir()
 	nodes := []any{}
 	for _, i := range issues {
@@ -73,12 +82,13 @@ func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) f
 	if !authOK {
 		auth = "1"
 	}
-	calls := filepath.Join(dir, "graphql-calls")
+	callsFile := filepath.Join(dir, "graphql-calls")
+	unexpectedFile := filepath.Join(dir, "unexpected")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
-		"  *graphql*) echo x >> \"" + calls + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
+		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
 		"  *\"pr list\"*) cat \"" + dir + "/prs.json\" ;;\n" +
-		"  *) echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
+		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
 	bin := filepath.Join(dir, "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
@@ -89,10 +99,16 @@ func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) f
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return func() int {
-		b, _ := os.ReadFile(calls) // no file yet means no calls
+	calls = func() int {
+		b, _ := os.ReadFile(callsFile) // no file yet means no calls
 		return strings.Count(string(b), "x")
 	}
+	unexpected = func() string {
+		b, _ := os.ReadFile(unexpectedFile) // no file yet means none
+		return string(b)
+	}
+	setPRs = func(prs []map[string]any) { write("prs.json", prs) }
+	return calls, unexpected, setPRs
 }
 
 func githubRepo(t *testing.T) string {

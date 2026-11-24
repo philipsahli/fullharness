@@ -36,6 +36,17 @@ type Project struct {
 	// origin is missing or not on GitHub, and the UI shows plain text.
 	URL       string              `json:"url,omitempty"`
 	Worktrees []worktree.Worktree `json:"worktrees"`
+	Settings
+}
+
+// Settings are what the user set for a Project in fh; projects.toml keeps
+// them.
+type Settings struct {
+	// Autopilot: fh starts the next step of the Project's Features in
+	// Roadmap Now by itself (ADR-0009).
+	Autopilot bool `json:"autopilot" toml:"autopilot,omitempty"`
+	// Agent is the Agent Autopilot starts; empty means Claude Code.
+	Agent string `json:"agent,omitempty" toml:"agent,omitempty"`
 }
 
 // Registry is the list of Projects. It is safe for concurrent use.
@@ -61,6 +72,7 @@ type stored struct {
 
 type storedProject struct {
 	Path string `toml:"path"`
+	Settings
 }
 
 // Open loads projects.toml from dir. created reports whether fh created a
@@ -74,7 +86,7 @@ func Open(dir string, created, linked func(path string) bool, onChange func([]Pr
 		return nil, fmt.Errorf("read %s: %w", r.file, err)
 	}
 	for _, p := range s.Project {
-		r.projects = append(r.projects, r.read(p.Path))
+		r.projects = append(r.projects, r.read(p.Path, p.Settings))
 	}
 	return r, nil
 }
@@ -111,7 +123,7 @@ func (r *Registry) Add(path string) (Project, error) {
 	if slices.ContainsFunc(r.List(), func(q Project) bool { return q.Path == top }) {
 		return Project{}, ErrExists
 	}
-	p := r.read(top)
+	p := r.read(top, Settings{})
 	if err := r.set(append(r.List(), p), true); err != nil {
 		return Project{}, err
 	}
@@ -133,6 +145,19 @@ func (r *Registry) Remove(path string) error {
 	return r.set(slices.Delete(list, i, i+1), true)
 }
 
+// SetAutopilot sets the Project's Autopilot settings and saves them.
+func (r *Registry) SetAutopilot(path string, settings Settings) error {
+	r.change.Lock()
+	defer r.change.Unlock()
+	list := r.List()
+	i := slices.IndexFunc(list, func(p Project) bool { return p.Path == path })
+	if i < 0 {
+		return ErrNotFound
+	}
+	list[i].Settings = settings
+	return r.set(list, true)
+}
+
 // Refresh re-reads every Project from git and calls onChange only if
 // something changed, so idle tabs get no traffic.
 func (r *Registry) Refresh() {
@@ -141,12 +166,12 @@ func (r *Registry) Refresh() {
 	old := r.List()
 	fresh := make([]Project, len(old))
 	for i, p := range old {
-		fresh[i] = r.read(p.Path)
+		fresh[i] = r.read(p.Path, p.Settings)
 	}
 	if reflect.DeepEqual(old, fresh) {
 		return
 	}
-	// The paths didn't change, so projects.toml stays as it is.
+	// The paths and settings didn't change, so projects.toml stays as it is.
 	_ = r.set(fresh, false) // returns an error only when saving
 }
 
@@ -222,7 +247,7 @@ func (r *Registry) set(list []Project, save bool) error {
 func (r *Registry) write(list []Project) error {
 	var s stored
 	for _, p := range list {
-		s.Project = append(s.Project, storedProject{Path: p.Path})
+		s.Project = append(s.Project, storedProject{Path: p.Path, Settings: p.Settings})
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(s); err != nil {
@@ -231,9 +256,9 @@ func (r *Registry) write(list []Project) error {
 	return fileutil.WriteAtomic(r.file, buf.Bytes())
 }
 
-// read builds a Project's current state from git.
-func (r *Registry) read(path string) Project {
-	p := Project{Path: path, Name: filepath.Base(path), Worktrees: []worktree.Worktree{}}
+// read builds a Project's current state from git, with its settings.
+func (r *Registry) read(path string, settings Settings) Project {
+	p := Project{Path: path, Name: filepath.Base(path), Worktrees: []worktree.Worktree{}, Settings: settings}
 	if info, err := os.Stat(path); err != nil || !info.IsDir() {
 		p.Missing = true
 		return p

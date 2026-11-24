@@ -93,6 +93,8 @@ type Summary struct {
 	// with auto-approve, or switched to the Agent's auto mode or option
 	// later (syncAutoLocked).
 	AutoApprove bool `json:"autoApprove"`
+	// Autopilot: Autopilot started this Session (ADR-0009).
+	Autopilot bool `json:"autopilot,omitempty"`
 	// Waiting says why a Waiting Session waits: "permission" (a request is
 	// open) or "turn" (a turn ended that nobody has looked at yet).
 	Waiting string `json:"waiting,omitempty"`
@@ -242,6 +244,7 @@ type Saved struct {
 	Worktree    string `json:"worktree"`
 	Title       string `json:"title"`
 	AutoApprove bool   `json:"autoApprove"`
+	Autopilot   bool   `json:"autopilot,omitempty"`
 	CanLoad     bool   `json:"canLoad"` // the Agent offered session/load
 	// Link is kept so a Ticket stays Implementing after a restart, and an
 	// Idea keeps its Spec.
@@ -371,6 +374,7 @@ type Launch struct {
 	Prompt   string // the starting prompt; may be empty
 	// AutoApprove starts the Agent in its auto mode.
 	AutoApprove bool
+	Autopilot   bool // Autopilot starts it
 	Link        *tracker.Link
 	// Idea is set for a Grill new idea Session.
 	Idea Idea
@@ -402,7 +406,7 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 		return Summary{}, ErrFolderGone
 	}
 	s := m.newSession(def, Summary{ID: newID(), Project: l.Project, Worktree: l.Worktree, Agent: def.ID,
-		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Link: l.Link})
+		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Autopilot: l.Autopilot, Link: l.Link})
 	s.idea = l.Idea
 	m.sessions = append(m.sessions, s)
 	m.mu.Unlock()
@@ -482,7 +486,7 @@ func (m *Manager) Restore(saved []Saved, agentFor func(id string) (agent.Definit
 			def = agent.Definition{ID: sv.Agent, Name: sv.Agent}
 		}
 		s := m.newSession(def, Summary{ID: sv.ID, Project: sv.Project, Worktree: sv.Worktree, Agent: sv.Agent,
-			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Link: sv.Link})
+			State: Exited, Reason: ReasonFhQuit, Title: sv.Title, AutoApprove: sv.AutoApprove, Autopilot: sv.Autopilot, Link: sv.Link})
 		s.idea, s.settings = sv.Idea, sv.Settings
 		// canLoad is kept as saved even while the Agent is missing, so
 		// Reopen comes back when the Agent is configured again.
@@ -501,7 +505,7 @@ func (m *Manager) persist() {
 		s.mu.Lock()
 		if !s.closed {
 			saved = append(saved, Saved{ID: s.sum.ID, ACPID: string(s.acpID), Agent: s.sum.Agent, Project: s.sum.Project,
-				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, CanLoad: s.canLoad, Link: s.sum.Link,
+				Worktree: s.sum.Worktree, Title: s.sum.Title, AutoApprove: s.sum.AutoApprove, Autopilot: s.sum.Autopilot, CanLoad: s.canLoad, Link: s.sum.Link,
 				Idea: s.idea, Settings: s.settingsLocked()})
 		}
 		s.mu.Unlock()

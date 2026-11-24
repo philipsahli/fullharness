@@ -340,6 +340,30 @@ ls ~/.copilot/skills   # code-review  implement  implement-spec  …  to-spec  t
 
 For OpenCode, link the same folders into `~/.claude/skills`. Claude Code then lists each skill twice, as `implement` and as `mattpocock-skills:implement`.
 
+#### Autopilot
+
+Tick **Autopilot** under a Project in the left rail, and fh moves that Project's Features in Roadmap **Now** on by itself ([ADR 0009](./docs/adr/0009-autopilot-starts-skills-and-tracker-writes.md)). The switch stays on across restarts.
+
+- A Feature is in Now when its Spec has the label `roadmap:now` (GitHub), or a `**Roadmap:** now` line in `spec.md` (local markdown).
+- An approved Spec (`ready-for-agent`) without Tickets gets `/to-tickets` in the main tree.
+- A Startable Ticket gets `/implement` in a new Worktree, as **Start Session** does.
+- A Ticket whose PR is open gets `/code-review` as the next message in its own Autopilot Session, or in a new Session in its Worktree once that one has exited.
+- A Feature Autopilot worked on gets `/retro` once its Spec is closed.
+
+fh runs one Autopilot Session per Project at a time. It looks for new work every minute, and again when a turn of its own Session ends. It waits for you at these Stop points:
+
+- The Agent asks you something: answer in the Session.
+- The [turn-end classifier](#turn-end-classifier) can't tell how the turn ended: answer in the Session.
+- The Agent stopped before its turn ended: reopen the Session, or close it.
+- A permission request: Autopilot Sessions never auto-approve.
+- A Spec that isn't approved yet: add `ready-for-agent`.
+- A PR to merge: fh never merges.
+- A Spec to close: fh never closes one.
+
+A Stop point stays one across restarts. Closing the waiting Session hands the Project back to Autopilot.
+
+Autopilot starts Claude Code; pick another Agent next to the Autopilot box. fh keeps what it started in `state.json`, so a restart doesn't start a step twice.
+
 ### Agents
 
 fh knows three Agents. Each needs its CLI installed and logged in:
@@ -386,7 +410,7 @@ command = ["my-agent", "--acp"]
 
 ### Turn-end classifier
 
-Autopilot will use this to decide how a turn ended: when no fixed rule says, fh asks a model whether the Agent is asking you something, is done, or is stuck ([ADR 0010](./docs/adr/0010-turn-end-classifier.md)). Autopilot is not built yet ([#110](https://github.com/philipsahli/fullharness/issues/110)), so for now fh makes no classifier calls and records nothing.
+When a turn of an Autopilot Session ends, fh decides how it ended: when no fixed rule says, fh asks a model whether the Agent is asking you something, is done, or is stuck ([ADR 0010](./docs/adr/0010-turn-end-classifier.md)). Only Autopilot Sessions are classified.
 
 - By default fh runs `claude -p --model claude-haiku-5-5` on your Claude login.
 - Any `claude` command runs without `ANTHROPIC_API_KEY`, as fh's Claude Code Agents do.

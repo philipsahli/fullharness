@@ -56,6 +56,8 @@ type newSession struct {
 	// Idea names a new Idea (Grill new idea): the Session gets a new
 	// Worktree on idea/<slug of the name>, so it takes no Worktree or branch.
 	Idea string `json:"idea"`
+	// autopilot: Autopilot starts it; a tab can't ask for that.
+	autopilot bool
 }
 
 // badRequest is a New Session request fh refuses, with the reason.
@@ -300,7 +302,7 @@ func (d sessionDeps) start(req newSession) (session.Summary, error) {
 	if missing := def.Missing(); missing != "" {
 		return session.Summary{}, badRequest(def.Name + " can't start: " + missing)
 	}
-	launch := session.Launch{Project: p.Path, Prompt: req.Prompt, AutoApprove: req.AutoApprove, Link: req.Link}
+	launch := session.Launch{Project: p.Path, Prompt: req.Prompt, AutoApprove: req.AutoApprove, Link: req.Link, Autopilot: req.autopilot}
 	if name := strings.TrimSpace(req.Idea); name != "" {
 		branch, ok := tracker.IdeaBranch(name)
 		switch {
