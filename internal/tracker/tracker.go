@@ -57,6 +57,8 @@ type Feature struct {
 	Ref    string `json:"ref"`
 	// Idea names the Idea linked to this Spec, if any (#14).
 	Idea string `json:"idea,omitempty"`
+	// Next is the skill that moves it on from its Stage (next.go).
+	Next *Step `json:"next,omitempty"`
 }
 
 // Ticket is one buildable piece of a Feature.
@@ -73,6 +75,9 @@ type Ticket struct {
 	// skill's prompt names the Ticket, e.g. "#42" (#13).
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
+	// Next is the skill that moves it on from its Stage (next.go). The
+	// Board offers it only on a Startable Ticket.
+	Next *Step `json:"next,omitempty"`
 	// Inputs to the Stage, filled by the adapter, and by Derive from links:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
 	OpenPR      bool `json:"-"` // a linked PR is open
@@ -129,6 +134,7 @@ func Detect(repo string) (kind, name string) {
 //     Tickets that belong to a Spec.
 //   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
+//   - Next: each one's Stage's next step (next.go).
 func Derive(features []Feature, links []Link) {
 	for i := range features {
 		f := &features[i]
@@ -177,6 +183,7 @@ func Derive(features []Feature, links []Link) {
 			// Only a Ticket nobody has started: a branch ahead or an open PR
 			// means it is already in progress.
 			t.Startable = t.Stage == StageTickets && t.Label == ReadyLabel && !blocked
+			t.Next = TicketStep(t.Stage)
 			f.Breakdown[t.Stage]++
 			if !t.Closed {
 				if pos := slices.Index(stageOrder, t.Stage); earliest < 0 || pos < earliest {
@@ -194,6 +201,7 @@ func Derive(features []Feature, links []Link) {
 		default:
 			f.Stage, f.Note = StageReview, "All Tickets are closed: close the Spec to ship it."
 		}
+		f.Next = FeatureStep(f.Stage)
 	}
 }
 
