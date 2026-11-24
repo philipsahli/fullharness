@@ -283,7 +283,8 @@ tr:last-child td { border-bottom: 0; }
 .fphead .acts { margin-left: auto; }
 .ext { color: var(--accent); text-decoration: none; font-family: var(--f-mono); font-size: 12.5px; }
 .ext:hover { text-decoration: underline; }
-/* Ticket numbers and blocker refs link to their GitHub issues (#101). */
+.fphead a.ext::after { content: " ↗"; }
+/* Spec, Ticket and blocker numbers link to their GitHub issues (#101); other #N in notes stay text (#89). */
 td.mono a { color: var(--accent); }
 td a:focus-visible, .ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stepper { display: flex; list-style: none; margin: 0; padding: 0; gap: 4px; flex-wrap: wrap; }
@@ -510,7 +511,7 @@ const factory = {
         { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
         { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", sid: "s2" },
         { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
-        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", note: "blocked by #11" },
+        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
       ] },
     { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3", next: "Open Session", skill: "",
       tickets: [
@@ -589,8 +590,8 @@ const proj = id => projects.find(p => p.id === id);
 const sess = id => sessions.find(s => s.id === id);
 const allFeats = () => Object.entries(factory).flatMap(([pid, fs]) => fs.map(f => ({ pid, f })));
 const feat = id => allFeats().find(x => x.f.id === id);
-// issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text.
-const issueLink = (pid, n, text = `#${n}`) => { const p = proj(pid); return p && p.url ? `<a href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : text; };
+// issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text, in a span when it has a class.
+const issueLink = (pid, n, text = `#${n}`, cls = "") => { const p = proj(pid), c = cls ? ` class="${cls}"` : ""; return p && p.url && n ? `<a${c} href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : cls ? `<span${c}>${text}</span>` : text; };
 const featSessions = fid => sessions.filter(s => s.fid === fid);
 const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
 const sorted = list => [...list].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
@@ -809,7 +810,7 @@ function ticketRow(fid, t) {
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note).replace(/#(\d+)/g, (m, n) => issueLink(feat(fid).pid, n))}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -838,7 +839,7 @@ function renderFeature() {
   const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
-    <div class="fphead"><h2>${esc(f.name)}</h2>${(n => n && p.url ? `<a class="ext" href="${p.url}/issues/${n}" target="_blank" rel="noopener">${f.ref} ↗</a>` : `<span class="ext">${f.ref}</span>`)((f.ref.match(/#(\d+)/) || [])[1])}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
+    <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
     ${stepper}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 
@@ -1049,7 +1050,7 @@ document.addEventListener("click", e => {
       () => { f.closedEarly = null; f.stage = "Implementing"; toast(`${f.ref} reopened`); render(); }); }
   if (d.retro) { const { f } = feat(d.retro); f.retroDone = true; f.followups = [{ t: "Backoff limits should be configurable per CRD", filed: null }]; toast(`Session started: /retro for ${f.name}`); return render(); }
   if (d.fileup) { const [fid, i] = d.fileup.split(":"); const x = feat(fid).f.followups[+i]; x.filed = `Idea #${67 + +i}`; toast(`Issue ${x.filed} created · label idea`); return render(); }
-  if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "blocked by #11 · Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
+  if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
   if (d.spallow || d.spdeny) {
     const r = spawns.find(x => x.id === (d.spallow || d.spdeny)), par = sess(r.parent), msg = par.msgs.find(m => m.k === "fh");
     if (d.spdeny) { r.answer = "Denied"; if (msg) { msg.st = "Denied"; msg.s = "ok"; } toast("Child Session denied"); return render(); }

@@ -21,6 +21,9 @@ type ghIssue struct {
 	Parent    int
 	SubIssues []int
 	BlockedBy map[int]string // number → state
+	// BlockedByRepo puts a blocker in another repository ("owner/repo");
+	// a blocker not listed is in someone/shop, as githubRepo's origin.
+	BlockedByRepo map[int]string
 }
 
 func (i ghIssue) node() map[string]any {
@@ -34,7 +37,12 @@ func (i ghIssue) node() map[string]any {
 	}
 	blocked := []any{}
 	for n, st := range i.BlockedBy {
-		blocked = append(blocked, map[string]any{"number": n, "state": st})
+		repo := "someone/shop"
+		if r, ok := i.BlockedByRepo[n]; ok {
+			repo = r
+		}
+		blocked = append(blocked, map[string]any{"number": n, "state": st,
+			"repository": map[string]any{"nameWithOwner": repo}})
 	}
 	var parent any
 	if i.Parent != 0 {
@@ -214,6 +222,30 @@ func TestAGitHubBoardLinksSpecTicketAndBlockerNumbersToTheirIssues(t *testing.T)
 	blockers := objects(t, ticketByNumber(t, login, "12"), "blockers")
 	if len(blockers) != 1 || blockers[0]["url"] != issues+"11" {
 		t.Errorf("#12 blockers = %v, want #11 with url %s11", blockers, issues)
+	}
+}
+
+func TestABlockerInAnotherRepositoryOrUnknownGetsNoLink(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", SubIssues: []int{11, 12}},
+		// #7 in someone/auth is another issue than someone/shop#7.
+		{Number: 11, Title: "Form", State: "OPEN", Parent: 10,
+			BlockedBy: map[int]string{7: "OPEN"}, BlockedByRepo: map[int]string{7: "someone/auth"}},
+		// #99 doesn't exist: the body line names an unknown issue.
+		{Number: 12, Title: "Cookie", State: "OPEN", Parent: 10, Body: "Blocked by: #99"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	login := featureByID(t, f.board(c, repo), "10")
+
+	if got := asJSON(ticketByNumber(t, login, "11")["blockers"]); got != `[{"known":true,"number":"7","open":true}]` {
+		t.Errorf("#11 blockers = %s, want #7 without a url", got)
+	}
+	if got := asJSON(ticketByNumber(t, login, "12")["blockers"]); got != `[{"known":false,"number":"99","open":true}]` {
+		t.Errorf("#12 blockers = %s, want unknown #99 without a url", got)
 	}
 }
 

@@ -452,7 +452,7 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
     "Startable",
   );
   await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
-    "blocked by 01",
+    "blocked by #01",
   );
   // The next-step rule's button shows on the Startable Ticket only.
   await expect(
@@ -503,13 +503,13 @@ test("on a GitHub board the Spec, Ticket and blocker numbers link to their issue
     const detail = page.getByRole("region", { name: "Feature Login" });
     await expect(detail.getByRole("link", { name: "#10" })).toHaveAttribute("href", issues + "10");
     const form = detail.getByRole("listitem").filter({ hasText: "Login form" });
-    const number = form.getByRole("link", { name: "11", exact: true });
+    const number = form.getByRole("link", { name: "#11", exact: true });
     await expect(number).toHaveAttribute("href", issues + "11");
     await expect(number).toHaveAttribute("target", "_blank");
     await expect(number).toHaveAttribute("rel", "noopener");
     const cookie = detail.getByRole("listitem").filter({ hasText: "Session cookie" });
-    await expect(cookie).toContainText("blocked by 11");
-    await expect(cookie.getByRole("link", { name: "11", exact: true })).toHaveAttribute(
+    await expect(cookie).toContainText("blocked by #11");
+    await expect(cookie.getByRole("link", { name: "#11", exact: true })).toHaveAttribute(
       "href",
       issues + "11",
     );

@@ -340,7 +340,7 @@ function FeatureDetail({
           return (
             <li key={t.number} className={t.closed ? "closed" : undefined}>
               <span className="num">
-                <LinkOrText url={t.url}>{t.number}</LinkOrText>
+                <LinkOrText url={t.url}>#{t.number}</LinkOrText>
               </span>
               <span className="t">{t.title}</span>
               <span className="tag">{t.label || "no label"}</span>
@@ -370,7 +370,7 @@ function FeatureDetail({
                     .map((b, i) => (
                       <Fragment key={b.number}>
                         {i > 0 && ", "}
-                        <LinkOrText url={b.url}>{b.number}</LinkOrText>
+                        <LinkOrText url={b.url}>#{b.number}</LinkOrText>
                         {!b.known && " (unknown)"}
                       </Fragment>
                     ))}

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/philipsahli/fullharness/internal/gitremote"
 )
 
 // Issue is one GitHub issue as fh's GraphQL query returns it.
@@ -28,8 +30,11 @@ type Issue struct {
 	} `json:"subIssues"`
 	BlockedBy struct {
 		Nodes []struct {
-			Number int    `json:"number"`
-			State  string `json:"state"`
+			Number     int    `json:"number"`
+			State      string `json:"state"`
+			Repository struct {
+				NameWithOwner string `json:"nameWithOwner"`
+			} `json:"repository"`
 		} `json:"nodes"`
 	} `json:"blockedBy"`
 }
@@ -59,20 +64,24 @@ var (
 	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
 
-// LinkIssues points every Spec, Ticket and Blocker at its issue under
-// repoURL, the Project's GitHub page. A GitHub board's numbers are issue
-// numbers in that repository; blockers from gh's dependencies or a "#N"
-// body line are too, as fh reads no cross-repository references.
-func LinkIssues(features []Feature, repoURL string) {
-	issue := func(n string) string { return repoURL + "/issues/" + n }
+// LinkIssues points every Spec, Ticket and Blocker at its issue in repo,
+// the Project's GitHub repository. Specs and Tickets are issues of repo. A
+// blocker links only when it is known and in repo: gh's dependencies can
+// name an issue in another repository (Blocker.Repo), where the same
+// number is a different issue, and an unknown "#N" body line may name no
+// issue at all.
+func LinkIssues(features []Feature, repo gitremote.GitHub) {
 	for i := range features {
 		f := &features[i]
-		f.URL = issue(f.ID)
+		f.URL = repo.IssueURL(f.ID)
 		for j := range f.Tickets {
 			t := &f.Tickets[j]
-			t.URL = issue(t.Number)
+			t.URL = repo.IssueURL(t.Number)
 			for k := range t.Blockers {
-				t.Blockers[k].URL = issue(t.Blockers[k].Number)
+				b := &t.Blockers[k]
+				if b.Known && (b.Repo == "" || strings.EqualFold(b.Repo, repo.NameWithOwner())) {
+					b.URL = repo.IssueURL(b.Number)
+				}
 			}
 		}
 	}
@@ -146,7 +155,8 @@ func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string
 	}
 	// Native dependencies first; a "Blocked by: #N" line only without them.
 	for _, b := range i.BlockedBy.Nodes {
-		t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(b.Number), Known: true, Open: b.State != "CLOSED"})
+		t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(b.Number), Known: true, Open: b.State != "CLOSED",
+			Repo: b.Repository.NameWithOwner})
 	}
 	if len(t.Blockers) == 0 {
 		for _, n := range bodyBlockerRefs(i.Body) {

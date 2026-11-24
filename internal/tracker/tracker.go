@@ -105,6 +105,9 @@ type Blocker struct {
 	Known bool   `json:"known"`
 	Open  bool   `json:"open"`
 	URL   string `json:"url,omitempty"` // opens the blocker in its tracker (#86)
+	// Repo is the GitHub repository ("owner/repo") gh's dependencies put
+	// the blocker in; empty means the Ticket's own repository.
+	Repo string `json:"-"`
 }
 
 // Detect finds the Project's Issue tracker: the `# Issue tracker: …`
