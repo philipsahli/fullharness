@@ -132,7 +132,10 @@ export type Item =
 
 // Snapshot is the full state the server sends when the event channel opens.
 // transcripts holds only the conversations this tab opened; events keep
-// them current.
+// them current. The other fields are this tab's own (#69): fh numbers each
+// conversation event per Session (seq), and sends them from several
+// goroutines, so they can arrive out of order or while the conversation's
+// fetch is still on its way.
 export type Snapshot = {
   type: "snapshot";
   launch: string; // random ID of the fh launch; changes on restart
@@ -141,7 +144,46 @@ export type Snapshot = {
   inbox: PermissionRequest[]; // open requests, oldest first
   projects: Project[];
   transcripts: Record<string, Item[]>;
+  seqs: Record<string, number>; // the last event in each open conversation
+  held: Record<string, ConversationEvent[]>; // events not applied yet: the fetch or an earlier event is still to come
+  epoch: number; // counts snapshots; a fetch started before the latest one is stale
 };
+
+// A conversation event: an item, a chunk of text, or a reset.
+type ConversationEvent = Record<string, unknown> & { session: string; seq: number };
+
+// loadingConversation marks a conversation as being fetched, so its events
+// are held until the fetch answers.
+export function loadingConversation(snap: Snapshot, id: string): Snapshot {
+  if (snap.transcripts[id] || snap.held[id]) return snap;
+  return { ...snap, held: { ...snap.held, [id]: [] } };
+}
+
+// loadedConversation sets a fetched conversation, which holds the events up
+// to seq, then applies the held events after it.
+export function loadedConversation(
+  snap: Snapshot,
+  id: string,
+  transcript: Item[],
+  seq: number,
+): Snapshot {
+  const held = snap.held[id] ?? [];
+  const next = {
+    ...snap,
+    transcripts: { ...snap.transcripts, [id]: transcript },
+    seqs: { ...snap.seqs, [id]: seq },
+  };
+  return applyInOrder(next, id, held);
+}
+
+// stopLoadingConversation drops what a fetch that no longer runs held: the
+// conversation closed before the fetch answered.
+export function stopLoadingConversation(snap: Snapshot, id: string): Snapshot {
+  if (snap.transcripts[id] || !snap.held[id]) return snap;
+  const held = { ...snap.held };
+  delete held[id];
+  return { ...snap, held };
+}
 
 export type Connection =
   | { status: "connecting" }
@@ -185,6 +227,7 @@ export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Up
     let timer: number | undefined;
     let stopped = false;
     let launch: string | undefined;
+    let epoch = 0;
 
     const restarted = () => {
       stopped = true;
@@ -220,7 +263,11 @@ export function useEventChannel(onNotify?: (n: Notify) => void): [Connection, Up
         }
         // A reconnect drops the cached conversations: events may have been
         // missed, and an open conversation fetches itself again.
-        setConn({ status: "open", snapshot: { ...snap, transcripts: {} } });
+        epoch++;
+        setConn({
+          status: "open",
+          snapshot: { ...snap, transcripts: {}, seqs: {}, held: {}, epoch },
+        });
       };
       ws.onclose = () => {
         if (!stopped) void checkAfterClose();
@@ -268,17 +315,27 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
       return { ...snap, projects: ev.projects as Project[] };
     case "inbox":
       return { ...snap, inbox: ev.inbox as PermissionRequest[] };
-    case "reset": {
-      // A reopened Session: the Agent replays its conversation from the start.
+    case "reset":
+    case "item":
+    case "chunk": {
       const id = ev.session as string;
-      if (!snap.transcripts[id]) return snap;
-      return { ...snap, transcripts: { ...snap.transcripts, [id]: [] } };
+      const held = snap.held[id];
+      if (!snap.transcripts[id]) {
+        if (!held) return snap; // not open in this tab; fetched in full when opened
+        return { ...snap, held: { ...snap.held, [id]: [...held, ev as ConversationEvent] } };
+      }
+      return applyInOrder(snap, id, [...(held ?? []), ev as ConversationEvent]);
     }
     case "closed": {
       const id = ev.session as string;
       const transcripts = { ...snap.transcripts };
+      const seqs = { ...snap.seqs };
+      const held = { ...snap.held };
       delete transcripts[id];
-      return { ...snap, sessions: snap.sessions.filter((s) => s.id !== id), transcripts };
+      delete seqs[id];
+      delete held[id];
+      const sessions = snap.sessions.filter((s) => s.id !== id);
+      return { ...snap, sessions, transcripts, seqs, held };
     }
     case "session": {
       const s = ev.session as SessionSummary;
@@ -288,24 +345,47 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
         : [...snap.sessions, s];
       return { ...snap, sessions };
     }
-    case "item":
-    case "chunk": {
-      const id = ev.session as string;
-      const items = snap.transcripts[id];
-      if (!items) return snap; // not open in this tab; fetched in full when opened
-      const index = ev.index as number;
-      const next = [...items];
-      if (ev.type === "item") {
-        next[index] = ev.item as Item;
-      } else {
-        const it = next[index];
-        if (it && (it.type === "agent" || it.type === "user"))
-          next[index] = { ...it, text: it.text + (ev.text as string) };
-      }
-      return { ...snap, transcripts: { ...snap.transcripts, [id]: next } };
-    }
   }
   return snap;
+}
+
+// applyInOrder applies the events that follow the conversation's last one,
+// in seq order, drops those it already holds, and holds the rest until the
+// events before them arrive.
+function applyInOrder(snap: Snapshot, id: string, events: ConversationEvent[]): Snapshot {
+  let next = snap;
+  let last = snap.seqs[id] ?? 0;
+  const rest: ConversationEvent[] = [];
+  for (const ev of [...events].sort((a, b) => a.seq - b.seq)) {
+    if (ev.seq <= last) continue;
+    if (ev.seq === last + 1 && rest.length === 0) {
+      next = applyConversation(next, ev);
+      last = ev.seq;
+    } else rest.push(ev);
+  }
+  const held = { ...next.held };
+  if (rest.length > 0) held[id] = rest;
+  else delete held[id];
+  return { ...next, seqs: { ...next.seqs, [id]: last }, held };
+}
+
+// applyConversation folds a conversation event into an open conversation.
+function applyConversation(snap: Snapshot, ev: ConversationEvent): Snapshot {
+  const id = ev.session;
+  // A reopened Session: the Agent replays its conversation from the start.
+  if (ev.type === "reset") return { ...snap, transcripts: { ...snap.transcripts, [id]: [] } };
+  const items = snap.transcripts[id];
+  if (!items) return snap;
+  const index = ev.index as number;
+  const next = [...items];
+  if (ev.type === "item") {
+    next[index] = ev.item as Item;
+  } else {
+    const it = next[index];
+    if (it && (it.type === "agent" || it.type === "user"))
+      next[index] = { ...it, text: it.text + (ev.text as string) };
+  }
+  return { ...snap, transcripts: { ...snap.transcripts, [id]: next } };
 }
 
 const listGroup: Record<SessionState, number> = {
