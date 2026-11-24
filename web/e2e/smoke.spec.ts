@@ -110,6 +110,31 @@ test("a Worktree branch origin has links to it on GitHub; one origin lacks is pl
   await expect(projects.getByText("main", { exact: true })).toHaveCount(2);
 });
 
+test("the Autopilot switch is per Project and stays on after a reload", async ({ page, fh }) => {
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+
+  const autopilot = projects.getByRole("checkbox", { name: "Autopilot" });
+  await expect(autopilot).not.toBeChecked();
+  // The box shows fh's setting, so it turns on once fh has saved it.
+  await autopilot.click();
+  await expect(autopilot).toBeChecked();
+
+  const pick = projects.getByRole("combobox", { name: "Autopilot Agent" });
+  await expect(pick).toHaveValue("claude");
+  await pick.selectOption("copilot");
+  await expect(pick).toHaveValue("copilot");
+
+  await page.reload();
+  const after = page.getByRole("region", { name: "Projects" });
+  await expect(after.getByRole("checkbox", { name: "Autopilot" })).toBeChecked();
+  await expect(after.getByRole("combobox", { name: "Autopilot Agent" })).toHaveValue("copilot");
+});
+
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {
   const fh = await Fh.start({ dev: true });
   try {
@@ -429,6 +454,13 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
     "blocked by 01",
   );
+  // The next-step rule's button shows on the Startable Ticket only.
+  await expect(
+    detail.getByRole("listitem").filter({ hasText: "Login form" }).getByRole("button"),
+  ).toHaveText("Start Session");
+  await expect(
+    detail.getByRole("listitem").filter({ hasText: "Session cookie" }).getByRole("button"),
+  ).toHaveCount(0);
   // No GitHub remote, so the server sends no urls: numbers are plain text.
   await expect(detail.getByRole("link")).toHaveCount(0);
 });
@@ -486,6 +518,50 @@ test("on a GitHub board the Spec, Ticket and blocker numbers link to their issue
   } finally {
     await fh.dispose();
   }
+});
+
+test("a Spec without Tickets offers Make tickets and a shipped Spec offers Retro", async ({
+  page,
+  fh,
+}) => {
+  // The buttons come from the server's next-step rule (internal/tracker/next.go).
+  const repo = tempRepoWith("shop", {
+    ".scratch/login/spec.md": "# Login\n",
+    ".scratch/billing/spec.md": "# Billing\n\n**Status:** done\n",
+  });
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(repo);
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+  await page.getByRole("tab", { name: "Software factory" }).click();
+
+  await page.locator('.column[aria-label="Spec"]').getByRole("button", { name: /Login/ }).click();
+  await page
+    .getByRole("region", { name: "Feature Login" })
+    .getByRole("button", { name: "Make tickets" })
+    .click();
+  await expect(
+    page
+      .getByRole("form", { name: /Make tickets/ })
+      .getByRole("textbox", { name: /Starting prompt/ }),
+  ).toHaveValue("/to-tickets .scratch/login/spec.md");
+  // The Start dialog lives in the Sessions view; go back to the board.
+  await page.getByRole("tab", { name: "Software factory" }).click();
+
+  await page
+    .locator('.column[aria-label="Shipped"]')
+    .getByRole("button", { name: /Billing/ })
+    .click();
+  await page
+    .getByRole("region", { name: "Feature Billing" })
+    .getByRole("button", { name: "Retro" })
+    .click();
+  await expect(
+    page.getByRole("form", { name: /Retro/ }).getByRole("textbox", { name: /Starting prompt/ }),
+  ).toHaveValue("/retro .scratch/billing/spec.md");
 });
 
 test("a Worktree fh created is not labelled an Agent worktree", async ({ page }) => {
@@ -886,6 +962,56 @@ test("fenced code and a read file are highlighted by language; an unknown langua
     await expect(card.locator("pre code")).toHaveText(
       /^1\tpackage main\n.*\n4\tfunc main\(\) \{\}$/s,
     );
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a message sent while the Agent works is queued; cancel puts it back in the composer, every time", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: { prompts: { long: [{ waitCancel: true }] } },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(tempRepo("shop"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByLabel("Starting prompt (optional)").fill("long");
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const conversation = page.getByRole("region", { name: /^Session / });
+    await expect(conversation.locator(".state")).toHaveText("Working");
+    const message = conversation.getByRole("textbox", { name: "Message" });
+    await message.fill("and then this");
+    await message.press("Enter");
+
+    const queued = conversation.getByRole("status", { name: "Queued message" });
+    await expect(queued).toContainText("and then this");
+    await expect(message).toHaveValue("");
+
+    await conversation.getByRole("button", { name: "Cancel" }).click();
+    await expect(queued).toBeHidden();
+    await expect(message).toHaveValue("and then this");
+    await expect(conversation.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    // The same text coming back a second time comes back too.
+    await message.fill("long");
+    await message.press("Enter");
+    await expect(conversation.locator(".state")).toHaveText("Working");
+    await message.fill("and then this");
+    await message.press("Enter");
+    await expect(queued).toContainText("and then this");
+    await conversation.getByRole("button", { name: "Cancel" }).click();
+    await expect(queued).toBeHidden();
+    await expect(message).toHaveValue("and then this");
   } finally {
     await fh.dispose();
   }

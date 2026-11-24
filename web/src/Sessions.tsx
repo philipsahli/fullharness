@@ -353,8 +353,9 @@ export function NewSession(props: {
 }
 
 // Conversation shows one Session: its messages, tool calls and notices,
-// and the composer. Sending is only possible while the Session is Idle;
-// while the Agent works, Cancel takes its place.
+// and the composer. While the Session is Starting, Working or Waiting on a
+// permission request, a message becomes the Queued message (#93), sent once
+// the turn ends. Cancel sits next to Queue once the Agent is ready.
 export function Conversation(props: {
   session: SessionSummary;
   snapshot: Snapshot;
@@ -437,6 +438,43 @@ export function Conversation(props: {
     setError(r.ok ? "" : r.error);
   };
 
+  // Edit takes the Queued message (and any unsent text) back from fh into
+  // the composer, after what is already typed.
+  const takeBack = async () => {
+    const r = await command(`/api/sessions/${session.id}/queued`, { action: "edit" });
+    if (!r.ok) return setError(r.error);
+    const back = (r.body as { text?: string } | undefined)?.text;
+    if (back) setText((t) => joinMessages(t, back));
+  };
+  const actOnQueued = async (action: "remove" | "send-now") => {
+    const r = await command(`/api/sessions/${session.id}/queued`, { action });
+    setError(r.ok ? "" : r.error);
+  };
+  // A Queued message the turn couldn't send (cancel, error, exit) comes back
+  // into the composer, so it's never lost; then fh forgets it. backFromFh
+  // is what this tab took, until fh has forgotten it: the same text can
+  // come back again later.
+  const [backFromFh, setBackFromFh] = useState("");
+  if (session.unsent && session.unsent !== backFromFh) {
+    setBackFromFh(session.unsent);
+    const back = session.unsent;
+    setText((t) => joinMessages(t, back));
+  } else if (!session.unsent && backFromFh) {
+    setBackFromFh("");
+  }
+  useEffect(() => {
+    // A lost clear only means the text comes back again on the next load.
+    if (session.unsent)
+      void command(`/api/sessions/${session.id}/queued`, { action: "clear-unsent" });
+  }, [session.id, session.unsent]);
+
+  // A message sent now becomes the Queued message.
+  const queues =
+    session.state === "starting" ||
+    session.state === "working" ||
+    (session.state === "waiting" && session.waiting !== "turn");
+  const canSend = session.state !== "exited" && text.trim() !== "";
+
   // The "/" list: shown while the composer holds only "/" and a partial
   // command name.
   const [pick, setPick] = useState(0);
@@ -500,6 +538,25 @@ export function Conversation(props: {
             )}
           </div>
         )}
+        {session.queued && (
+          <div className="queued" role="status" aria-label="Queued message">
+            <span className="why">Queued, sends when the turn ends</span>
+            <p>{session.queued}</p>
+            <div className="row">
+              <button type="button" onClick={() => void takeBack()}>
+                Edit
+              </button>
+              <button type="button" onClick={() => void actOnQueued("remove")}>
+                Remove
+              </button>
+              {session.state !== "starting" && (
+                <button type="button" onClick={() => void actOnQueued("send-now")}>
+                  Send now
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <div ref={end} />
       </div>
       <form className="composer" onSubmit={(e) => void send(e)}>
@@ -527,9 +584,11 @@ export function Conversation(props: {
           value={text}
           onChange={(e) => change(e.target.value)}
           placeholder={
-            session.state === "idle"
-              ? `Message the Agent${session.commands?.length ? ", or / for its commands" : ""}`
-              : stateNames[session.state]
+            queues
+              ? `${stateNames[session.state]}: a message waits until the turn ends`
+              : session.state === "exited"
+                ? stateNames[session.state]
+                : `Message the Agent${session.commands?.length ? ", or / for its commands" : ""}`
           }
           aria-label="Message"
           rows={2}
@@ -551,19 +610,18 @@ export function Conversation(props: {
                 return;
               }
             }
-            if (e.key === "Enter" && !e.shiftKey && session.state === "idle" && text.trim()) {
+            if (e.key === "Enter" && !e.shiftKey && canSend) {
               e.preventDefault();
               void send(e);
             }
           }}
         />
-        {session.state === "working" || session.state === "waiting" ? (
+        <button type="submit" disabled={!canSend}>
+          {queues ? "Queue" : "Send"}
+        </button>
+        {queues && session.state !== "starting" && (
           <button type="button" onClick={() => void command(`/api/sessions/${session.id}/cancel`)}>
             Cancel
-          </button>
-        ) : (
-          <button type="submit" disabled={session.state !== "idle" || !text.trim()}>
-            Send
           </button>
         )}
       </form>
@@ -574,6 +632,12 @@ export function Conversation(props: {
       )}
     </section>
   );
+}
+
+// joinMessages puts more after what the composer holds, a blank line apart,
+// as fh joins a Queued message.
+function joinMessages(held: string, more: string): string {
+  return held.trim() ? `${held}\n\n${more}` : more;
 }
 
 // slashMatches lists the commands for a composer holding "/" and a partial

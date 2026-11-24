@@ -32,8 +32,12 @@ const (
 
 var stageOrder = []string{StageIdea, StageSpec, StageTickets, StageImplementing, StageReview, StageShipped}
 
-// ReadyLabel marks a Ticket an Agent can pick up (docs/agents/triage-labels.md).
+// ReadyLabel marks a Ticket an Agent can pick up (docs/agents/triage-labels.md),
+// and an approved Spec.
 const ReadyLabel = "ready-for-agent"
+
+// RoadmapNow is the Roadmap group Autopilot works on (ADR-0009).
+const RoadmapNow = "now"
 
 // Board is one Project's Software factory board.
 type Board struct {
@@ -59,6 +63,14 @@ type Feature struct {
 	Idea string `json:"idea,omitempty"`
 	// URL opens the Spec in its tracker; empty shows plain text (#86).
 	URL string `json:"url,omitempty"`
+	// Roadmap is the Spec's Roadmap group (ADR 0005): now, next or later,
+	// or empty. Autopilot works only on Features in Now (ADR-0009).
+	Roadmap string `json:"roadmap,omitempty"`
+	// Approved: the Spec is labelled ready-for-agent, so its Tickets can
+	// be written (the Spec approval Stop point, ADR-0009).
+	Approved bool `json:"approved,omitempty"`
+	// Next is the skill that moves it on from its Stage (next.go).
+	Next *Step `json:"next,omitempty"`
 }
 
 // Ticket is one buildable piece of a Feature.
@@ -76,6 +88,9 @@ type Ticket struct {
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
 	URL    string `json:"url,omitempty"` // opens the Ticket in its tracker (#86)
+	// Next is the skill that moves it on from its Stage (next.go). The
+	// Board offers it only on a Startable Ticket.
+	Next *Step `json:"next,omitempty"`
 	// Inputs to the Stage, filled by the adapter, and by Derive from links:
 	BranchAhead bool `json:"-"` // a branch <N>-… has commits ahead of the base
 	OpenPR      bool `json:"-"` // a linked PR is open
@@ -133,6 +148,7 @@ func Detect(repo string) (kind, name string) {
 //     Tickets that belong to a Spec.
 //   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
+//   - Next: each one's Stage's next step (next.go).
 func Derive(features []Feature, links []Link) {
 	for i := range features {
 		f := &features[i]
@@ -181,6 +197,7 @@ func Derive(features []Feature, links []Link) {
 			// Only a Ticket nobody has started: a branch ahead or an open PR
 			// means it is already in progress.
 			t.Startable = t.Stage == StageTickets && t.Label == ReadyLabel && !blocked
+			t.Next = TicketStep(t.Stage)
 			f.Breakdown[t.Stage]++
 			if !t.Closed {
 				if pos := slices.Index(stageOrder, t.Stage); earliest < 0 || pos < earliest {
@@ -198,6 +215,7 @@ func Derive(features []Feature, links []Link) {
 		default:
 			f.Stage, f.Note = StageReview, "All Tickets are closed: close the Spec to ship it."
 		}
+		f.Next = FeatureStep(f.Stage)
 	}
 }
 

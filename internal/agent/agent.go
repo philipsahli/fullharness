@@ -161,18 +161,29 @@ func (d Definition) Missing() string {
 	return strings.Join(problems, ". ")
 }
 
+// WithoutAPIKey returns env without ANTHROPIC_API_KEY, so a claude process
+// uses the user's Claude login rather than billing an API key. It is never
+// nil: a nil Env would make exec pass on fh's whole environment, key
+// included.
+func WithoutAPIKey(env []string) []string {
+	out := []string{}
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // Environ is the environment the Agent process gets: fh's own environment,
 // for Claude Code without ANTHROPIC_API_KEY (so it uses the user's Claude
 // login, not an API key's billing) and with CLAUDE_CODE_EXECUTABLE pointing
 // at the user's claude; then the asking variables for autoApprove; then the
 // definition's Env, so the user's config wins.
 func (d Definition) Environ(autoApprove bool) []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		if d.claude && strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") {
-			continue
-		}
-		env = append(env, kv)
+	env := os.Environ()
+	if d.claude {
+		env = WithoutAPIKey(env)
 	}
 	if d.claude {
 		if p, err := exec.LookPath("claude"); err == nil {

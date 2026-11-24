@@ -11,6 +11,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/philipsahli/fullharness/internal/agent"
+	"github.com/philipsahli/fullharness/internal/classify"
 )
 
 const configFileName = "config.toml"
@@ -24,6 +25,29 @@ type config struct {
 	ScanFolder string `toml:"scan_folder"`
 	// Agents overrides or adds Agent definitions ([agents.<id>]).
 	Agents map[string]agent.Override `toml:"agents"`
+	// Classifier sets the turn-end classifier's Provider (ADR-0010).
+	Classifier classifierConfig `toml:"classifier"`
+}
+
+// classifierConfig is [classifier]. Command runs with the Agent's last
+// message on stdin and prints what `claude -p --output-format json` prints;
+// unset, it is classify.DefaultCommand. Name is what the replay set records
+// it as, so measurements of two Providers stay apart.
+type classifierConfig struct {
+	Name    string   `toml:"name"`
+	Command []string `toml:"command"`
+}
+
+// provider returns the configured Provider.
+func (c classifierConfig) provider() classify.Provider {
+	if len(c.Command) == 0 {
+		return classify.NewClaude()
+	}
+	name := c.Name
+	if name == "" {
+		name = strings.Join(c.Command, " ")
+	}
+	return classify.NewCommand(name, c.Command)
 }
 
 // loadConfig reads config.toml from dir. A missing file is an empty config.

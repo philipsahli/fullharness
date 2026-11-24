@@ -28,6 +28,10 @@ export type Project = {
   missing: boolean; // folder not found
   url?: string; // the repo's GitHub page; absent when origin isn't on GitHub
   worktrees: Worktree[];
+  // Autopilot: fh starts the next step of Features in Roadmap Now itself
+  // (ADR-0009). agent is the Agent it starts; absent means Claude Code.
+  autopilot: boolean;
+  agent?: string;
 };
 
 // Link matches internal/tracker.Link: the Feature (and Ticket) a Session
@@ -61,6 +65,8 @@ export type SessionSummary = {
   modes?: Choice[];
   options?: ConfigOption[]; // select config options, such as the model
   usage?: Usage; // the Agent's latest usage_update
+  queued?: string; // the Queued message, sent when the current turn ends (#93)
+  unsent?: string; // a Queued message that went back to the composer
 };
 
 // Command, Choice, ConfigOption and Usage match internal/session and

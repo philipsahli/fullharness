@@ -37,6 +37,9 @@ type data struct {
 	// AgentCommands are each Agent's slash command names, as its latest
 	// Session reported them, so skill buttons know them after a restart.
 	AgentCommands map[string][]string `json:"agentCommands,omitempty"`
+	// Autopilot is Autopilot's record of the steps it took (ADR-0009); the
+	// autopilot package owns its shape.
+	Autopilot json.RawMessage `json:"autopilot,omitempty"`
 }
 
 // Open reads state.json from dir; a missing file is an empty state.
@@ -104,6 +107,28 @@ func (s *Store) Sessions(v any) error {
 		return nil
 	}
 	return json.Unmarshal(s.data.Sessions, v)
+}
+
+// SetAutopilot replaces Autopilot's record with v, as JSON.
+func (s *Store) SetAutopilot(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Autopilot = b
+	return s.save()
+}
+
+// Autopilot decodes Autopilot's record into v; nothing saved leaves v as is.
+func (s *Store) Autopilot(v any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.data.Autopilot) == 0 {
+		return nil
+	}
+	return json.Unmarshal(s.data.Autopilot, v)
 }
 
 // CreatedWorktree reports whether fh created the Worktree at path.

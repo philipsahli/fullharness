@@ -8,6 +8,8 @@ import type { StartFrom } from "./Sessions";
 // the server leaves it out where it can't build one (#86).
 type Stage = "idea" | "spec" | "tickets" | "implementing" | "review" | "shipped";
 type Blocker = { number: string; known: boolean; open: boolean; url?: string };
+// Step is one row of the server's next-step rule (internal/tracker/next.go).
+type Step = { skill: string; label: string; implements?: boolean };
 type Ticket = {
   number: string;
   title: string;
@@ -19,6 +21,7 @@ type Ticket = {
   branch: string; // Start Session's new Worktree
   ref: string; // how a skill prompt names it, e.g. "#42"
   url?: string;
+  next?: Step; // offered only while startable
 };
 type Feature = {
   id: string;
@@ -32,6 +35,7 @@ type Feature = {
   ref: string;
   idea?: string; // the Idea it was linked from (#14)
   url?: string;
+  next?: Step;
 };
 // Idea matches internal/app's ideaView: an Idea without its Spec yet, and
 // the Specs that appeared since it started.
@@ -57,20 +61,6 @@ const stageName = Object.fromEntries(columns.map((c) => [c.stage, c.name])) as R
 
 const refreshEvery = 60_000;
 const lastProjectKey = "fh.board.project";
-
-// nextStep is the button a Feature at stage offers: the skill that moves it
-// on (spec #1, story 72). Implement spec (implements) runs in its own new
-// Worktree, whose branch is its integration branch, and takes every open
-// Ticket; the others write issues, so they start in the main tree.
-const makeTickets = { label: "Make tickets", skill: "to-tickets", implements: false };
-const implementSpec = { label: "Implement spec", skill: "implement-spec", implements: true };
-const nextStep: Partial<Record<Stage, typeof makeTickets>> = {
-  spec: makeTickets,
-  tickets: implementSpec,
-  implementing: implementSpec,
-  review: implementSpec,
-  shipped: { label: "Retro", skill: "retro", implements: false },
-};
 
 function mainTree(p: Project): string {
   return p.worktrees.find((w) => w.main)?.path ?? p.path;
@@ -309,7 +299,7 @@ function FeatureDetail({
   mainTree: string;
 }) {
   // A Spec is never Startable itself; it offers its Stage's next skill.
-  const step = nextStep[feature.stage];
+  const step = feature.next;
   return (
     <section className="fdetail" aria-label={`Feature ${feature.title}`}>
       <h3>{feature.title}</h3>
@@ -344,47 +334,51 @@ function FeatureDetail({
       )}
       {feature.tickets.length === 0 && <p className="empty">No Tickets yet.</p>}
       <ul className="tickets">
-        {feature.tickets.map((t) => (
-          <li key={t.number} className={t.closed ? "closed" : undefined}>
-            <span className="num">
-              <LinkOrText url={t.url}>{t.number}</LinkOrText>
-            </span>
-            <span className="t">{t.title}</span>
-            <span className="tag">{t.label || "no label"}</span>
-            <span className="tag">{stageName[t.stage]}</span>
-            {t.startable && <span className="tag startable">Startable</span>}
-            {t.startable && (
-              <button
-                type="button"
-                onClick={() =>
-                  start({
-                    title: `Start Session on ${t.ref}`,
-                    branch: t.branch,
-                    skill: "implement",
-                    ref: t.ref,
-                    link: { feature: feature.id, ticket: t.number },
-                  })
-                }
-              >
-                Start Session
-              </button>
-            )}
-            {t.blockers.some((b) => b.open) && (
-              <span className="s">
-                blocked by {/* One element per blocker, so each number is its own link. */}
-                {t.blockers
-                  .filter((b) => b.open)
-                  .map((b, i) => (
-                    <Fragment key={b.number}>
-                      {i > 0 && ", "}
-                      <LinkOrText url={b.url}>{b.number}</LinkOrText>
-                      {!b.known && " (unknown)"}
-                    </Fragment>
-                  ))}
+        {feature.tickets.map((t) => {
+          // The Board offers a Ticket's next step only while it's Startable.
+          const next = t.startable ? t.next : undefined;
+          return (
+            <li key={t.number} className={t.closed ? "closed" : undefined}>
+              <span className="num">
+                <LinkOrText url={t.url}>{t.number}</LinkOrText>
               </span>
-            )}
-          </li>
-        ))}
+              <span className="t">{t.title}</span>
+              <span className="tag">{t.label || "no label"}</span>
+              <span className="tag">{stageName[t.stage]}</span>
+              {t.startable && <span className="tag startable">Startable</span>}
+              {next && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    start({
+                      title: `${next.label} on ${t.ref}`,
+                      branch: t.branch,
+                      skill: next.skill,
+                      ref: t.ref,
+                      link: { feature: feature.id, ticket: t.number },
+                    })
+                  }
+                >
+                  {next.label}
+                </button>
+              )}
+              {t.blockers.some((b) => b.open) && (
+                <span className="s">
+                  blocked by {/* One element per blocker, so each number is its own link. */}
+                  {t.blockers
+                    .filter((b) => b.open)
+                    .map((b, i) => (
+                      <Fragment key={b.number}>
+                        {i > 0 && ", "}
+                        <LinkOrText url={b.url}>{b.number}</LinkOrText>
+                        {!b.known && " (unknown)"}
+                      </Fragment>
+                    ))}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

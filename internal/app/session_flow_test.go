@@ -180,7 +180,9 @@ func TestAnEditToolCallCarriesAStructuredDiff(t *testing.T) {
 	}
 }
 
-func TestSendingWhileWorkingIsRefusedAndCancelEndsTheTurn(t *testing.T) {
+// Sending while Working queues the message (queued_test.go); this checks
+// cancel on its own.
+func TestCancelEndsTheTurn(t *testing.T) {
 	f := startFhWithAgent(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -189,9 +191,6 @@ func TestSendingWhileWorkingIsRefusedAndCancelEndsTheTurn(t *testing.T) {
 	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude", "prompt": "long"})
 	waitState(t, tab, id, "working")
 
-	if status, _ := f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"}); status != http.StatusConflict {
-		t.Errorf("prompt while working: status %d, want 409", status)
-	}
 	if status, _ := f.post(c, "/api/sessions/"+id+"/cancel", nil); status != http.StatusAccepted {
 		t.Fatalf("cancel: status %d, want 202", status)
 	}
@@ -387,9 +386,22 @@ func TestTwoPromptsAtOnceStartOnlyOneTurn(t *testing.T) {
 	}
 	got := []int{<-statuses, <-statuses}
 
-	slices.Sort(got) // 202 sorts before 409
-	if got[0] != http.StatusAccepted || got[1] != http.StatusConflict {
-		t.Fatalf("statuses %v, want one 202 and one 409", got)
+	// Both are accepted: one starts the turn, the other becomes the Queued
+	// message (#93), so only one user turn is in the transcript.
+	if got[0] != http.StatusAccepted || got[1] != http.StatusAccepted {
+		t.Fatalf("statuses %v, want both 202", got)
+	}
+	// The started turn adds its user item from its own goroutine.
+	var d map[string]any
+	var users []string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		d = f.sessionDetail(c, id)
+		if users = userTexts(objects(t, d, "transcript")); len(users) > 0 {
+			break
+		}
+	}
+	if !slices.Equal(users, []string{"go"}) || d["queued"] != "go" {
+		t.Fatalf("user turns %v, queued %v; want one turn [go] and %q queued", users, d["queued"], "go")
 	}
 }
 

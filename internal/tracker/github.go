@@ -118,6 +118,12 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 		}
 		f := Feature{ID: strconv.Itoa(i.Number), Title: i.Title, Closed: i.State == "CLOSED",
 			Branch: branchName(strconv.Itoa(i.Number), i.Title), Ref: "#" + strconv.Itoa(i.Number), Tickets: []Ticket{}}
+		for _, l := range labels(i) {
+			if group, ok := strings.CutPrefix(l, "roadmap:"); ok {
+				f.Roadmap = group
+			}
+			f.Approved = f.Approved || l == ReadyLabel
+		}
 		for _, k := range kids {
 			f.Tickets = append(f.Tickets, githubTicket(byNum[k], byNum, prs, aheadBranches))
 		}
