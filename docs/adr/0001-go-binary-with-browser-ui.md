@@ -1,5 +1,5 @@
 ---
-status: superseded by ADR-0011
+status: accepted, amended by ADR-0011
 ---
 
 # Single Go binary with a browser UI; native .app deferred
