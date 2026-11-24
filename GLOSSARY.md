@@ -80,6 +80,14 @@ _Avoid_: status, phase, column
 An issue in the Software factory that describes one buildable piece of work, typically produced by `/to-tickets`.
 _Avoid_: task, story, card
 
+**Pull request** (**PR**):
+A GitHub pull request from a Worktree's branch. It belongs to a Ticket when its branch is named after the Ticket's number or its description closes the Ticket. It belongs to a Session when its branch is the branch of the Session's Worktree.
+_Avoid_: merge request, MR, change
+
+**PR state**:
+Where a Pull request is: **Draft**, **Open**, **Merged** or **Closed** (closed without merging), together with its checks taken as one result: passed, failed or running.
+_Avoid_: status (also avoided for Session state), CI status
+
 **Startable ticket**:
 A Ticket of a Spec, labelled `ready-for-agent`, with no open blockers, that nobody has started (no branch with commits, no Session started from it, no open PR); the only kind of Ticket a Session can be started from.
 _Avoid_: ready ticket ("ready" means the `ready-for-agent` label alone), unblocked, available

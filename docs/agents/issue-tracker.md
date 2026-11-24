@@ -12,6 +12,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Count open blockers**: `gh api repos/<owner>/<repo>/issues/<n> --jq .issue_dependencies_summary.blocked_by` (open blockers only; 0 means startable). `gh issue view <n> --json blockedBy` also lists closed blockers, so filter it: `--jq '[.blockedBy.nodes[] | select(.state == "OPEN")] | length'`.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Retire an Idea once its Spec exists**: after `/to-spec` publishes the Spec as a new issue, close the Idea issue as completed with a comment naming the Spec (`gh issue close <idea> --reason completed --comment "Grilled and written up as Spec #<spec>; the Feature continues there."`). Don't make the Spec a sub-issue of the Idea, and don't write `Part of #<idea>` in the Spec: fh reads either as the Idea being a Spec with the Spec as its Ticket.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>`. On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
