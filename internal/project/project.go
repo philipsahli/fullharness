@@ -17,6 +17,7 @@ import (
 
 	"github.com/philipsahli/fullharness/internal/fileutil"
 	"github.com/philipsahli/fullharness/internal/gitremote"
+	"github.com/philipsahli/fullharness/internal/tracker"
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
 
@@ -55,6 +56,7 @@ type Registry struct {
 	onChange func([]Project)
 	created  func(path string) bool // whether fh created a Worktree
 	linked   func(path string) bool // whether a Session is linked to a Worktree
+	prs      func(repo string) ([]tracker.PR, bool)
 
 	// change serialises Add, Remove and Refresh including their onChange
 	// call, so tabs get events in the order the changes happened and an
@@ -89,6 +91,16 @@ func Open(dir string, created, linked func(path string) bool, onChange func([]Pr
 		r.projects = append(r.projects, r.read(p.Path, p.Settings))
 	}
 	return r, nil
+}
+
+// ReadPRs makes every later read give each Worktree of a GitHub Project
+// its branch's Pull request, from prs: a repo's PRs, and false when gh
+// couldn't read them. It is set after Open, so starting fh waits for no gh
+// call; the first Refresh, when a tab connects, fills the PRs in.
+func (r *Registry) ReadPRs(prs func(repo string) ([]tracker.PR, bool)) {
+	r.change.Lock()
+	defer r.change.Unlock()
+	r.prs = prs
 }
 
 // List returns the current Projects, never nil, so it encodes as [].
@@ -281,6 +293,30 @@ func (r *Registry) read(path string, settings Settings) Project {
 				p.Worktrees[i].URL = g.BranchURL(b)
 			}
 		}
+		r.addPRs(path, p.Worktrees)
 	}
 	return p
+}
+
+// addPRs gives each Worktree on a branch its Pull request, or NoPR, when
+// the repo's PRs can be read; otherwise they carry nothing, so the UI
+// doesn't claim "No PR yet" when it can't know.
+func (r *Registry) addPRs(repo string, wts []worktree.Worktree) {
+	if r.prs == nil {
+		return
+	}
+	prs, ok := r.prs(repo)
+	if !ok {
+		return
+	}
+	for i := range wts {
+		if wts[i].Branch == "" {
+			continue
+		}
+		if pr, ok := tracker.BranchPR(prs, wts[i].Branch); ok {
+			wts[i].PR = &pr
+		} else {
+			wts[i].NoPR = true
+		}
+	}
 }

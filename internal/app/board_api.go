@@ -168,6 +168,14 @@ func (b *boards) specs(repo string) (ids []string, ok bool) {
 	return specIDs(board), ok
 }
 
+// prs is repo's PRs for its Worktrees, from the same cache as its board, so
+// the two share one `gh pr list` per cache period; ok is false when gh
+// failed.
+func (b *boards) prs(repo string) (prs []tracker.PR, ok bool) {
+	gr := b.gh(repo, false, false)
+	return gr.prs, gr.err == nil
+}
+
 // gh returns the repo's gh read, from the cache when it's fresh and has
 // what's asked for.
 func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {

@@ -224,6 +224,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	notes = newNotifier(srv, log)
 	registerProjectRoutes(srv, reg, cfg.ScanFolder)
 	boards := &boards{cache: map[string]*ghEntry{}}
+	reg.ReadPRs(boards.prs)
 	registerBoardRoutes(srv, reg, boards, sessions)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)

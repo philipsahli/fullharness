@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/philipsahli/fullharness/internal/tracker"
 )
 
 // Worktree is one git worktree of a Project, as tabs see it.
@@ -23,6 +25,11 @@ type Worktree struct {
 	// URL is the branch's GitHub page, set by package project only when
 	// origin is on GitHub and origin/<Branch> exists as of the last fetch.
 	URL string `json:"url,omitempty"`
+	// PR is the branch's Pull request, set by package project from gh. NoPR
+	// says gh was read and the branch has none; with neither set, fh
+	// doesn't know (no GitHub origin, gh failed, or HEAD is detached).
+	PR   *tracker.PRRecord `json:"pr,omitempty"`
+	NoPR bool              `json:"noPR,omitempty"`
 	// Main is the Project's own tree, the first entry git reports.
 	Main bool `json:"main"`
 	// Agent marks a Worktree fh didn't create (and isn't the main tree); fh

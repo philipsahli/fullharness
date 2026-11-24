@@ -114,3 +114,21 @@ func records(prs []PR) []PRRecord {
 	slices.SortFunc(out, func(a, b PRRecord) int { return b.Number - a.Number })
 	return out
 }
+
+// BranchPR is the Pull request of branch among prs (GLOSSARY.md: it
+// belongs to the Session whose Worktree has that branch): the Open or Draft
+// one if any, else the most recent; ok is false when branch has none.
+func BranchPR(prs []PR, branch string) (r PRRecord, ok bool) {
+	var best PR
+	for _, p := range prs {
+		if p.HeadRefName != branch {
+			continue
+		}
+		openWins := p.Open() && !best.Open()
+		newer := p.Open() == best.Open() && p.Number > best.Number
+		if !ok || openWins || newer {
+			best, ok = p, true
+		}
+	}
+	return best.Record(), ok
+}
