@@ -92,6 +92,14 @@ _Avoid_: pipeline, automation, bot, agent (an Agent is a CLI)
 A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
 _Avoid_: gate, checkpoint, pause
 
+**Autopilot history**:
+What Autopilot did for one Feature, in order: each skill it started, how each turn ended, each Stop point it reached, each skill that failed to start. It is kept across restarts.
+_Avoid_: log (fh.log is fh's own log), audit trail, timeline
+
+**Loop view**:
+The view that draws each Feature in Now as a git graph from its Autopilot history: the Stages as the main line, each Ticket's Worktree as a branch, each skill run as a dot.
+_Avoid_: pipeline view, graph view
+
 ## Planning
 
 **Roadmap**:

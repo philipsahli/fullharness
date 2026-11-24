@@ -97,6 +97,7 @@ const (
 	KindSkill      EventKind = "skill"      // a skill started, in a new Session or as a follow-up turn
 	KindClassified EventKind = "classified" // the turn-end classifier decided how a turn ended
 	KindStop       EventKind = "stop"       // Autopilot reached a Stop point and waits for the user
+	KindFailed     EventKind = "failed"     // a skill didn't start: the Session or follow-up turn failed; Autopilot retries
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
@@ -121,6 +122,9 @@ type Event struct {
 	// Reason is why Autopilot stopped: a verdict, or one of the Reason
 	// constants.
 	Reason string `json:"reason,omitempty"`
+	// Error is why a skill didn't start (KindFailed): the first try's
+	// error; fh.log has every retry.
+	Error string `json:"error,omitempty"`
 }
 
 // FeatureHistory is one Feature's Events, oldest first.
@@ -284,7 +288,7 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 			return r.start(p, Step{Project: p.Path, Feature: f.ID, Skill: s.Skill}, f.Ref, "")
 		}
 		if s != nil {
-			r.stopAt(Event{Step: Step{Project: p.Path, Feature: f.ID, Skill: s.Skill}, Reason: ReasonSpecApproval})
+			r.once(Event{Step: Step{Project: p.Path, Feature: f.ID, Skill: s.Skill}, Kind: KindStop, Reason: ReasonSpecApproval})
 		}
 		return false
 	}
@@ -305,7 +309,7 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 			// Autopilot's review ended done: the PR waits for the user's
 			// merge. A review that ended any other way is its own Stop point.
 			if r.finished(step) {
-				r.stopAt(Event{Step: step, Reason: ReasonMerge})
+				r.once(Event{Step: step, Kind: KindStop, Reason: ReasonMerge})
 			}
 		}
 	}
@@ -322,6 +326,7 @@ func (r *Runner) start(p Project, step Step, ref, branch string) bool {
 	if err != nil {
 		// The next look tries again.
 		r.d.Log.Info("autopilot start failed", "project", p.Path, "feature", step.Feature, "ticket", step.Ticket, "skill", step.Skill, "err", err)
+		r.once(Event{Step: step, Kind: KindFailed, Error: err.Error()})
 		return false
 	}
 	r.record(step, id)
@@ -344,6 +349,7 @@ func (r *Runner) review(p Project, step Step, t tracker.Ticket, sessions []sessi
 	if s := sessions[i]; s.State != session.Exited {
 		if err := r.d.FollowUp(s.ID, step.Skill, t.Ref); err != nil {
 			r.d.Log.Info("autopilot follow-up failed", "session", s.ID, "skill", step.Skill, "err", err)
+			r.once(Event{Step: step, Kind: KindFailed, Session: s.ID, Error: err.Error()})
 			return false
 		}
 		r.record(step, s.ID)
@@ -385,21 +391,23 @@ func (r *Runner) lastActionOf(id string) int {
 	return -1
 }
 
-// stopAt records a Stop point Autopilot found while looking at the
-// tracker, unless it is already the latest event of its Feature or Ticket:
-// Autopilot looks again on every interval, and one wait is one event.
-func (r *Runner) stopAt(e Event) {
+// once records e, a Stop point or a failed start Autopilot met while
+// looking at the tracker, unless an event of the same kind and reason is
+// already the latest of its Feature or Ticket: Autopilot looks again on
+// every interval, and one wait or one failing step is one event, even when
+// a retry fails with another error.
+func (r *Runner) once(e Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := len(r.rec.History) - 1; i >= 0; i-- {
 		if h := r.rec.History[i]; h.Project == e.Project && h.Feature == e.Feature && h.Ticket == e.Ticket {
-			if h.Kind == KindStop && h.Reason == e.Reason {
+			if h.Kind == e.Kind && h.Reason == e.Reason {
 				return
 			}
 			break
 		}
 	}
-	e.Kind, e.Time = KindStop, time.Now().UTC()
+	e.Time = time.Now().UTC()
 	r.rec.History = append(r.rec.History, e)
 	r.save()
 }

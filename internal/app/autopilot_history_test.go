@@ -1,9 +1,12 @@
 package app_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -140,5 +143,31 @@ func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
 	time.Sleep(300 * time.Millisecond) // more looks add no second merge stop
 	if got := eventsOf(t, f.autopilotFeatures(c, repo), "10", keys...); !reflect.DeepEqual(got, want) {
 		t.Errorf("events\n%v\nwant\n%v", got, want)
+	}
+}
+
+func TestAStartThatFailsIsOneEventWhileAutopilotRetries(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, "[agents.claude]\ncommand = [\""+filepath.Join(dir, "no-such-agent")+"\"]\n")
+	opts := appOptions(dir)
+	opts.AutopilotInterval = 50 * time.Millisecond
+	f := startFhWith(t, opts)
+	c := f.authorisedClient()
+	repo := twoTicketRepo(t)
+	f.addProject(c, repo)
+	f.setAutopilot(c, repo, true)
+	time.Sleep(300 * time.Millisecond) // Autopilot retries every 50 ms
+
+	features := f.waitEvents(c, repo, "login", 2)
+	// Each Ticket's start fails, once each however often Autopilot retries.
+	want := []map[string]any{
+		{"kind": "failed", "ticket": "01", "skill": "implement"},
+		{"kind": "failed", "ticket": "02", "skill": "implement"},
+	}
+	if got := eventsOf(t, features, "login", "kind", "ticket", "skill"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("events\n%v\nwant\n%v", got, want)
+	}
+	if e := eventsOf(t, features, "login", "error")[0]["error"]; !strings.Contains(fmt.Sprint(e), "can't start") {
+		t.Errorf("error %q, want why the start failed", e)
 	}
 }
