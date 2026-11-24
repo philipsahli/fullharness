@@ -50,9 +50,9 @@ func (p PR) Record() PRRecord {
 	return PRRecord{Number: p.Number, URL: p.URL, State: p.state(), Checks: p.checks()}
 }
 
-// Open: p is Open or Draft, the only PRs that count as work in progress
+// Unmerged: p is Open or Draft, the only PRs that count as work in progress
 // for Stage and Startable.
-func (p PR) Open() bool {
+func (p PR) Unmerged() bool {
 	return p.State == "OPEN"
 }
 
@@ -105,15 +105,15 @@ func (c Check) running() bool {
 }
 
 // linkPRs sets t.PRs to the records of the prs that linked keeps, newest
-// (highest number) first, and t.OpenPR when one of them is Open or Draft.
+// (highest number) first, and t.UnmergedPR when one of them is Open or Draft.
 // PRs is never nil, so the UI can tell "No PR yet" from a list.
 func (t *Ticket) linkPRs(prs []PR, linked func(PR) bool) {
 	t.PRs = []PRRecord{}
-	t.OpenPR = false
+	t.UnmergedPR = false
 	for _, p := range prs {
 		if linked(p) {
 			t.PRs = append(t.PRs, p.Record())
-			t.OpenPR = t.OpenPR || p.Open()
+			t.UnmergedPR = t.UnmergedPR || p.Unmerged()
 		}
 	}
 	slices.SortFunc(t.PRs, func(a, b PRRecord) int { return b.Number - a.Number })
@@ -128,9 +128,9 @@ func BranchPR(prs []PR, branch string) (r PRRecord, ok bool) {
 		if p.HeadRefName != branch {
 			continue
 		}
-		openWins := p.Open() && !best.Open()
-		newer := p.Open() == best.Open() && p.Number > best.Number
-		if !ok || openWins || newer {
+		unmergedWins := p.Unmerged() && !best.Unmerged()
+		newer := p.Unmerged() == best.Unmerged() && p.Number > best.Number
+		if !ok || unmergedWins || newer {
 			best, ok = p, true
 		}
 	}

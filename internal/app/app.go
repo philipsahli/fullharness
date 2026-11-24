@@ -86,6 +86,7 @@ type Instance struct {
 	srv   *server.Server // nil when the launch handed off to a running instance
 
 	sessions *session.Manager
+	projects *project.Registry // waited on at Close for its PR fetches
 	logFile  io.Closer
 
 	done      chan struct{}
@@ -168,6 +169,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	if err != nil {
 		return fail(err)
 	}
+	inst.projects = reg
 	var notes *notifier         // set once srv exists; nothing enters Waiting before that
 	var pilot *autopilot.Runner // set once srv exists; no turn ends before that
 	startTimeout := opts.AgentStartTimeout
@@ -332,6 +334,8 @@ func (i *Instance) Close() error {
 		// Agent processes end with fh (ADR 0002).
 		i.sessions.StopAll()
 		err = i.srv.Close()
+		// Waits for running PR fetches, so none outlives fh.
+		i.projects.Close()
 		defer func() { _ = i.logFile.Close() }() // nothing left to log the error to
 		if i.dev {
 			return // the next dev launch reuses the token from this file

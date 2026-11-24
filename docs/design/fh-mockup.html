@@ -817,13 +817,12 @@ function ticketRow(fid, t) {
   const s = t.sid && sess(t.sid), pr = t.pr, prs = pr ? [pr, ...(t.older || [])] : [];
   const sessCell = s ? `<button class="btn small" data-open="${s.id}"><span class="dot ${s.state}" style="display:inline-block;margin-right:5px"></span>${STATE_LABEL[s.state]}</button>` : `<span class="chain">—</span>`;
   const prCell = prs.length ? prs.map(prPart).join("<br>") : `<span class="ci none">No PR yet</span>`;
-  const ciCell = pr && (pr.state === "open" || pr.state === "draft") ? `<span class="ci ${pr.ci}">${CI_MARK[pr.ci]} ${pr.checks}</span>` : `<span class="chain">${pr ? "merged" : "—"}</span>`;
   let act = "";
   if (t.stage === "Startable") act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">#${t.n}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note)}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">#${t.n}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note)}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -841,7 +840,7 @@ function renderFeature() {
     : f.stage === "Shipped" && !f.retroDone ? `<div class="callout"><span><strong>Shipped.</strong> Run a Retro to capture what to change next. Its follow-ups come back here as Ideas.</span><div class="acts"><button class="btn primary" data-retro="${f.id}">Start Retro</button></div></div>`
     : f.suggest ? `<div class="callout"><span><strong>${f.suggest}.</strong> Link it to move this Idea on to Spec; fh closes ${f.ref} with “Continued in Spec #32”.</span><div class="acts"><button class="btn primary" data-toast="Spec #32 linked · ${f.ref} closed · ${esc(f.name)} moved to Spec">Link Spec #32</button></div></div>` : "";
   const tickets = f.tickets ? `<section class="card"><h3><span>Tickets · ${f.tickets.length}</span><span class="chain" style="text-transform:none;letter-spacing:0">Ticket → Session → PR → checks → review → merge</span></h3>
-      <div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Stage</th><th>Session</th><th>PR</th><th>Checks</th><th>Review</th><th></th></tr></thead><tbody>${f.tickets.map(t => ticketRow(f.id, t)).join("")}</tbody></table></div></section>`
+      <div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Stage</th><th>Session</th><th>PR</th><th>Review</th><th></th></tr></thead><tbody>${f.tickets.map(t => ticketRow(f.id, t)).join("")}</tbody></table></div></section>`
     : f.stage === "Spec" ? `<section class="card"><h3>Tickets</h3><p class="empty-note">No Tickets yet. <strong>Make tickets</strong> runs <code>/to-tickets</code> on ${f.ref}.</p></section>` : "";
   const checks = r ? `<section class="card"><h3><span>Readiness: ${v}</span>${rdBadge(f.id)}</h3><ul class="checks" aria-label="Readiness checks">${CHECKS.map((c, i) => {
       const st = r.checks[i], cls = st === 1 ? "c-ok" : st === 0 ? "c-bad" : "c-warn", g = st === 1 ? "✓" : st === 0 ? "✗" : "!";

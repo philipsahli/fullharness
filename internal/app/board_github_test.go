@@ -69,6 +69,8 @@ type ghFake struct {
 	prListCalls  func() int    // the `pr list` reads
 	unexpected   func() string // other commands, one per line
 	setPRs       func([]map[string]any)
+	// hold makes each `pr list` wait, after it is counted, until release.
+	hold, release func()
 }
 
 func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) ghFake {
@@ -99,10 +101,11 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	callsFile := filepath.Join(dir, "graphql-calls")
 	unexpectedFile := filepath.Join(dir, "unexpected")
 	prCallsFile := filepath.Join(dir, "pr-calls")
+	gate := filepath.Join(dir, "gate")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
-		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; cat \"" + dir + "/prs.json\" ;;\n" +
+		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
 	bin := filepath.Join(dir, "bin")
@@ -128,6 +131,12 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 			return string(b)
 		},
 		setPRs: func(prs []map[string]any) { write("prs.json", prs) },
+		hold:   func() { writeFile(t, gate, "") },
+		release: func() {
+			if err := os.Remove(gate); err != nil && !os.IsNotExist(err) {
+				t.Error(err)
+			}
+		},
 	}
 }
 

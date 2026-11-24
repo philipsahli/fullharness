@@ -199,6 +199,13 @@ A Worktree that already has a Session, or is an Agent worktree, is greyed out wi
 
 A new Worktree goes to `<project>.worktrees/<branch>/`, next to the Project's folder. Its branch starts from `origin/<default branch>`, or the local default branch when there's no remote.
 
+The Session header shows its Worktree's branch, linked to GitHub once pushed, and the branch's PR:
+
+- `PR #n ↗`, then its PR state (Draft, Open, Merged or Closed) and its checks: passed, failed or running.
+- An Unmerged (Open or Draft) PR wins over older ones; without one, the most recent PR shows.
+- **No PR yet** when the branch has none.
+- Nothing about PRs when the remote isn't GitHub or `gh` can't read them.
+
 The conversation shows your messages, the Agent's reply as it streams in, and each tool call as a card you can expand.
 
 While the Agent is starting, working, or waiting on a permission request, you can still write. The button reads **Queue**:
@@ -275,18 +282,21 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 
 A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
-For GitHub, fh reads issues, labels, sub-issues, blocking links and open PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
+For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
 - A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
-- An open PR puts its Ticket in Review.
+- An Unmerged (Open or Draft) PR puts its Ticket in Review. Merged and Closed PRs leave the Stage alone.
 - A PR belongs to a Ticket by its branch `<N>-…`, or by `Closes`, `Fixes` or `Resolves #N` in its body.
+- Each Ticket row lists its PRs, newest first, each with its PR state and checks, or **No PR yet**.
+- fh reads the 500 most recent PRs, so a long-closed Ticket's old PR may not show.
 - fh reuses a Project's GitHub results for 50 seconds, so several tabs share one `gh` call.
-- **Refresh** reads GitHub again at once.
+- fh reads PRs for the Session headers in the background, so a turn end never waits on GitHub.
+- **Refresh** reads GitHub again at once, PRs included.
 
-A local markdown Project with a GitHub remote gets its open PRs the same way, matched by branch `<N>-<slug>…`.
+A local markdown Project with a GitHub remote gets its PRs the same way, matched by branch `<N>-<slug>…`.
 
 A board with no Specs says so, with a hint to run `/to-spec` in a Session.
 

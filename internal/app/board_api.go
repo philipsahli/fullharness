@@ -50,7 +50,18 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 			server.WriteError(w, http.StatusNotFound, "no such Project")
 			return
 		}
-		board, read := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
+		refresh := r.URL.Query().Get("refresh") == "1"
+		if refresh {
+			// A board with no GitHub tracker reads no PRs below, yet its
+			// Worktrees' PRs should be re-read too.
+			b.expire(p.Path)
+		}
+		board, read := b.read(p.Path, refresh)
+		if refresh {
+			// The Session header shows the new PRs through a projects
+			// event, without waiting for the next Refresh.
+			projects.FetchPRs(p.Path)
+		}
 		tracker.Derive(board.Features, sessions.Links(p.Path))
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
@@ -176,17 +187,30 @@ func (b *boards) prs(repo string) (prs []tracker.PR, ok bool) {
 	return gr.prs, gr.err == nil
 }
 
-// gh returns the repo's gh read, from the cache when it's fresh and has
-// what's asked for.
-func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
+// entry is repo's cache entry, made on first use.
+func (b *boards) entry(repo string) *ghEntry {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	e, ok := b.cache[repo]
 	if !ok {
 		e = &ghEntry{}
 		b.cache[repo] = e
 	}
-	b.mu.Unlock()
+	return e
+}
 
+// expire makes the next gh read of repo call gh.
+func (b *boards) expire(repo string) {
+	e := b.entry(repo)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.at = time.Time{}
+}
+
+// gh returns the repo's gh read, from the cache when it's fresh and has
+// what's asked for.
+func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
+	e := b.entry(repo)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	fresh := !e.at.IsZero() && time.Since(e.at) < ghCacheFor
