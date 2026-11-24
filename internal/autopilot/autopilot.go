@@ -83,9 +83,74 @@ type Action struct {
 	VerdictAt time.Time `json:"verdictAt,omitzero"`
 }
 
-// Record is every Action, oldest first.
+// Record is every Action, oldest first, and the history the Loop view
+// draws (#112).
 type Record struct {
 	Actions []Action `json:"actions"`
+	History []Event  `json:"history,omitempty"`
+}
+
+// EventKind says what Autopilot did.
+type EventKind string
+
+const (
+	KindSkill      EventKind = "skill"      // a skill started, in a new Session or as a follow-up turn
+	KindClassified EventKind = "classified" // the turn-end classifier decided how a turn ended
+	KindStop       EventKind = "stop"       // Autopilot reached a Stop point and waits for the user
+)
+
+// Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
+const (
+	ReasonSpecApproval = "spec-approval" // an unapproved Spec in Now
+	ReasonMerge        = "merge"         // a reviewed Ticket's PR waits for the user's merge
+)
+
+// Event is one entry in a Feature's history: its Step is the skill it
+// concerns. Fields that don't apply to its Kind are empty.
+type Event struct {
+	Step
+	Kind EventKind `json:"kind"`
+	// Time is when it happened; for KindClassified, when the turn ended.
+	// The classifier answers later, so order by position, not by Time.
+	Time    time.Time `json:"time"`
+	Session string    `json:"session,omitempty"`
+	// Verdict and By are a classified turn end: the verdict and the rule
+	// or Provider that gave it.
+	Verdict classify.Verdict `json:"verdict,omitempty"`
+	By      string           `json:"by,omitempty"`
+	// Reason is why Autopilot stopped: a verdict, or one of the Reason
+	// constants.
+	Reason string `json:"reason,omitempty"`
+}
+
+// FeatureHistory is one Feature's Events, oldest first.
+type FeatureHistory struct {
+	Project string  `json:"project"`
+	Feature string  `json:"feature"`
+	Events  []Event `json:"events"`
+}
+
+// History returns the history of every Feature in project ("" for every
+// Project), in the order each Feature first appeared.
+func (r *Runner) History(project string) []FeatureHistory {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []FeatureHistory{}
+	index := map[[2]string]int{}
+	for _, e := range r.rec.History {
+		if project != "" && e.Project != project {
+			continue
+		}
+		k := [2]string{e.Project, e.Feature}
+		i, ok := index[k]
+		if !ok {
+			i = len(out)
+			index[k] = i
+			out = append(out, FeatureHistory{Project: e.Project, Feature: e.Feature})
+		}
+		out[i].Events = append(out[i].Events, e)
+	}
+	return out
 }
 
 // Runner is Autopilot.
@@ -136,11 +201,24 @@ func (r *Runner) TurnEnded(e session.TurnEnd, at time.Time) {
 	if e.Err != nil {
 		in.Err = e.Err.Error()
 	}
-	verdict := r.d.Classify(context.Background(), in).Verdict
+	res := r.d.Classify(context.Background(), in)
+	verdict := res.Verdict
 
 	r.mu.Lock()
 	if i := r.lastActionOf(e.Session); i >= 0 && !r.rec.Actions[i].VerdictAt.After(at) {
-		r.rec.Actions[i].Verdict, r.rec.Actions[i].VerdictAt = verdict, at
+		a := &r.rec.Actions[i]
+		a.Verdict, a.VerdictAt = verdict, at
+		// A stale verdict is dropped here and from the history alike, so
+		// the history shows only the turn ends Autopilot acted on.
+		ev := Event{Step: a.Step, Time: at.UTC(), Session: e.Session}
+		classified := ev
+		classified.Kind, classified.Verdict, classified.By = KindClassified, verdict, res.By
+		r.rec.History = append(r.rec.History, classified)
+		if res.StopPoint() {
+			stop := ev
+			stop.Kind, stop.Reason = KindStop, string(verdict)
+			r.rec.History = append(r.rec.History, stop)
+		}
 		r.save()
 	}
 	r.mu.Unlock()
@@ -201,8 +279,12 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 	}
 	if f.Stage == tracker.StageSpec {
 		// An unapproved Spec is the Spec approval Stop point.
-		if s := tracker.FeatureStep(tracker.StageSpec); s != nil && f.Approved {
+		s := tracker.FeatureStep(tracker.StageSpec)
+		if s != nil && f.Approved {
 			return r.start(p, Step{Project: p.Path, Feature: f.ID, Skill: s.Skill}, f.Ref, "")
+		}
+		if s != nil {
+			r.stopAt(Event{Step: Step{Project: p.Path, Feature: f.ID, Skill: s.Skill}, Reason: ReasonSpecApproval})
 		}
 		return false
 	}
@@ -219,6 +301,11 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 		case t.Stage == tracker.StageReview:
 			if r.review(p, step, t, sessions) {
 				return true
+			}
+			// Autopilot's review ended done: the PR waits for the user's
+			// merge. A review that ended any other way is its own Stop point.
+			if r.finished(step) {
+				r.stopAt(Event{Step: step, Reason: ReasonMerge})
 			}
 		}
 	}
@@ -298,6 +385,37 @@ func (r *Runner) lastActionOf(id string) int {
 	return -1
 }
 
+// stopAt records a Stop point Autopilot found while looking at the
+// tracker, unless it is already the latest event of its Feature or Ticket:
+// Autopilot looks again on every interval, and one wait is one event.
+func (r *Runner) stopAt(e Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		if h := r.rec.History[i]; h.Project == e.Project && h.Feature == e.Feature && h.Ticket == e.Ticket {
+			if h.Kind == KindStop && h.Reason == e.Reason {
+				return
+			}
+			break
+		}
+	}
+	e.Kind, e.Time = KindStop, time.Now().UTC()
+	r.rec.History = append(r.rec.History, e)
+	r.save()
+}
+
+// finished reports whether Autopilot's latest run of step ended done.
+func (r *Runner) finished(step Step) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.Actions) - 1; i >= 0; i-- {
+		if a := r.rec.Actions[i]; a.Step == step {
+			return a.Verdict == classify.Done
+		}
+	}
+	return false
+}
+
 func (r *Runner) took(step Step) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -313,7 +431,9 @@ func (r *Runner) worked(project, feature string) bool {
 func (r *Runner) record(step Step, id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.rec.Actions = append(r.rec.Actions, Action{Step: step, Time: time.Now().UTC(), Session: id})
+	now := time.Now().UTC()
+	r.rec.Actions = append(r.rec.Actions, Action{Step: step, Time: now, Session: id})
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindSkill, Time: now, Session: id})
 	r.save()
 }
 

@@ -244,6 +244,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
 	}
 	registerAutopilotRoutes(srv, reg, agents, pilot)
+	registerAutopilotHistoryRoute(srv, pilot)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
 	// quiet spell gets the last state read, then the current one at once.
