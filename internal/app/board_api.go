@@ -193,6 +193,17 @@ func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
 	if fresh && !refresh && (e.withIssues || !withIssues || e.err != nil) {
 		return e.ghResult
 	}
+	if fresh && !refresh {
+		// The Worktree refresh read the PRs; the board adds the issues
+		// without a second `gh pr list`. A failed issue read isn't kept,
+		// so the Worktrees keep their PRs.
+		r := e.ghResult
+		r.withIssues = true
+		if r.issues, r.err = tracker.FetchIssues(repo); r.err == nil {
+			e.ghResult = r
+		}
+		return r
+	}
 	r := ghResult{at: time.Now(), withIssues: withIssues}
 	if r.err = tracker.CheckGh(repo); r.err == nil && withIssues {
 		r.issues, r.err = tracker.FetchIssues(repo)

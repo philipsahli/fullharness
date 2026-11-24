@@ -60,6 +60,20 @@ func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) f
 // that changes the open PRs.
 func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) (calls func() int, unexpected func() string, setPRs func([]map[string]any)) {
 	t.Helper()
+	g := newFakeGh(t, issues, prs, authOK)
+	return g.graphqlCalls, g.unexpected, g.setPRs
+}
+
+// ghFake is the fake gh: what it was asked, and a way to change its PRs.
+type ghFake struct {
+	graphqlCalls func() int    // the GraphQL (issues) reads
+	prListCalls  func() int    // the `pr list` reads
+	unexpected   func() string // other commands, one per line
+	setPRs       func([]map[string]any)
+}
+
+func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) ghFake {
+	t.Helper()
 	dir := t.TempDir()
 	nodes := []any{}
 	for _, i := range issues {
@@ -85,10 +99,11 @@ func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK b
 	}
 	callsFile := filepath.Join(dir, "graphql-calls")
 	unexpectedFile := filepath.Join(dir, "unexpected")
+	prCallsFile := filepath.Join(dir, "pr-calls")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
-		"  *\"pr list --state all --limit 500 \"*) cat \"" + dir + "/prs.json\" ;;\n" +
+		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
 	bin := filepath.Join(dir, "bin")
@@ -100,16 +115,21 @@ func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK b
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	calls = func() int {
-		b, _ := os.ReadFile(callsFile) // no file yet means no calls
-		return strings.Count(string(b), "x")
+	count := func(file string) func() int {
+		return func() int {
+			b, _ := os.ReadFile(file) // no file yet means no calls
+			return strings.Count(string(b), "x")
+		}
 	}
-	unexpected = func() string {
-		b, _ := os.ReadFile(unexpectedFile) // no file yet means none
-		return string(b)
+	return ghFake{
+		graphqlCalls: count(callsFile),
+		prListCalls:  count(prCallsFile),
+		unexpected: func() string {
+			b, _ := os.ReadFile(unexpectedFile) // no file yet means none
+			return string(b)
+		},
+		setPRs: func(prs []map[string]any) { write("prs.json", prs) },
 	}
-	setPRs = func(prs []map[string]any) { write("prs.json", prs) }
-	return calls, unexpected, setPRs
 }
 
 func githubRepo(t *testing.T) string {
