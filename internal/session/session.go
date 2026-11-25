@@ -334,6 +334,12 @@ type session struct {
 	ready       bool  // the ACP session exists; before that the Session is Starting
 	unseen      bool  // a turn ended that nobody has looked at yet
 	loginNeeded bool  // the Agent asked for a login; watch reports that, not a crash
+	// promptSent is set once the running turn's session/prompt is about to
+	// be written. Before that, a cancel only sets cancelRequested and prompt
+	// doesn't send: the Agent ignores a cancel that reaches it before the
+	// prompt it is meant for (#56).
+	promptSent bool
+
 	// cancelRequested is set when you cancel a turn, so it ends Idle even if
 	// the Agent answers with another stop reason than "cancelled".
 	cancelRequested bool
@@ -584,7 +590,7 @@ func (s *session) resetRunLocked() {
 	s.sum.State, s.sum.Since = Starting, time.Now()
 	s.sum.Reason, s.sum.Stderr, s.sum.Login, s.sum.Waiting = "", nil, "", ""
 	s.proc, s.stopping, s.loginNeeded, s.ready = nil, false, false, false
-	s.inTurn, s.unseen, s.cancelRequested = false, false, false
+	s.inTurn, s.unseen, s.cancelRequested, s.promptSent = false, false, false, false
 	s.transcript, s.tools = nil, map[string]int{} // the Agent replays the conversation
 	// The reloaded Agent reports these again; run sets the mode and options
 	// back to what they were.
@@ -880,10 +886,13 @@ func (m *Manager) Cancel(id string) error {
 // another (a Queued message) started; the caller set cancelRequested.
 func (s *session) cancelTurn(turn int) error {
 	s.mu.Lock()
-	proc, sid, same := s.proc, s.acpID, s.turns == turn && s.inTurn
+	proc, sid, same, sent := s.proc, s.acpID, s.turns == turn && s.inTurn, s.promptSent
 	s.mu.Unlock()
 	if !same || proc == nil {
 		return nil // that turn ended already
+	}
+	if !sent {
+		return nil // prompt sees cancelRequested and doesn't send the turn
 	}
 	// ACP: a client that cancels a turn answers its open permission
 	// requests with "cancelled".
@@ -1042,7 +1051,7 @@ func (s *session) run(load bool, prompt string) {
 		prompt, s.sum.Queued = s.sum.Queued, ""
 	}
 	if prompt != "" {
-		s.inTurn = true
+		s.inTurn, s.promptSent = true, false
 		s.turns++
 	}
 	s.deriveLocked()
@@ -1258,6 +1267,20 @@ func (s *session) prompt(text string) {
 	proc, sid := s.proc, s.acpID
 	s.mu.Unlock()
 	s.addItem(Item{Type: "user", Text: text})
+	s.mu.Lock()
+	cancelled := s.cancelRequested
+	s.promptSent = !cancelled
+	s.mu.Unlock()
+	if cancelled {
+		// Cancelled before it went out (#56): end the turn as the Agent
+		// would have, without sending it.
+		s.addItem(Item{Type: "notice", Text: "Turn cancelled."})
+		s.finishTurn(turnCancelled, TurnEnd{Session: s.sum.ID, StopReason: string(sdk.StopReasonCancelled)})
+		return
+	}
+	// A cancel from here on is written to the Agent. It can still get
+	// there first if it runs before the SDK writes this prompt, a gap
+	// left open on purpose (#56).
 	reason, err := proc.Prompt(context.Background(), sid, text)
 	if err != nil {
 		s.m.cfg.Log.Info("prompt failed", "session", s.sum.ID, "err", err)
@@ -1274,8 +1297,7 @@ func (s *session) prompt(text string) {
 		// The Agent is alive but refused the turn; show it and let the
 		// user try again.
 		s.addItem(Item{Type: "notice", Text: "The Agent answered with an error: " + err.Error()})
-		s.endTurn(turnFailed)
-		s.turnEnded(TurnEnd{Session: s.sum.ID, Err: err})
+		s.finishTurn(turnFailed, TurnEnd{Session: s.sum.ID, Err: err})
 		return
 	}
 	cancelledTurn := reason == sdk.StopReasonCancelled
@@ -1288,8 +1310,15 @@ func (s *session) prompt(text string) {
 	if cancelledTurn {
 		end = turnCancelled
 	}
+	s.finishTurn(end, TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+}
+
+// finishTurn ends the running turn, calls the TurnEnded hook, and sends the
+// Queued message when endTurn says it goes out next. A failed turn never
+// sends it: endTurn gives it back as unsent text.
+func (s *session) finishTurn(end turnEnd, e TurnEnd) {
 	next := s.endTurn(end)
-	s.turnEnded(TurnEnd{Session: s.sum.ID, StopReason: string(reason)})
+	s.turnEnded(e)
 	if next != "" {
 		s.prompt(next)
 	}
@@ -1670,7 +1699,7 @@ func (s *session) endTurn(end turnEnd) (next string) {
 // startTurnLocked marks a new turn as running; the caller holds s.mu and
 // sends the prompt.
 func (s *session) startTurnLocked() {
-	s.inTurn, s.unseen, s.cancelRequested = true, false, false
+	s.inTurn, s.unseen, s.cancelRequested, s.promptSent = true, false, false, false
 	s.turns++
 }
 
