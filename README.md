@@ -281,6 +281,7 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 - A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
 - `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
 - A folder without `spec.md` isn't a Feature. Each open issue file in its `issues/` is an Untriaged issue, under **Needs triage**. A closed one is left off the board.
+- Spec and Ticket numbers open their files in VS Code, whatever the Project's remote is. Blocker numbers stay plain text.
 
 A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 

@@ -507,8 +507,22 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   await expect(
     detail.getByRole("listitem").filter({ hasText: "Session cookie" }).getByRole("button"),
   ).toHaveCount(0);
-  // No GitHub remote, so the server sends no urls: numbers are plain text.
-  await expect(detail.getByRole("link")).toHaveCount(0);
+  // The Spec and Ticket numbers open their files in VS Code, in place: no
+  // target, unlike a GitHub link (#102). Blockers and titles stay text.
+  const spec = detail.getByRole("link", { name: ".scratch/login/spec.md" });
+  await expect(spec).toHaveAttribute("href", `vscode://file${repo}/.scratch/login/spec.md`);
+  await expect(spec).not.toHaveAttribute("target", /.*/);
+  const form = detail
+    .getByRole("listitem")
+    .filter({ hasText: "Login form" })
+    .getByRole("link", { name: "#01", exact: true });
+  await expect(form).toHaveAttribute(
+    "href",
+    `vscode://file${repo}/.scratch/login/issues/01-form.md`,
+  );
+  await expect(form).not.toHaveAttribute("target", /.*/);
+  await expect(form).not.toHaveAttribute("rel", /.*/);
+  await expect(detail.getByRole("link")).toHaveCount(3); // Spec, #01, #02
 });
 
 test("on a GitHub board the Spec, Ticket and blocker numbers link to their issues", async ({
