@@ -60,6 +60,8 @@ test("adding a Project shows its main tree, and a non-repo shows why not", async
   // Rail actions are buttons, not links (#166).
   await expect(projects.getByRole("button", { name: "Refresh" })).toBeVisible();
   await expect(projects.getByRole("button", { name: "Remove shop" })).toBeVisible();
+  // A Worktree's dot names its Sessions' state; with none it says so (#167).
+  await expect(shop.getByRole("img", { name: "No Session" })).toBeVisible();
 });
 
 test("a Project on GitHub links its name to the repo; one without a GitHub remote is plain text", async ({
@@ -202,6 +204,8 @@ test("a New Session in a Project's main tree streams the Agent's reply and its t
     const conversation = page.getByRole("region", { name: /^Session / });
     await expect(conversation.getByText("Hi there")).toBeVisible();
     await expect(conversation.locator(".state")).toHaveText("Idle");
+    // The header names the Agent in its chip (#167).
+    await expect(conversation.getByText("Claude Code", { exact: true })).toBeVisible();
     await conversation.getByText("ls", { exact: true }).click(); // expand the tool card
     await expect(conversation.getByText("README.md")).toBeVisible();
     await expect(conversation.getByText("completed")).toBeVisible();
@@ -261,6 +265,7 @@ test("a permission request answered in the Inbox is answered in its Session too"
 }) => {
   const fh = await Fh.start({
     agentScript: {
+      prompts: { quit: [{ exit: 1 }] },
       default: [
         {
           permission: { id: "t1", title: "rm -rf build", kind: "execute", command: "rm -rf build" },
@@ -286,6 +291,9 @@ test("a permission request answered in the Inbox is answered in its Session too"
     const card = conversation.getByRole("group", { name: "Permission: rm -rf build" });
     await expect(card).toContainText("rm -rf build");
     await expect(conversation.locator(".mhead .state")).toHaveText("Waiting");
+    // The Worktree's dot follows its Session (#167).
+    const mainDot = projects.locator(".wt").filter({ hasText: "main tree" }).getByRole("img");
+    await expect(mainDot).toHaveAccessibleName("Waiting");
     const inboxTab = page.getByRole("tab", { name: /Inbox/ });
     await expect(inboxTab).toContainText("1");
 
@@ -300,6 +308,31 @@ test("a permission request answered in the Inbox is answered in its Session too"
     await page.getByRole("button", { name: /main/ }).first().click();
     await expect(card).toContainText("Allowed");
     await expect(conversation.getByText("permission=allow-once")).toBeVisible();
+    await expect(mainDot).toHaveAccessibleName("Idle");
+
+    // An Exited Session frees its Worktree for a new one; the dot shows the
+    // most urgent of the two: Waiting beats Exited.
+    await conversation.getByLabel("Message").fill("quit");
+    await conversation.getByRole("button", { name: "Send" }).click();
+    await expect(conversation.locator(".mhead .state")).toHaveText("Exited");
+    await expect(mainDot).toHaveAccessibleName("Exited");
+    const status = await page.evaluate(async () => {
+      const state = await (await fetch("/api/state")).json();
+      const s = state.sessions[0];
+      const r = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project: s.project,
+          worktree: s.worktree,
+          agent: s.agent,
+          prompt: "clean up",
+        }),
+      });
+      return r.status;
+    });
+    expect(status).toBe(201);
+    await expect(mainDot).toHaveAccessibleName("Waiting");
   } finally {
     await fh.dispose();
   }
@@ -437,7 +470,8 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   const repo = tempRepoWith("shop", {
     ".scratch/login/spec.md": "# Login\n",
     ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
-    ".scratch/login/issues/02-cookie.md": ticket("02", "Session cookie", "01"),
+    // No Status line: a Ticket without a label (#167).
+    ".scratch/login/issues/02-cookie.md": "# 02: Session cookie\n\n**Blocked by:** 01\n",
   });
   await page.goto(fh.launchURL);
   await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
@@ -453,9 +487,16 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   await tickets.getByRole("button", { name: /Login/ }).click();
 
   const detail = page.getByRole("region", { name: "Feature Login" });
-  await expect(detail.getByRole("listitem").filter({ hasText: "Login form" })).toContainText(
-    "Startable",
-  );
+  // Each Ticket shows its Stage; a Startable one adds a Startable marker
+  // beside it, and a Ticket without a label shows none (#167).
+  const form01 = detail.getByRole("listitem").filter({ hasText: "Login form" });
+  await expect(form01).toContainText("ready-for-agent");
+  await expect(form01.getByText("Tickets", { exact: true })).toBeVisible();
+  await expect(form01.getByText("Startable", { exact: true })).toBeVisible();
+  const cookie02 = detail.getByRole("listitem").filter({ hasText: "Session cookie" });
+  await expect(cookie02.getByText("Tickets", { exact: true })).toBeVisible();
+  await expect(cookie02).not.toContainText("Startable");
+  await expect(cookie02).not.toContainText("no label");
   await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
     "blocked by #01",
   );

@@ -13,6 +13,7 @@ import {
   stopLoadingConversation,
   tabID,
 } from "./events";
+import { AgentChip, stateNames } from "./Chips";
 import type {
   Command,
   Item,
@@ -57,7 +58,8 @@ export function SessionList(props: {
               <span className="t">{s.title}</span>
               <StateBadge state={s.state} />
               <span className="s">
-                {projectName(props.projects, s.project)} · {s.agentName}
+                {projectName(props.projects, s.project)} ·{" "}
+                <AgentChip id={s.agent} name={s.agentName} />
                 {s.autoApprove && " · auto-approve"}
                 {s.state === "exited" && s.reason && ` · ${s.reason}`}
               </span>
@@ -77,14 +79,6 @@ function linkText(l: Link): string {
   const spec = `Spec ${hash}${l.feature}`;
   return l.ticket ? `Ticket ${hash}${l.ticket} of ${spec}` : spec;
 }
-
-const stateNames: Record<SessionState, string> = {
-  starting: "Starting",
-  working: "Working",
-  waiting: "Waiting",
-  idle: "Idle",
-  exited: "Exited",
-};
 
 function StateBadge({ state }: { state: SessionState }) {
   return <span className={`state ${state}`}>{stateNames[state]}</span>;
@@ -502,13 +496,14 @@ export function Conversation(props: {
     <section className="conversation" aria-label={`Session ${session.title}`}>
       <header className="mhead">
         <h2>{session.title}</h2>
+        <AgentChip id={session.agent} name={session.agentName} />
         <StateBadge state={session.state} />
         {session.autoApprove && <span className="tag">auto-approve</span>}
         <button type="button" className="btn small close" onClick={() => void close()}>
           Close
         </button>
         <span className="crumb" title={session.worktree}>
-          {session.agentName} · {session.worktree}
+          {session.worktree}
           {session.idea && ` · Idea "${session.idea}"`}
           {session.link &&
             (session.idea
