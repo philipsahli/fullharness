@@ -16,7 +16,7 @@ export function Projects({ projects }: { projects: Project[] }) {
         <span>Projects</span>
         <button
           type="button"
-          className="link"
+          className="btn small"
           onClick={() => void command("/api/projects/refresh")}
           title="Re-read every Worktree from git"
         >
@@ -52,7 +52,7 @@ function ProjectItem({ project }: { project: Project }) {
         </LinkOrText>
         <button
           type="button"
-          className="link"
+          className="btn small"
           onClick={() => void remove()}
           aria-label={`Remove ${project.name}`}
           title="Remove from fh; the folder on disk stays"
@@ -188,7 +188,7 @@ function RemoveWorktree({
   return (
     <button
       type="button"
-      className="link"
+      className="btn small"
       aria-disabled={wt.removal !== ""}
       onClick={() => void remove()}
       aria-label={`Remove Worktree ${name}`}
@@ -267,8 +267,10 @@ function AddProject() {
         />
       </label>
       <div className="row">
-        <button type="submit">Add</button>
-        <button type="button" onClick={() => setOpen(false)}>
+        <button className="btn small primary" type="submit">
+          Add
+        </button>
+        <button className="btn small" type="button" onClick={() => setOpen(false)}>
           Cancel
         </button>
       </div>
@@ -283,7 +285,12 @@ function AddProject() {
           <ul className="suggest">
             {suggestions.map((s) => (
               <li key={s.path}>
-                <button type="button" onClick={() => void add(s.path)} title={s.path}>
+                <button
+                  className="btn small"
+                  type="button"
+                  onClick={() => void add(s.path)}
+                  title={s.path}
+                >
                   {s.name}
                 </button>
               </li>

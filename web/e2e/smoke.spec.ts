@@ -57,6 +57,9 @@ test("adding a Project shows its main tree, and a non-repo shows why not", async
   const shop = projects.getByRole("listitem").filter({ hasText: "shop" }).first();
   await expect(shop).toContainText("main");
   await expect(shop).toContainText("main tree");
+  // Rail actions are buttons, not links (#166).
+  await expect(projects.getByRole("button", { name: "Refresh" })).toBeVisible();
+  await expect(projects.getByRole("button", { name: "Remove shop" })).toBeVisible();
 });
 
 test("a Project on GitHub links its name to the repo; one without a GitHub remote is plain text", async ({
@@ -683,6 +686,7 @@ test("a Worktree fh created is not labelled an Agent worktree", async ({ page })
     const row = projects.locator(".wt").filter({ hasText: "7-login" });
     await expect(row).toBeVisible();
     await expect(row).not.toContainText("Agent worktree");
+    await expect(row.getByRole("button", { name: /^Remove Worktree .*7-login/ })).toBeVisible();
   } finally {
     await fh.dispose();
   }

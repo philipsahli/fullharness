@@ -145,7 +145,7 @@ export function Board({
         </select>
         <button
           type="button"
-          className="link"
+          className="btn small"
           onClick={() => {
             refreshNext.current = true;
             setReloads((n) => n + 1);
@@ -154,6 +154,7 @@ export function Board({
           Refresh
         </button>
         <button
+          className="btn primary"
           type="button"
           onClick={() =>
             onStart({
@@ -168,6 +169,7 @@ export function Board({
         </button>
         {(board?.tracker === "github" || board?.tracker === "local") && (
           <button
+            className="btn"
             type="button"
             onClick={() =>
               onStart({
@@ -189,6 +191,7 @@ export function Board({
             <>
               {" "}
               <button
+                className="btn primary"
                 type="button"
                 onClick={() =>
                   onStart({
@@ -269,7 +272,7 @@ function IdeaCard({ idea, onLinked }: { idea: Idea; onLinked: () => void }) {
       <span className="t">{idea.name}</span>
       {idea.suggest.length === 0 && <span className="s">grilling: no Spec yet</span>}
       {idea.suggest.map((s) => (
-        <button key={s.id} type="button" onClick={() => void link(s.id)}>
+        <button key={s.id} className="btn small" type="button" onClick={() => void link(s.id)}>
           Link {s.ref}: {s.title}
         </button>
       ))}
@@ -314,6 +317,7 @@ function FeatureDetail({
       {step && (
         <p>
           <button
+            className="btn primary"
             type="button"
             onClick={() =>
               start({
@@ -350,6 +354,7 @@ function FeatureDetail({
               {t.startable && <span className="tag startable">Startable</span>}
               {next && (
                 <button
+                  className="btn small primary"
                   type="button"
                   onClick={() =>
                     start({

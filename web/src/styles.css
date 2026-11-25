@@ -266,6 +266,39 @@ h3 {
   justify-content: space-between;
   align-items: baseline;
 }
+/* Buttons, as the mockup's .btn (ADR 0012). Every action is one of these;
+   at most one .primary per area (board header, a notice, a Feature's next
+   step, a Ticket row, the composer, a permission card, a dialog, the Exited
+   notice). .link below is for navigation and in-content toggles only. */
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-weight: 500;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.btn.small {
+  padding: 2px 9px;
+  font-size: 12.5px;
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* A button in a small-caps heading reads as a button, as the mockup's
+   .card > h3 .btn. */
+.rail h3 .btn {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--fg);
+}
 .link {
   border: 0;
   background: transparent;
@@ -326,14 +359,14 @@ h3 {
   /* overflow: hidden would clip a ring drawn outside the box. */
   outline-offset: -2px;
 }
+/* The row is mono for branch names; its Remove button is not. */
+.wt .btn {
+  font-family: var(--f-body);
+}
 .wt .counts {
   grid-column: 2 / 4;
   font-family: var(--f-body);
   font-size: 11.5px;
-}
-.wt .link[aria-disabled="true"] {
-  color: var(--muted);
-  opacity: 0.6;
 }
 .wt .dot {
   width: 7px;
@@ -401,17 +434,6 @@ h3 {
   display: flex;
   gap: 6px;
 }
-.addform .row button {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 6px;
-  padding: 3px 10px;
-}
-.addform .row button[type="submit"] {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
 .suggest {
   list-style: none;
   margin: 0;
@@ -419,13 +441,6 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-.suggest button {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 1px 9px;
-  font-size: 12px;
 }
 
 /* The banner is only rendered while not connected; fixed rows keep the shell
@@ -554,23 +569,6 @@ h3 {
 .row {
   display: flex;
   gap: 8px;
-}
-.row button,
-.composer button {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 6px;
-  padding: 5px 12px;
-}
-.row button[type="submit"],
-.composer button[type="submit"] {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .conversation {
   display: flex;
@@ -977,16 +975,6 @@ button:disabled {
   font-size: 12px;
   color: var(--muted);
 }
-.permcard button.allow {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
-.permcard button.quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
 .inbox {
   max-width: 760px;
 }
@@ -1105,7 +1093,6 @@ button:disabled {
 
 .mhead .close {
   margin-left: auto;
-  font-size: 12.5px;
 }
 
 /* Software factory board */
