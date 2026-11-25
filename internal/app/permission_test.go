@@ -41,6 +41,37 @@ func waitInbox(t *testing.T, tab *websocket.Conn, n int) []map[string]any {
 	return nil
 }
 
+// waitClearedAndEnded reads events until the Inbox is empty and the latest
+// summary of Session id says its turn ended. The answer's own events and the
+// Agent's turn end race, so they arrive in either order; but a summary that
+// says Working after the turn ended means the tab shows the wrong state
+// (#175).
+func waitClearedAndEnded(t *testing.T, tab *websocket.Conn, id string) {
+	t.Helper()
+	cleared, ended := false, false
+	var last map[string]any
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && (!cleared || !ended) {
+		ev := nextEvent(t, tab, time.Until(deadline))
+		if ev == nil {
+			break
+		}
+		switch ev["type"] {
+		case "inbox":
+			cleared = len(objects(t, ev, "inbox")) == 0
+		case "session":
+			if s, _ := ev["session"].(map[string]any); s["id"] == id {
+				last = s
+				ended = s["state"] == "waiting" && s["waiting"] == "turn"
+			}
+		}
+	}
+	if !cleared || !ended {
+		t.Fatalf("Inbox cleared %v; latest summary of %s: state=%v waiting=%v, want the turn ended",
+			cleared, id, last["state"], last["waiting"])
+	}
+}
+
 func (f *fh) answer(c *http.Client, requestID, choice string) (int, map[string]any) {
 	f.t.Helper()
 	return f.post(c, "/api/inbox/"+requestID+"/answer", map[string]string{"choice": choice})
@@ -113,8 +144,7 @@ func TestAnsweringFromTheInboxReachesTheAgentAndClearsBothPlaces(t *testing.T) {
 			if status, body := f.answer(c, req["id"].(string), choice); status != http.StatusNoContent {
 				t.Fatalf("answer: status %d (%v), want 204", status, body)
 			}
-			waitInbox(t, tab, 0)
-			waitEnded(t, tab, id)
+			waitClearedAndEnded(t, tab, id)
 
 			if got := lastAgentText(t, f, c, id); got != "permission="+want {
 				t.Errorf("agent saw %q, want permission=%s", got, want)

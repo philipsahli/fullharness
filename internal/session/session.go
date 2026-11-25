@@ -338,6 +338,13 @@ type session struct {
 	m   *Manager
 	def agent.Definition
 
+	// pubMu makes publish read and broadcast a summary as one step, so two
+	// publishes of a Session reach tabs in the order they read it. Without
+	// it, the goroutine that answers a permission could broadcast Working
+	// after the Agent's goroutine had broadcast the turn's end (#175). Take
+	// it before mu.
+	pubMu sync.Mutex
+
 	mu          sync.Mutex
 	sum         Summary
 	transcript  []Item
@@ -1864,9 +1871,11 @@ func (s *session) nextSeqLocked() int {
 }
 
 func (s *session) publish() {
+	s.pubMu.Lock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
+		s.pubMu.Unlock()
 		return
 	}
 	sum := s.summaryLocked()
@@ -1879,6 +1888,7 @@ func (s *session) publish() {
 	}
 	s.mu.Unlock()
 	s.m.cfg.Broadcast(map[string]any{"type": "session", "session": sum})
+	s.pubMu.Unlock()
 	if entered && s.m.cfg.EnteredWaiting != nil {
 		s.m.cfg.EnteredWaiting(sum, what, viewed)
 	}
