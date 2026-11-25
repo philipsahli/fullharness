@@ -3,7 +3,8 @@
    goes into the mockup first. The --code-* tokens are the app's own, for
    highlighted code, which the mockup doesn't show. --waiting and --working
    are a little darker than the mockup's first values so their text on the
-   soft pills reaches WCAG AA 4.5:1 (#165). */
+   soft pills reaches WCAG AA 4.5:1 (#165); --good likewise for the Shipped
+   pill on --sunken (#167). */
 @import "./fonts/fonts.css";
 
 :root {
@@ -22,7 +23,7 @@
   --working-soft: #dde7fd;
   --idle: #7a8580;
   --exited: #a3aca8;
-  --good: #15803d;
+  --good: #147739;
   --bad: #b91c1c;
   --term-bg: #1b2421;
   --term-fg: #d7e2dd;
@@ -368,12 +369,6 @@ h3 {
   font-family: var(--f-body);
   font-size: 11.5px;
 }
-.wt .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line);
-}
 .tag {
   font-family: var(--f-body);
   font-size: 10.5px;
@@ -383,7 +378,8 @@ h3 {
   color: var(--muted);
   white-space: nowrap;
 }
-.warn {
+/* Block-level warning text; the mockup's .warn is a pill, so not that name. */
+.warning {
   margin: 4px 8px;
   color: var(--waiting);
   font-size: 12px;
@@ -486,22 +482,43 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Session state dots and pills, as the mockup's .dot and .state. */
 .dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--idle);
+}
+.dot.waiting {
+  background: var(--waiting);
+  box-shadow: 0 0 0 3px var(--waiting-soft);
 }
 .dot.working {
   background: var(--working);
+  animation: pulse 1.6s ease-in-out infinite;
 }
 .dot.starting {
   background: transparent;
-  border: 2px solid var(--working);
+  border: 2px dashed var(--working);
 }
 .dot.exited {
   background: transparent;
-  border: 2px solid var(--line);
+  border: 2px solid var(--exited);
+}
+/* A Worktree with no Session. */
+.dot.none {
+  opacity: 0.25;
+}
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--working-soft);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot.working {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--working-soft);
+  }
 }
 .state {
   font-size: 11px;
@@ -509,17 +526,53 @@ h3 {
   padding: 1px 7px;
   border-radius: 10px;
   white-space: nowrap;
-  background: var(--sunken);
-  color: var(--muted);
 }
-.state.working,
-.state.starting {
+.state.waiting {
+  background: var(--waiting-soft);
+  color: var(--waiting);
+}
+.state.working {
   background: var(--working-soft);
   color: var(--working);
 }
+.state.starting {
+  color: var(--working);
+  box-shadow: inset 0 0 0 1px var(--working-soft);
+}
+.state.idle {
+  background: var(--sunken);
+  color: var(--muted);
+}
 .state.exited {
   background: transparent;
+  color: var(--muted);
   box-shadow: inset 0 0 0 1px var(--line);
+}
+/* The Agent chip, as the mockup's .agent; in a rail row's second line it
+   drops the box and keeps the colour square. span only: .msg.agent is an
+   Agent message, not a chip. */
+span.agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+span.agent i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.srow .s span.agent {
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  gap: 5px;
 }
 
 /* New Session and the conversation */
@@ -978,13 +1031,6 @@ h3 {
 .inbox {
   max-width: 760px;
 }
-.dot.waiting {
-  background: var(--waiting);
-}
-.state.waiting {
-  background: var(--waiting-soft);
-  color: var(--waiting);
-}
 
 /* Global Session list and the ⌘K switcher */
 .srow {
@@ -1206,9 +1252,38 @@ h3 {
 .pr .checks.running {
   color: var(--waiting);
 }
-.tag.startable {
-  background: var(--accent);
+/* Stage pills, the Startable marker and the label chip, as the mockup's
+   .stage and .lbl. Only Shipped, Review and Implementing stand out. */
+.lbl {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.stage {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--sunken);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stage.shipped {
+  color: var(--good);
+}
+.stage.review {
+  color: var(--accent);
+}
+.stage.implementing {
+  color: var(--working);
+  background: var(--working-soft);
+}
+.stage.startable {
   color: var(--on-accent);
+  background: var(--accent);
 }
 @media (max-width: 900px) {
   .columns {

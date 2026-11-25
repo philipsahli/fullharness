@@ -20,7 +20,7 @@
   --working-soft: #dde7fd;
   --idle: #7a8580;
   --exited: #a3aca8;
-  --good: #15803d;
+  --good: #147739;
   --bad: #b91c1c;
   --term-bg: #1b2421;
   --term-fg: #d7e2dd;
@@ -82,6 +82,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .dot.waiting { background: var(--waiting); box-shadow: 0 0 0 3px var(--waiting-soft); }
 .dot.working { background: var(--working); animation: pulse 1.6s ease-in-out infinite; }
 .dot.exited { background: transparent; border: 2px solid var(--exited); }
+.dot.none { opacity: .25; } /* a Worktree with no Session */
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px var(--working-soft); } }
 @media (prefers-reduced-motion: reduce) { .dot.working { animation: none; box-shadow: 0 0 0 3px var(--working-soft); } }
 .state { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
@@ -109,8 +110,10 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .mhead { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--line); }
 .mhead h2 { font-family: var(--f-display); font-size: 19px; letter-spacing: -.01em; }
 .crumb { color: var(--muted); font-size: 12.5px; }
-.agent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
-.agent i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+/* span only: .msg.agent is an Agent message, not a chip */
+span.agent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+span.agent i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.srow .s span.agent { border: 0; padding: 0; font-size: inherit; font-weight: inherit; gap: 5px; } /* in a rail row: the colour square, no box */
 .seg { margin-left: auto; display: flex; background: var(--sunken); border-radius: 7px; padding: 2px; }
 .seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 5px; font-size: 12.5px; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); }
@@ -637,7 +640,7 @@ function sRow(s, child) {
   const cur = ui.view === "sessions" && ui.current === s.id;
   return `<li><button class="srow${child ? " child" : ""}" data-sid="${s.id}" aria-current="${cur}">
     <span class="dot ${s.state}"></span><span class="t">${esc(s.title)}</span><span class="state ${s.state}">${STATE_LABEL[s.state]}</span>
-    <span class="s">${child ? `Child Session · ${AGENTS[s.agent].name}` : `${s.ticket ? `#${s.ticket} · ` : ""}${AGENTS[s.agent].name}`}</span></button></li>`;
+    <span class="s">${child ? "Child Session · " : s.ticket ? `#${s.ticket} · ` : ""}${agentTag(s.agent)}</span></button></li>`;
 }
 const sTree = list => sorted(list.filter(s => !s.parent)).map(s => sRow(s) + sorted(sessions.filter(c => c.parent === s.id)).map(c => sRow(c, true)).join("")).join("");
 function renderRail() {
@@ -652,8 +655,9 @@ function renderRail() {
   $("#ptree").innerHTML = projects.map(p => `
     <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
-        const s = sessions.find(x => x.project === p.id && x.wt === w.path);
-        return `<li class="wt"><span class="dot ${s ? s.state : ""}" ${s ? "" : 'style="opacity:.25"'}></span><span title="${p.name}.worktrees/${w.path}">${w.url ? `<a href="${w.url}" target="_blank" rel="noopener">${w.path}</a>` : w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
+        // The most urgent state of the Worktree's Sessions; faint with none (#167).
+        const st = sessions.filter(x => x.project === p.id && x.wt === w.path).map(x => x.state).sort((a, b) => STATE_ORDER[a] - STATE_ORDER[b])[0];
+        return `<li class="wt"><span class="dot ${st || "none"}" role="img" aria-label="${st ? STATE_LABEL[st] : "No Session"}"></span><span title="${p.name}.worktrees/${w.path}">${w.url ? `<a href="${w.url}" target="_blank" rel="noopener">${w.path}</a>` : w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
       }).join("")}</ul></li>`).join("");
   const c = $("#inbox-count");
   const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length;

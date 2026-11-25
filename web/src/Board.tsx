@@ -309,8 +309,8 @@ function FeatureDetail({
     <section className="fdetail" aria-label={`Feature ${feature.title}`}>
       <h3>{feature.title}</h3>
       <p className="crumb">
-        Spec <LinkOrText url={feature.url}>{feature.ref}</LinkOrText> · Stage:{" "}
-        {stageName[feature.stage]}
+        Spec <LinkOrText url={feature.url}>{feature.ref}</LinkOrText> ·{" "}
+        <span className={`stage ${feature.stage}`}>{stageName[feature.stage]}</span>
         {feature.tickets.length > 0 && " (earliest open Ticket)"}
         {feature.idea && ` · from Idea "${feature.idea}"`}
       </p>
@@ -349,9 +349,10 @@ function FeatureDetail({
                 <LinkOrText url={t.url}>#{t.number}</LinkOrText>
               </span>
               <span className="t">{t.title}</span>
-              <span className="tag">{t.label || "no label"}</span>
-              <span className="tag">{stageName[t.stage]}</span>
-              {t.startable && <span className="tag startable">Startable</span>}
+              {t.label && <span className="lbl">{t.label}</span>}
+              <span className={`stage ${t.stage}`}>{stageName[t.stage]}</span>
+              {/* Startable is not a Stage: its own marker, beside the Stage. */}
+              {t.startable && <span className="stage startable">Startable</span>}
               {next && (
                 <button
                   className="btn small primary"

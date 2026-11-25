@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { command, get } from "./api";
-import type { Project, Worktree } from "./events";
+import type { Project, SessionState, SessionSummary, Worktree } from "./events";
+import { WorktreeDot, mostUrgent } from "./Chips";
 import { LinkOrText } from "./LinkOrText";
 
 // Suggestion matches internal/project.Suggestion.
@@ -9,7 +10,14 @@ type Suggestion = { path: string; name: string };
 // Projects is the rail's Projects section: every Project with its
 // Worktrees, plus adding and removing Projects. Changes come back as
 // "projects" events, so nothing here keeps its own copy of the list.
-export function Projects({ projects }: { projects: Project[] }) {
+// sessions colour each Worktree's dot.
+export function Projects({
+  projects,
+  sessions,
+}: {
+  projects: Project[];
+  sessions: SessionSummary[];
+}) {
   return (
     <section aria-label="Projects">
       <h3>
@@ -26,7 +34,7 @@ export function Projects({ projects }: { projects: Project[] }) {
       {projects.length === 0 && <p className="empty">No Projects yet.</p>}
       <ul className="ptree">
         {projects.map((p) => (
-          <ProjectItem key={p.path} project={p} />
+          <ProjectItem key={p.path} project={p} sessions={sessions} />
         ))}
       </ul>
       <AddProject />
@@ -34,7 +42,7 @@ export function Projects({ projects }: { projects: Project[] }) {
   );
 }
 
-function ProjectItem({ project }: { project: Project }) {
+function ProjectItem({ project, sessions }: { project: Project; sessions: SessionSummary[] }) {
   const [error, setError] = useState("");
   const remove = async () => {
     const r = await command("/api/projects/remove", { path: project.path });
@@ -76,13 +84,18 @@ function ProjectItem({ project }: { project: Project }) {
         </div>
       )}
       {project.missing ? (
-        <p className="warn">
+        <p className="warning">
           Folder not found: <code>{project.path}</code>
         </p>
       ) : (
         <ul className="wts">
           {project.worktrees.map((w) => (
-            <WorktreeItem key={w.path} project={project.path} wt={w} />
+            <WorktreeItem
+              key={w.path}
+              project={project.path}
+              wt={w}
+              state={mostUrgent(sessions.filter((s) => s.worktree === w.path).map((s) => s.state))}
+            />
           ))}
         </ul>
       )}
@@ -119,7 +132,15 @@ function AutopilotAgent({
   );
 }
 
-function WorktreeItem({ project, wt }: { project: string; wt: Worktree }) {
+function WorktreeItem({
+  project,
+  wt,
+  state,
+}: {
+  project: string;
+  wt: Worktree;
+  state?: SessionState;
+}) {
   const [error, setError] = useState("");
   const counts = [
     wt.uncommitted > 0 && `${wt.uncommitted} uncommitted`,
@@ -127,14 +148,14 @@ function WorktreeItem({ project, wt }: { project: string; wt: Worktree }) {
   ].filter(Boolean);
   return (
     <li className="wt" title={`${wt.path}\n${fetchNote(wt)}`}>
-      <span className="dot" aria-hidden="true" />
+      <WorktreeDot state={state} />
       <LinkOrText url={wt.url}>{wt.branch || "(detached)"}</LinkOrText>
       {/* fh's own Worktrees need no tag; the others say why they differ. */}
       {wt.main && <span className="tag">main tree</span>}
       {wt.agent && <span className="tag">Agent worktree</span>}
       {!wt.main && !wt.agent && <RemoveWorktree project={project} wt={wt} onError={setError} />}
       {wt.missing ? (
-        <span className="counts warn">Folder not found</span>
+        <span className="counts warning">Folder not found</span>
       ) : (
         counts.length > 0 && <span className="counts">{counts.join(" · ")}</span>
       )}
