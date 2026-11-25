@@ -63,3 +63,13 @@ func TestGitHubBranchURL(t *testing.T) {
 		}
 	}
 }
+
+func TestGitHubIssueURL(t *testing.T) {
+	shop := gitremote.GitHub{Owner: "someone", Repo: "shop"}
+	if got := shop.IssueURL("12"); got != "https://github.com/someone/shop/issues/12" {
+		t.Errorf("IssueURL(12) = %q", got)
+	}
+	if got := shop.NameWithOwner(); got != "someone/shop" {
+		t.Errorf("NameWithOwner() = %q", got)
+	}
+}

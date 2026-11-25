@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/philipsahli/fullharness/internal/gitremote"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
 	"github.com/philipsahli/fullharness/internal/session"
@@ -52,6 +53,11 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 		}
 		board, read := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
 		tracker.Derive(board.Features, sessions.Links(p.Path))
+		// p.URL is set only for a github.com origin, so a GitHub tracker
+		// on another host gets no links (#101).
+		if g, ok := gitremote.ParseGitHub(p.URL); ok && board.Tracker == tracker.KindGitHub {
+			tracker.LinkIssues(board.Features, g)
+		}
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
 }

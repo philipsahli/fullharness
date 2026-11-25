@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { command, get } from "./api";
 import type { Project } from "./events";
+import { LinkOrText } from "./LinkOrText";
 import type { StartFrom } from "./Sessions";
 
-// These types match internal/tracker.
+// These types match internal/tracker. A url opens the item in its tracker;
+// the server leaves it out where it can't build one (#86).
 type Stage = "idea" | "spec" | "tickets" | "implementing" | "review" | "shipped";
-type Blocker = { number: string; known: boolean; open: boolean };
+type Blocker = { number: string; known: boolean; open: boolean; url?: string };
 // Step is one row of the server's next-step rule (internal/tracker/next.go).
 type Step = { skill: string; label: string; implements?: boolean };
 type Ticket = {
@@ -18,6 +20,7 @@ type Ticket = {
   startable: boolean;
   branch: string; // Start Session's new Worktree
   ref: string; // how a skill prompt names it, e.g. "#42"
+  url?: string;
   next?: Step; // offered only while startable
 };
 type Feature = {
@@ -31,6 +34,7 @@ type Feature = {
   branch: string; // Implement spec's new Worktree
   ref: string;
   idea?: string; // the Idea it was linked from (#14)
+  url?: string;
   next?: Step;
 };
 // Idea matches internal/app's ideaView: an Idea without its Spec yet, and
@@ -300,7 +304,8 @@ function FeatureDetail({
     <section className="fdetail" aria-label={`Feature ${feature.title}`}>
       <h3>{feature.title}</h3>
       <p className="crumb">
-        Stage: {stageName[feature.stage]}
+        Spec <LinkOrText url={feature.url}>{feature.ref}</LinkOrText> · Stage:{" "}
+        {stageName[feature.stage]}
         {feature.tickets.length > 0 && " (earliest open Ticket)"}
         {feature.idea && ` · from Idea "${feature.idea}"`}
       </p>
@@ -334,7 +339,9 @@ function FeatureDetail({
           const next = t.startable ? t.next : undefined;
           return (
             <li key={t.number} className={t.closed ? "closed" : undefined}>
-              <span className="num">{t.number}</span>
+              <span className="num">
+                <LinkOrText url={t.url}>#{t.number}</LinkOrText>
+              </span>
               <span className="t">{t.title}</span>
               <span className="tag">{t.label || "no label"}</span>
               <span className="tag">{stageName[t.stage]}</span>
@@ -357,11 +364,16 @@ function FeatureDetail({
               )}
               {t.blockers.some((b) => b.open) && (
                 <span className="s">
-                  blocked by{" "}
+                  blocked by {/* One element per blocker, so each number is its own link. */}
                   {t.blockers
                     .filter((b) => b.open)
-                    .map((b) => (b.known ? b.number : `${b.number} (unknown)`))
-                    .join(", ")}
+                    .map((b, i) => (
+                      <Fragment key={b.number}>
+                        {i > 0 && ", "}
+                        <LinkOrText url={b.url}>#{b.number}</LinkOrText>
+                        {!b.known && " (unknown)"}
+                      </Fragment>
+                    ))}
                 </span>
               )}
             </li>

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/philipsahli/fullharness/internal/gitremote"
 )
 
 // Issue is one GitHub issue as fh's GraphQL query returns it.
@@ -28,8 +30,11 @@ type Issue struct {
 	} `json:"subIssues"`
 	BlockedBy struct {
 		Nodes []struct {
-			Number int    `json:"number"`
-			State  string `json:"state"`
+			Number     int    `json:"number"`
+			State      string `json:"state"`
+			Repository struct {
+				NameWithOwner string `json:"nameWithOwner"`
+			} `json:"repository"`
 		} `json:"nodes"`
 	} `json:"blockedBy"`
 }
@@ -58,6 +63,29 @@ var (
 	// issue, with or without a colon.
 	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
+
+// LinkIssues points every Spec, Ticket and Blocker at its issue in repo,
+// the Project's GitHub repository. Specs and Tickets are issues of repo. A
+// blocker links only when it is known and in repo: gh's dependencies can
+// name an issue in another repository (Blocker.Repo), where the same
+// number is a different issue, and an unknown "#N" body line may name no
+// issue at all.
+func LinkIssues(features []Feature, repo gitremote.GitHub) {
+	for i := range features {
+		f := &features[i]
+		f.URL = repo.IssueURL(f.ID)
+		for j := range f.Tickets {
+			t := &f.Tickets[j]
+			t.URL = repo.IssueURL(t.Number)
+			for k := range t.Blockers {
+				b := &t.Blockers[k]
+				if b.Known && (b.Repo == "" || strings.EqualFold(b.Repo, repo.NameWithOwner())) {
+					b.URL = repo.IssueURL(b.Number)
+				}
+			}
+		}
+	}
+}
 
 // ReadGitHub builds Features from a repository's issues and open PRs
 // (#12). A Spec is an issue with sub-issues, or that others name with
@@ -127,7 +155,8 @@ func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string
 	}
 	// Native dependencies first; a "Blocked by: #N" line only without them.
 	for _, b := range i.BlockedBy.Nodes {
-		t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(b.Number), Known: true, Open: b.State != "CLOSED"})
+		t.Blockers = append(t.Blockers, Blocker{Number: strconv.Itoa(b.Number), Known: true, Open: b.State != "CLOSED",
+			Repo: b.Repository.NameWithOwner})
 	}
 	if len(t.Blockers) == 0 {
 		for _, n := range bodyBlockerRefs(i.Body) {

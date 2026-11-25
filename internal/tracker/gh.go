@@ -30,7 +30,7 @@ const issuesQuery = `query($owner: String!, $repo: String!, $endCursor: String) 
         labels(first: 20) { nodes { name } }
         parent { number }
         subIssues(first: 50) { nodes { number } }
-        blockedBy(first: 20) { nodes { number state } }
+        blockedBy(first: 20) { nodes { number state repository { nameWithOwner } } }
       }
       pageInfo { hasNextPage endCursor }
     }
