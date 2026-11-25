@@ -195,8 +195,10 @@ func (r *Runner) Run(ctx context.Context, interval time.Duration) {
 
 // TurnEnded classifies a turn of an Autopilot Session that ended at at. Done
 // moves the Project on at once; anything else is a Stop point, and the
-// Project waits until the user's answer ends another turn.
-func (r *Runner) TurnEnded(e session.TurnEnd, at time.Time) {
+// Project waits until the user's answer ends another turn. Once ctx ends
+// (fh is closing) it records nothing: the verdict would be about fh
+// quitting, not about the turn.
+func (r *Runner) TurnEnded(ctx context.Context, e session.TurnEnd, at time.Time) {
 	d, err := r.d.Sessions.Get(e.Session)
 	if err != nil || !d.Autopilot {
 		return
@@ -206,8 +208,11 @@ func (r *Runner) TurnEnded(e session.TurnEnd, at time.Time) {
 	if e.Err != nil {
 		in.Err = e.Err.Error()
 	}
-	res := r.d.Classify(context.Background(), in)
+	res := r.d.Classify(ctx, in)
 	verdict := res.Verdict
+	if ctx.Err() != nil {
+		return
+	}
 
 	r.mu.Lock()
 	if i := r.lastActionOf(e.Session); i >= 0 && !r.rec.Actions[i].VerdictAt.After(at) {

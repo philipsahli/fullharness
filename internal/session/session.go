@@ -314,6 +314,21 @@ type Manager struct {
 	closed   bool // set by StopAll: fh is quitting, start nothing new
 	// removing holds the Worktrees being removed; Start refuses them.
 	removing map[string]bool
+	// work counts the Sessions' run, watch and prompt goroutines. StopAll
+	// waits for them, so no Session writes state after it returns (#68).
+	work sync.WaitGroup
+}
+
+// track counts one more goroutine in m.work, unless StopAll has begun.
+// The caller calls m.work.Done when that goroutine ends.
+func (m *Manager) track() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return false
+	}
+	m.work.Add(1)
+	return true
 }
 
 // New returns an empty Manager.
@@ -415,6 +430,7 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 		State: Starting, Title: l.Branch, AutoApprove: l.AutoApprove, Autopilot: l.Autopilot, Link: l.Link})
 	s.idea = l.Idea
 	m.sessions = append(m.sessions, s)
+	m.work.Add(1) // under the lock that checked closed; done when run returns
 	m.mu.Unlock()
 
 	m.cfg.Log.Info("session starting", "session", s.sum.ID, "agent", def.ID, "worktree", l.Worktree)
@@ -423,7 +439,10 @@ func (m *Manager) Start(def agent.Definition, l Launch) (Summary, error) {
 	m.persist()
 	s.publish()
 	m.changed()
-	go s.run(false, l.Prompt)
+	go func() {
+		defer m.work.Done()
+		s.run(false, l.Prompt)
+	}()
 	return s.summary(), nil
 }
 
@@ -574,7 +593,11 @@ func (m *Manager) Reopen(id string) error {
 	m.cfg.Log.Info("session reopening", "session", id, "load", load)
 	m.cfg.Broadcast(map[string]any{"type": "reset", "session": id, "seq": seq}) // tabs drop the old conversation
 	s.publish()
-	go s.run(load, "")
+	m.work.Add(1) // m.mu is held and closed was checked above
+	go func() {
+		defer m.work.Done()
+		s.run(load, "")
+	}()
 	return nil
 }
 
@@ -757,8 +780,11 @@ func (m *Manager) Prompt(id, text string) error {
 	if err != nil {
 		return err
 	}
-	if started {
-		go s.prompt(text)
+	if started && m.track() {
+		go func() {
+			defer m.work.Done()
+			s.prompt(text)
+		}()
 	}
 	return nil
 }
@@ -937,7 +963,8 @@ func (m *Manager) publishInbox() {
 	m.cfg.Broadcast(map[string]any{"type": "inbox", "inbox": m.Inbox()})
 }
 
-// StopAll ends every Agent process, as when fh quits (ADR 0002).
+// StopAll ends every Agent process, as when fh quits (ADR 0002), and
+// returns once the Sessions' goroutines have finished with them.
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	m.closed = true
@@ -954,6 +981,7 @@ func (m *Manager) StopAll() {
 		}
 	}
 	wg.Wait()
+	m.work.Wait()
 }
 
 func (m *Manager) find(id string) (*session, error) {
@@ -987,7 +1015,7 @@ func (s *session) run(load bool, prompt string) {
 	s.proc = proc
 	stopping := s.stopping
 	s.mu.Unlock()
-	go s.watch(proc)
+	s.m.work.Go(func() { s.watch(proc) }) // run is counted, so this Add comes before StopAll's Wait ends
 	if stopping {
 		// fh began quitting while this Agent was being launched; StopAll
 		// saw no process to stop, so stop it here (ADR 0002).

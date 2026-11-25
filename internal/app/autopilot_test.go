@@ -3,6 +3,7 @@ package app_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,18 +22,27 @@ import (
 // Autopilot looks at the Projects every 50 ms.
 func startAutopilotFh(t *testing.T, s script, verdicts ...string) *fh {
 	t.Helper()
+	// The count file numbers the calls; the Nth call answers the Nth
+	// verdict, or the last. Its folder is made before fh starts, so it is
+	// removed after fh stops.
+	calls := filepath.Join(t.TempDir(), "classifier-calls")
+	return startAutopilotFhClassifying(t, s,
+		"n=$(cat "+calls+" 2>/dev/null || echo 0); n=$((n+1)); echo $n >"+calls+"\n"+
+			"set -- "+strings.Join(verdicts, " ")+"; while [ $n -gt 1 ] && [ $# -gt 1 ]; do shift; n=$((n-1)); done\n"+
+			`echo '{"is_error":false,"result":"'$1'","total_cost_usd":0,"usage":{}}'`)
+}
+
+// startAutopilotFhClassifying is startAutopilotFh with the fake
+// classifier's shell body after it has read its input.
+func startAutopilotFhClassifying(t *testing.T, s script, body string) *fh {
+	t.Helper()
 	dir := t.TempDir()
 	raw, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
 	}
 	classifier := filepath.Join(dir, "fake-classifier")
-	// The count file numbers the calls; the Nth call answers the Nth
-	// verdict, or the last.
-	writeFile(t, classifier, "#!/bin/sh\ncat >/dev/null\n"+
-		"n=$(cat "+filepath.Join(dir, "classifier-calls")+" 2>/dev/null || echo 0); n=$((n+1)); echo $n >"+filepath.Join(dir, "classifier-calls")+"\n"+
-		"set -- "+strings.Join(verdicts, " ")+"; while [ $n -gt 1 ] && [ $# -gt 1 ]; do shift; n=$((n-1)); done\n"+
-		`echo '{"is_error":false,"result":"'$1'","total_cost_usd":0,"usage":{}}'`+"\n")
+	writeFile(t, classifier, "#!/bin/sh\ncat >/dev/null\n"+body+"\n")
 	if err := os.Chmod(classifier, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -400,4 +410,63 @@ func TestAutopilotStartsTheProjectsAgent(t *testing.T) {
 	if p := objects(t, f.state(c), "projects")[0]; p["agent"] != "copilot" {
 		t.Errorf("project %v, want Agent copilot", p)
 	}
+}
+
+// Closing fh waits for Autopilot's work on an ended turn and cancels it,
+// so nothing writes to fh's folder after Close (#68). Before, the
+// classifier's measurement and the Runner's state.json save could land
+// after Close, while a test's TempDir cleanup was removing the folder.
+func TestClosingFhStopsAutopilotsTurnEndWorkBeforeItReturns(t *testing.T) {
+	started := filepath.Join(t.TempDir(), "classifying")
+	// Its output goes nowhere, so a killed sh leaves no pipe open behind it.
+	f := startAutopilotFhClassifying(t, script{"default": []any{map[string]any{"say": "ok"}}},
+		fmt.Sprintf("touch %q\nsleep 3 >/dev/null 2>&1\necho '{\"is_error\":false,\"result\":\"done\"}'", started))
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "login/spec.md", nowSpec("Login"))
+	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
+	f.addProject(c, repo)
+	f.setAutopilot(c, repo, true)
+	f.waitAutopilotSessions(c, 1)
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the classifier never ran")
+		}
+	}
+
+	begin := time.Now()
+	f.stop()
+	if took := time.Since(begin); took > 2*time.Second {
+		t.Errorf("Close took %v: it waited for the classifier instead of cancelling it", took)
+	}
+	// Long enough for a classifier left running to finish and write.
+	before := folderState(t, f.opts.Dir)
+	time.Sleep(3500 * time.Millisecond)
+	if after := folderState(t, f.opts.Dir); !maps.Equal(before, after) {
+		t.Errorf("fh's folder changed after Close:\nbefore %v\nafter  %v", before, after)
+	}
+}
+
+// folderState maps each path under dir to its size and modification time.
+func folderState(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	m := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		m[strings.TrimPrefix(p, dir)] = fmt.Sprint(fi.Size(), " ", fi.ModTime().UnixNano())
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
 }

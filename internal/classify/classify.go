@@ -109,10 +109,16 @@ func (c *Classifier) Classify(ctx context.Context, in Input) Result {
 		return Result{Verdict: v, By: "rule:" + rule}
 	}
 	message := tail(in.Message, MaxMessage)
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	start := time.Now()
 	a, err := c.provider.Classify(ctx, message)
+	if parent.Err() != nil {
+		// The caller gave up (fh is closing): there's no answer to measure,
+		// and the record is left alone (#68).
+		return Result{Verdict: Unsure, By: c.provider.Name()}
+	}
 	call := call{
 		ID:           newID(),
 		Time:         start.UTC(),
