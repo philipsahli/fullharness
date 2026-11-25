@@ -516,7 +516,7 @@ const factory = {
         { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
         { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
         { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
-        { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
+        { n: 11, t: "Reopen a Session via session/load", stage: "Tickets", startable: true },
         { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
       ] },
     { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3", next: "Open Session", skill: "",
@@ -830,11 +830,11 @@ function ticketRow(fid, t) {
   const sessCell = s ? `<button class="btn small" data-open="${s.id}"><span class="dot ${s.state}" style="display:inline-block;margin-right:5px"></span>${STATE_LABEL[s.state]}</button>` : `<span class="chain">—</span>`;
   const prCell = prs.length ? prs.map(prPart).join("<br>") : `<span class="ci none">No PR yet</span>`;
   let act = "";
-  if (t.stage === "Startable") act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
+  if (t.startable) act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -1029,7 +1029,7 @@ function openStart(fid, n) {
     p.worktrees.push({ path: branch, branch });
     sessions.push({ id, title: `#${n} ${t.t}`, project: pid, wt: branch, agent, state: "starting", fid, ticket: n, acp: "—", started: "just now",
       git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: $("#st-prompt").value }] });
-    t.stage = "Implementing"; t.sid = id;
+    t.stage = "Implementing"; t.startable = false; t.sid = id;
     closeOverlay(); toast(`Session started in ${branch}`); go(id);
   });
 }
