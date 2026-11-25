@@ -599,7 +599,9 @@ const feat = id => allFeats().find(x => x.f.id === id);
 // issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text, in a span when it has a class.
 const issueLink = (pid, n, text = `#${n}`, cls = "") => { const p = proj(pid), c = cls ? ` class="${cls}"` : ""; return p && p.url && n ? `<a${c} href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : cls ? `<span${c}>${text}</span>` : text; };
 const featSessions = fid => sessions.filter(s => s.fid === fid);
-const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
+// An Agent fh doesn't ship a colour for (any id not in AGENTS) gets the idle grey (ADR 0012).
+const agentOf = a => AGENTS[a] || { name: a, color: "var(--idle)" };
+const agentTag = a => `<span class="agent"><i style="background:${agentOf(a).color}"></i>${agentOf(a).name}</span>`;
 const sorted = list => [...list].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
 
 /* ---------- Markdown: headings, lists, tables, quotes, fenced code with highlighting, inline code/bold/italic/links. Raw HTML is escaped, never rendered. ---------- */

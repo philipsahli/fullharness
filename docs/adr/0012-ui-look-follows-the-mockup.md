@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, amends ADR-0007
 ---
 
 # The UI's look follows the design mockup
@@ -14,6 +14,8 @@ The design mockup, `docs/design/fh-mockup.html`, is where fh's look is decided. 
 - **Pixel tests are local.** Playwright screenshot tests run on a developer's Mac with `make e2e-visual`. `make e2e-visual-update` takes the baselines, which are gitignored. CI and `make check` don't run them. Run them before opening a UI pull request, and review any difference together with the before/after screenshots.
 
 Dark mode follows the OS setting (`prefers-color-scheme`); fh has no theme switch.
+
+This amends [ADR 0007](./0007-quality-gates.md), which says every change passes the same gate locally and in CI. The pixel tests are the one local-only check; `make check` and CI stay the shared gate.
 
 ## Considered options
 
