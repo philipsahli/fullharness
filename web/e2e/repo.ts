@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -14,11 +14,17 @@ const gitEnv = {
   GIT_COMMITTER_EMAIL: "fh-e2e@example.com",
 };
 
-// tempRepo creates a git repo on branch main with one commit. The path is
-// resolved because macOS temp folders sit behind a symlink and git reports
-// the real path.
-export function tempRepo(name: string): string {
-  const dir = path.join(realpathSync(mkdtempSync(path.join(tmpdir(), "fh-e2e-repo-"))), name);
+// tempRepo creates a git repo on branch main with one commit, in a new temp
+// folder, or in parent when given (emptied first). The path is resolved
+// because macOS temp folders sit behind a symlink and git reports the real
+// path.
+export function tempRepo(name: string, parent?: string): string {
+  if (parent) {
+    rmSync(parent, { recursive: true, force: true });
+    mkdirSync(parent, { recursive: true });
+  }
+  const base = parent ?? mkdtempSync(path.join(tmpdir(), "fh-e2e-repo-"));
+  const dir = path.join(realpathSync(base), name);
   execFileSync("git", ["init", "-q", "-b", "main", dir], { env: gitEnv });
   writeFileSync(path.join(dir, "README.md"), "hello\n");
   execFileSync("git", ["add", "README.md"], { cwd: dir, env: gitEnv });
@@ -33,8 +39,8 @@ export function tempFolder(): string {
 
 // tempRepoWith creates a repo like tempRepo, with extra files committed,
 // e.g. a .scratch tracker.
-export function tempRepoWith(name: string, files: Record<string, string>): string {
-  const dir = tempRepo(name);
+export function tempRepoWith(name: string, files: Record<string, string>, parent?: string): string {
+  const dir = tempRepo(name, parent);
   for (const [rel, content] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     writeFileSync(path.join(dir, rel), content);

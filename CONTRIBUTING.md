@@ -15,6 +15,8 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | `make test` | Runs the Go tests with the race detector. |
 | `make e2e` | Builds `bin/fh` and runs the Playwright smoke tests in Chromium. The first run downloads Chromium (about 150 MB). |
 | `make check` | Runs `lint`, `test` and `e2e`, the same as CI. Run it before you open a PR. |
+| `make e2e-visual` | Takes screenshots of four screens in light and dark and compares them with your last baselines. Mac only; CI never runs it. |
+| `make e2e-visual-update` | Takes new baselines in `web/e2e/__visual__/`, which git ignores. |
 | `make smoke` | Runs the release smoke test against the real Claude Code, Copilot CLI and OpenCode. It needs all three installed and logged in, and spends real tokens, so CI never runs it. See [Releasing](README.md#releasing). |
 
 The lint tool versions are pinned in `tools/go.mod` (Go) and `web/package.json` (UI). `cd web && npm run format` fixes Prettier findings.
@@ -42,6 +44,7 @@ We triage new issues with these labels:
 - Merge only when the PR's checks are green (`gh pr checks <number>`). GitHub blocks the merge only on the ubuntu job; the macOS job isn't required yet (#37).
 - If the PR's branch is checked out in an fh Worktree, merge with `gh pr merge <number> --squash`, then run `git push origin --delete <branch>`. `--delete-branch` also deletes the Worktree, along with its ignored files, and its Sessions can no longer reopen. Remove the Worktree in fh instead.
 - Link the issue the PR closes, for example `Closes #42`.
+- If the PR changes a stylesheet or a screen, run the pixel tests ([ADR 0012](docs/adr/0012-ui-look-follows-the-mockup.md)). Take baselines on `main` with `make e2e-visual-update`, then run `make e2e-visual` on your branch. A failed screen leaves an image of the difference under `web/test-results/`. If every difference is one you meant, run `make e2e-visual-update` on your branch to accept it.
 - Name decisions with the terms in [`GLOSSARY.md`](GLOSSARY.md). Record new decisions as an ADR in [`docs/adr/`](docs/adr/).
 
 ## Changing the docs
