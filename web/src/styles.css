@@ -1261,7 +1261,7 @@ span.agent i {
   font-weight: 500;
 }
 .fcard .s,
-.tickets .s {
+.ticketlist .s {
   color: var(--muted);
   font-size: 12px;
 }
@@ -1272,7 +1272,7 @@ span.agent i {
   border-top: 1px solid var(--line);
   padding-top: 10px;
 }
-.tickets {
+.ticketlist {
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
@@ -1280,23 +1280,23 @@ span.agent i {
   flex-direction: column;
   gap: 4px;
 }
-.tickets li {
+.ticketlist li {
   display: flex;
   gap: 8px;
   align-items: baseline;
   flex-wrap: wrap;
 }
-.tickets li.closed .t {
+.ticketlist li.closed .t {
   color: var(--muted);
   text-decoration: line-through;
 }
-.tickets .num {
+.ticketlist .num {
   font-family: var(--f-mono);
   font-size: 12px;
   color: var(--muted);
 }
 /* A Ticket's PR part (#128): `#21 ↗ Open ✓` per Pull request. */
-.tickets .prs {
+.ticketlist .prs {
   display: inline-flex;
   gap: 10px;
   font-size: 12px;

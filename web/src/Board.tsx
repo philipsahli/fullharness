@@ -339,7 +339,7 @@ function FeatureDetail({
         </p>
       )}
       {feature.tickets.length === 0 && <p className="empty">No Tickets yet.</p>}
-      <ul className="tickets">
+      <ul className="ticketlist">
         {feature.tickets.map((t) => {
           // The Board offers a Ticket's next step only while it's Startable.
           const next = t.startable ? t.next : undefined;

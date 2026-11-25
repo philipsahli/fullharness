@@ -7,3 +7,4 @@ web/test-results/
 web/playwright-report/
 *.tsbuildinfo
 /dist/
+web/e2e/__visual__/
