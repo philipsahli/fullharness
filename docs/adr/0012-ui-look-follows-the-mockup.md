@@ -1,5 +1,5 @@
 ---
-status: proposed, amends ADR-0007
+status: accepted, amends ADR-0007
 ---
 
 # The UI's look follows the design mockup

@@ -1,4 +1,11 @@
-/* Colours and layout follow docs/design/fh-mockup.html. */
+/* The look follows docs/design/fh-mockup.html (ADR 0012): the tokens below
+   are the mockup's, under the same names and values. A change to the look
+   goes into the mockup first. The --code-* tokens are the app's own, for
+   highlighted code, which the mockup doesn't show. --waiting and --working
+   are a little darker than the mockup's first values so their text on the
+   soft pills reaches WCAG AA 4.5:1 (#165). */
+@import "./fonts/fonts.css";
+
 :root {
   --bg: #f3f5f4;
   --surface: #ffffff;
@@ -7,21 +14,32 @@
   --fg: #16201d;
   --muted: #5b6863;
   --accent: #0d6b5f;
-  --waiting: #b45309;
+  --accent-soft: #d5ece7;
+  --on-accent: #ffffff;
+  --waiting: #ab4f09;
   --waiting-soft: #fdecd3;
-  --bad: #b91c1c;
+  --working: #225cdb;
+  --working-soft: #dde7fd;
+  --idle: #7a8580;
+  --exited: #a3aca8;
   --good: #15803d;
+  --bad: #b91c1c;
+  --term-bg: #1b2421;
+  --term-fg: #d7e2dd;
+  --shadow: 0 1px 2px rgba(20, 40, 34, 0.06), 0 8px 24px rgba(20, 40, 34, 0.08);
+  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --code-keyword: #a14a06;
   --code-string: #1b7040;
   --code-comment: #5b6863;
   --code-literal: #6d3fc0;
   --code-title: #1f5fa6;
-  --f-body: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
+/* Dark follows the OS setting only; fh has no theme switch (ADR 0012). */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #111816;
     --surface: #18211e;
     --sunken: #0d1311;
@@ -29,10 +47,19 @@
     --fg: #e3ebe8;
     --muted: #93a19c;
     --accent: #3fb8a5;
+    --accent-soft: #163a34;
+    --on-accent: #0b1513;
     --waiting: #f2a541;
     --waiting-soft: #3a2a12;
-    --bad: #f87171;
+    --working: #6c9cff;
+    --working-soft: #1b2847;
+    --idle: #7f8c87;
+    --exited: #56625e;
     --good: #4ade80;
+    --bad: #f87171;
+    --term-bg: #0a0f0e;
+    --term-fg: #cfdcd6;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
     --code-keyword: #f2a541;
     --code-string: #7dd3a8;
     --code-comment: #8a9a94;
@@ -40,25 +67,6 @@
     --code-title: #7cc4f0;
     color-scheme: dark;
   }
-}
-:root[data-theme="dark"] {
-  --bg: #111816;
-  --surface: #18211e;
-  --sunken: #0d1311;
-  --line: #2a3632;
-  --fg: #e3ebe8;
-  --muted: #93a19c;
-  --accent: #3fb8a5;
-  --waiting: #f2a541;
-  --waiting-soft: #3a2a12;
-  --bad: #f87171;
-  --good: #4ade80;
-  --code-keyword: #f2a541;
-  --code-string: #7dd3a8;
-  --code-comment: #8a9a94;
-  --code-literal: #c4a5f5;
-  --code-title: #7cc4f0;
-  color-scheme: dark;
 }
 
 * {
@@ -100,6 +108,25 @@ h1,
 h2,
 h3 {
   margin: 0;
+}
+/* Titles use the display face at the mockup's sizes (.mhead h2,
+   .fdetail header h3). */
+.brand b,
+.mhead h2,
+.mhead-empty h2,
+.board-head h2,
+.panel h2,
+.fdetail h3,
+.msg.agent :is(h1, h2, h3, h4) {
+  font-family: var(--f-display);
+}
+.board-head h2,
+.panel h2 {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.fdetail h3 {
+  font-size: 17px;
 }
 
 .app {
@@ -382,7 +409,7 @@ h3 {
 }
 .addform .row button[type="submit"] {
   background: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 .suggest {
@@ -451,11 +478,11 @@ h3 {
   background: var(--muted);
 }
 .dot.working {
-  background: #2563eb;
+  background: var(--working);
 }
 .dot.starting {
   background: transparent;
-  border: 2px solid #2563eb;
+  border: 2px solid var(--working);
 }
 .dot.exited {
   background: transparent;
@@ -472,8 +499,8 @@ h3 {
 }
 .state.working,
 .state.starting {
-  background: #dde7fd;
-  color: #2563eb;
+  background: var(--working-soft);
+  color: var(--working);
 }
 .state.exited {
   background: transparent;
@@ -538,7 +565,7 @@ h3 {
 .row button[type="submit"],
 .composer button[type="submit"] {
   background: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 button:disabled {
@@ -561,6 +588,7 @@ button:disabled {
 }
 .mhead h2 {
   font-size: 19px;
+  letter-spacing: -0.01em;
 }
 .crumb {
   color: var(--muted);
@@ -791,7 +819,7 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow);
 }
 .slash li {
   display: flex;
@@ -951,7 +979,7 @@ button:disabled {
 }
 .permcard button.allow {
   background: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 .permcard button.quiet {
@@ -1009,7 +1037,7 @@ button:disabled {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(10, 20, 17, 0.35); /* the mockup's .scrim */
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -1193,7 +1221,7 @@ button:disabled {
 }
 .tag.startable {
   background: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
 }
 @media (max-width: 900px) {
   .columns {
