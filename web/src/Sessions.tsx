@@ -254,7 +254,7 @@ export function NewSession(props: {
           <span className="why">It gets its own Worktree on a new idea/… branch.</span>
         </label>
       ) : (
-        <fieldset>
+        <fieldset className="radios stack">
           <legend>Worktree</legend>
           {prefillBusy && (
             <p className="why">
@@ -262,7 +262,7 @@ export function NewSession(props: {
               branch.
             </p>
           )}
-          <label className="choice">
+          <label>
             <input type="radio" checked={worktree === ""} onChange={() => setWorktree("")} />
             New Worktree on branch
             <input
@@ -276,7 +276,7 @@ export function NewSession(props: {
           {p?.worktrees.map((w) => {
             const why = reason(w);
             return (
-              <label key={w.path} className="choice" data-disabled={why !== "" || undefined}>
+              <label key={w.path} className={why ? "dis" : undefined}>
                 <input
                   type="radio"
                   disabled={why !== ""}
@@ -291,12 +291,12 @@ export function NewSession(props: {
           })}
         </fieldset>
       )}
-      <fieldset>
+      <fieldset className="radios">
         <legend>Agent</legend>
         {agents.map((a) => {
           const why = a.missing ?? a.noSkill ?? "";
           return (
-            <label key={a.id} className="choice" data-disabled={why !== "" || undefined}>
+            <label key={a.id} className={why ? "dis" : undefined}>
               <input
                 type="radio"
                 disabled={why !== ""}
