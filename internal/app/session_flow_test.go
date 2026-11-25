@@ -13,14 +13,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"github.com/philipsahli/fullharness/internal/diff"
 )
 
 // newSessionIn adds a fresh repo as a Project, connects a tab and starts a
 // Session in its main tree. Without a starting prompt it waits until the
-// Session is Idle, ready for one. It returns the client, a function reading
-// the tab's next event, the Session ID and the repo.
-func newSessionIn(t *testing.T, f *fh, prompt string) (c *http.Client, tab func() map[string]any, id, repo string) {
+// Session is Idle, ready for one. It returns the client, the tab, the
+// Session ID and the repo. With a starting prompt, wait on this tab: it
+// connected before the Session started, so it sees every state. A tab
+// connected later gets the current state only in its snapshot, which
+// connectTab drops (#151).
+func newSessionIn(t *testing.T, f *fh, prompt string) (c *http.Client, tab *websocket.Conn, id, repo string) {
 	t.Helper()
 	c = f.authorisedClient()
 	repo = realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -34,7 +39,7 @@ func newSessionIn(t *testing.T, f *fh, prompt string) (c *http.Client, tab func(
 	if prompt == "" {
 		waitState(t, conn, id, "idle")
 	}
-	return c, func() map[string]any { return nextEvent(t, conn, 10*time.Second) }, id, repo
+	return c, conn, id, repo
 }
 
 // A tab opens a new Session's conversation, and says it's looking, while
@@ -77,10 +82,10 @@ func TestLookingAtAStartingSessionKeepsItsStartingPrompt(t *testing.T) {
 
 func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "one "}, map[string]any{"say": "two"}}})
-	_, next, id, _ := newSessionIn(t, f, "go")
+	_, tab, id, _ := newSessionIn(t, f, "go")
 
 	var streamed []string
-	for ev := next(); ev != nil; ev = next() {
+	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
 		switch ev["type"] {
 		case "item":
 			if it := ev["item"].(map[string]any); it["type"] == "agent" {
@@ -333,9 +338,9 @@ func TestStartingFhClaudeSetsDefaultModeAndItsEnvironment(t *testing.T) {
 
 func TestTheAgentsTitleReplacesTheBranchName(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"title": "Fix the login page"}}})
-	_, next, id, _ := newSessionIn(t, f, "title please")
+	_, tab, id, _ := newSessionIn(t, f, "title please")
 
-	for ev := next(); ev != nil; ev = next() {
+	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
 		if s, ok := ev["session"].(map[string]any); ok && s["id"] == id && s["title"] == "Fix the login page" {
 			return
 		}
@@ -345,9 +350,9 @@ func TestTheAgentsTitleReplacesTheBranchName(t *testing.T) {
 
 func TestATurnEndRefreshesTheWorktrees(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"writeFile": "made-by-agent.txt"}}})
-	_, next, _, repo := newSessionIn(t, f, "write")
+	_, tab, _, repo := newSessionIn(t, f, "write")
 
-	for ev := next(); ev != nil; ev = next() {
+	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
 		if ev["type"] == "projects" && worktreeAt(t, projects(t, ev)[0], repo)["uncommitted"] == float64(1) {
 			return // well before the 1 h refresh interval
 		}

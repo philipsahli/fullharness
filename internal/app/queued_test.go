@@ -15,8 +15,8 @@ import (
 func startWorking(t *testing.T, s script) (f *fh, c *http.Client, id string) {
 	t.Helper()
 	f = startFhWithAgent(t, s)
-	c, _, id, _ = newSessionIn(t, f, "long")
-	waitState(t, f.connectTab(c), id, "working")
+	c, tab, id, _ := newSessionIn(t, f, "long")
+	waitState(t, tab, id, "working")
 	return f, c, id
 }
 
@@ -35,9 +35,7 @@ func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testi
 		"long": []any{map[string]any{"sleepMs": 600}, map[string]any{"say": "first"}},
 		"more": []any{map[string]any{"say": "second"}},
 	}})
-	c := f.authorisedClient()
-	_, _, id, _ := newSessionIn(t, f, "long")
-	tab := f.connectTab(c)
+	c, tab, id, _ := newSessionIn(t, f, "long")
 	waitState(t, tab, id, "working")
 
 	if status, body := f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"}); status != http.StatusAccepted {
