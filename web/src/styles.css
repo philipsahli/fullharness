@@ -91,10 +91,15 @@ button {
   color: inherit;
   cursor: pointer;
 }
-button:focus-visible,
-a:focus-visible {
+/* One accent focus ring on every control, from the keyboard only (ADR 0012). */
+:is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Checkboxes and radios in the accent colour. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
 }
 /* Links: Agent Markdown and the server's urls (#86). --accent is set for
    light and dark. */
@@ -420,10 +425,10 @@ h3 {
 .addform input {
   font: inherit;
   font-family: var(--f-mono);
-  padding: 5px 7px;
+  padding: 5px 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--fg);
 }
 .addform .row {
@@ -587,33 +592,75 @@ span.agent i {
   flex-direction: column;
   gap: 4px;
 }
+/* Fields, as the mockup's .field input/select: inset on --bg. */
 .newsession select,
 .newsession textarea,
-.newsession input:not([type]),
+.newsession > label > input:not([type]),
 .composer textarea {
   font: inherit;
-  padding: 6px 8px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--fg);
 }
+/* The Worktree and Agent choices are the mockup's .radios pills around
+   native radios; the fieldset keeps its legend but not the browser's box. */
 .newsession fieldset {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.newsession legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.radios {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 6px;
+}
+.radios.stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.newsession .radios label {
+  flex-direction: row;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 10px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+.radios label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.radios label.dis {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.radios input:not([type]) {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  background: var(--bg);
+  color: var(--fg);
 }
 .newsession .choice {
   flex-direction: row;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-.newsession .choice[data-disabled] {
-  color: var(--muted);
 }
 .why {
   color: var(--muted);
@@ -805,23 +852,30 @@ span.agent i {
   overflow-wrap: anywhere;
   margin: 6px 0 0;
 }
+/* Tool cards, as the mockup's .tool: no browser triangle. */
 .toolcard {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 10px;
   max-width: 72ch;
+  background: var(--bg);
 }
 .toolcard summary {
+  list-style: none;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   cursor: pointer;
 }
+.toolcard summary::-webkit-details-marker {
+  display: none;
+}
 .toolcard .kind {
   font-size: 11px;
+  font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 .toolcard .title {
   font-family: var(--f-mono);
@@ -909,12 +963,17 @@ span.agent i {
   gap: 4px;
   align-items: center;
 }
-.settings select {
+/* Small selects, as the mockup's .mhead select, but with the app's old
+   1px 4px padding: the header has more settings than the mockup and the
+   mockup's 2px 6px wraps the row. */
+.settings select,
+.proj .autopilot select {
   font: inherit;
+  font-size: 12.5px;
   color: var(--fg);
-  background: var(--surface);
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 1px 4px;
 }
 .main {
@@ -1156,10 +1215,10 @@ span.agent i {
 }
 .board-head select {
   font: inherit;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 7px;
+  background: var(--bg);
   color: var(--fg);
 }
 .columns {
