@@ -20,13 +20,10 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-// cookieName holds the launch token. Cookies are scoped by host, not port, so
-// a cookie left over from an older launch is rejected as a wrong token.
-const cookieName = "fh_token"
-
 // Server is one fh HTTP server bound to a listener.
 type Server struct {
 	token     string
+	cookie    string          // name of the cookie that holds token, see New
 	launch    string          // random ID of this launch, sent in every snapshot
 	origins   map[string]bool // Origin values allowed on /ws and on commands
 	http      *http.Server
@@ -45,7 +42,13 @@ type Server struct {
 func New(ln net.Listener, token string, ui fs.FS, state func() map[string]any) *Server {
 	port := ln.Addr().(*net.TCPAddr).Port
 	s := &Server{
-		token:  token,
+		token: token,
+		// Browsers scope cookies by host, not port, so with one fixed name
+		// every fh on 127.0.0.1 would share one cookie, and signing in to a
+		// second instance would sign out the first one's tabs (#133). A
+		// restart on the same port still replaces the cookie, so a tab from
+		// an older launch there is rejected as a wrong token.
+		cookie: fmt.Sprintf("fh_token_%d", port),
 		launch: rand.Text(),
 		ln:     ln,
 		origins: map[string]bool{
@@ -133,7 +136,7 @@ func (s *Server) Close() error {
 // a cookie so it doesn't stay in the address bar or browser history.
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
+		Name:     s.cookie,
 		Value:    s.token,
 		Path:     "/",
 		HttpOnly: true,
@@ -152,7 +155,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 // Sessions and the Inbox; the lists must stay non-nil so they encode as [].
 //
 // launch lets a tab notice a restart. The cookie can't: a restarted fh opens a
-// new tab whose cookie replaces the old one for every tab on 127.0.0.1, so an
+// new tab whose cookie replaces the old one for every tab on that port, so an
 // old tab would otherwise reconnect without noticing.
 func (s *Server) snapshot() map[string]any {
 	snap := map[string]any{
@@ -251,7 +254,7 @@ func (s *Server) authorised(r *http.Request) bool {
 	if s.validToken(r.URL.Query().Get("token")) {
 		return true
 	}
-	c, err := r.Cookie(cookieName)
+	c, err := r.Cookie(s.cookie)
 	return err == nil && s.validToken(c.Value)
 }
 

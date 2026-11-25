@@ -54,7 +54,7 @@ func TestRequestWithCookieIsAccepted(t *testing.T) {
 func TestRequestWithWrongCookieIsRejected(t *testing.T) {
 	f := startFh(t, t.TempDir())
 	req, _ := http.NewRequest("GET", f.origin()+"/api/state", nil)
-	req.AddCookie(&http.Cookie{Name: "fh_token", Value: "not-the-token"})
+	req.AddCookie(&http.Cookie{Name: "fh_token_" + f.launchURL().Port(), Value: "not-the-token"})
 
 	resp, err := noRedirectClient(t).Do(req)
 	if err != nil {
