@@ -366,6 +366,15 @@ A Stop point stays one across restarts. Closing the waiting Session hands the Pr
 
 Autopilot starts Claude Code; pick another Agent next to the Autopilot box. fh keeps what it started in `state.json`, so a restart doesn't start a step twice.
 
+fh also keeps a history per Feature in `state.json`: each skill Autopilot started, how each of its turns ended, each Stop point it reached, and each skill that failed to start. To read it, open `/api/autopilot?project=<path>` in the browser where fh runs (shortened here):
+
+```json
+{ "features": [ { "feature": "login", "events": [
+  { "kind": "skill", "ticket": "01", "skill": "implement", "session": "uacsy6t46u" },
+  { "kind": "classified", "ticket": "01", "skill": "implement", "verdict": "asking", "by": "rule:permission" },
+  { "kind": "stop", "ticket": "01", "skill": "implement", "reason": "asking" } ] } ] }
+```
+
 ### Agents
 
 fh knows three Agents. Each needs its CLI installed and logged in:

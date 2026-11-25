@@ -1287,6 +1287,11 @@ func (s *session) prompt(text string) {
 		select {
 		case <-proc.Done():
 			return // watch reports the exit
+		case <-proc.Disconnected():
+			// The Agent is exiting and Done hasn't closed yet. Without
+			// this case the exit raced in as a refused turn, and Autopilot
+			// classified it stuck after recording the exit (#112).
+			return
 		default:
 		}
 		if authRequired(err) {
