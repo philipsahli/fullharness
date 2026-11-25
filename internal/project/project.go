@@ -4,6 +4,7 @@ package project
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/philipsahli/fullharness/internal/fileutil"
 	"github.com/philipsahli/fullharness/internal/gitremote"
+	"github.com/philipsahli/fullharness/internal/tracker"
 	"github.com/philipsahli/fullharness/internal/worktree"
 )
 
@@ -56,13 +58,25 @@ type Registry struct {
 	created  func(path string) bool // whether fh created a Worktree
 	linked   func(path string) bool // whether a Session is linked to a Worktree
 
-	// change serialises Add, Remove and Refresh including their onChange
-	// call, so tabs get events in the order the changes happened and an
-	// older git read never overwrites a newer one.
+	// change serialises Add, Remove, Refresh and setPRs including their
+	// onChange call, so tabs get events in the order the changes happened
+	// and an older git read never overwrites a newer one.
 	change sync.Mutex
 
-	mu       sync.Mutex // guards projects for readers
+	mu       sync.Mutex // guards projects for readers, and the PR fields below
 	projects []Project
+
+	// PRs come from gh, which can take seconds, so they are fetched in a
+	// goroutine and never while change is held: a turn end refreshes
+	// before the next Queued message is sent, and must not wait on gh.
+	prs      func(ctx context.Context, repo string) ([]tracker.PR, bool)
+	known    map[string][]tracker.PR // repo → its PRs from the last gh read that worked
+	fetching map[string]bool         // repo → a PR fetch is running
+	again    map[string]bool         // repo → fetch once more when the running one ends
+	closed   bool                    // Close was called: no new fetches
+	fetches  sync.WaitGroup
+	stop     context.CancelFunc // ends ctx, which stops running gh calls
+	ctx      context.Context
 }
 
 // stored is projects.toml: one [[project]] table per Project.
@@ -80,7 +94,9 @@ type storedProject struct {
 // Exited, is linked to one. onChange gets the new list after every change,
 // for pushing to tabs.
 func Open(dir string, created, linked func(path string) bool, onChange func([]Project)) (*Registry, error) {
-	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created, linked: linked}
+	r := &Registry{file: filepath.Join(dir, fileName), onChange: onChange, created: created, linked: linked,
+		known: map[string][]tracker.PR{}, fetching: map[string]bool{}, again: map[string]bool{}}
+	r.ctx, r.stop = context.WithCancel(context.Background())
 	var s stored
 	if _, err := toml.DecodeFile(r.file, &s); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("read %s: %w", r.file, err)
@@ -89,6 +105,36 @@ func Open(dir string, created, linked func(path string) bool, onChange func([]Pr
 		r.projects = append(r.projects, r.read(p.Path, p.Settings))
 	}
 	return r, nil
+}
+
+// ReadPRs makes every later read of a GitHub Project start a background
+// fetch of its PRs from prs: a repo's PRs, and false when gh couldn't read
+// them; prs stops when ctx ends. When a fetch works, each Worktree on a branch gets its Pull
+// request, or NoPR, and onChange is called if that changed something. It
+// is set after Open, so starting fh waits for no gh call; the first
+// Refresh, when a tab connects, starts the first fetch.
+func (r *Registry) ReadPRs(prs func(ctx context.Context, repo string) ([]tracker.PR, bool)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.prs = prs
+}
+
+// FetchPRs starts a background fetch of the PRs of the Project at repo,
+// for a caller that knows they changed, such as a board refresh that just
+// re-read gh.
+func (r *Registry) FetchPRs(repo string) {
+	r.fetchPRs(repo)
+}
+
+// Close stops new PR fetches, cancels the running ones and waits for them
+// to end, so none calls onChange after fh stopped and a hung gh doesn't
+// hold up quitting.
+func (r *Registry) Close() {
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
+	r.stop()
+	r.fetches.Wait()
 }
 
 // List returns the current Projects, never nil, so it encodes as [].
@@ -142,6 +188,9 @@ func (r *Registry) Remove(path string) error {
 	if i < 0 {
 		return ErrNotFound
 	}
+	r.mu.Lock()
+	delete(r.known, path)
+	r.mu.Unlock()
 	return r.set(slices.Delete(list, i, i+1), true)
 }
 
@@ -281,6 +330,91 @@ func (r *Registry) read(path string, settings Settings) Project {
 				p.Worktrees[i].URL = g.BranchURL(b)
 			}
 		}
+		// The last known PRs stay until the fetch brings new ones, so a
+		// refresh doesn't make the PR links blink.
+		r.mu.Lock()
+		prs, ok := r.known[path]
+		r.mu.Unlock()
+		if ok {
+			withPRs(p.Worktrees, prs)
+		}
+		r.fetchPRs(path)
 	}
 	return p
+}
+
+// fetchPRs reads repo's PRs in a goroutine, unless a fetch for repo is
+// already running: then that one runs once more when it ends, so a caller
+// that knows the PRs changed still gets a read that starts after its call,
+// and concurrent refreshes start no second gh call.
+func (r *Registry) fetchPRs(repo string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.prs == nil || r.closed {
+		return
+	}
+	if r.fetching[repo] {
+		r.again[repo] = true
+		return
+	}
+	r.fetching[repo] = true
+	r.fetches.Add(1)
+	read := r.prs
+	go func() {
+		defer r.fetches.Done()
+		for {
+			if prs, ok := read(r.ctx, repo); ok && r.ctx.Err() == nil {
+				r.setPRs(repo, prs)
+			}
+			r.mu.Lock()
+			if !r.again[repo] {
+				delete(r.fetching, repo)
+				r.mu.Unlock()
+				return
+			}
+			delete(r.again, repo)
+			r.mu.Unlock()
+		}
+	}()
+}
+
+// setPRs keeps prs as repo's known PRs and puts them on its Worktrees,
+// telling onChange if that changed one. Until the first fetch that works,
+// Worktrees carry neither PR nor NoPR, so the UI doesn't claim "No PR yet"
+// when it can't know; after that a failed fetch leaves the last known PRs.
+func (r *Registry) setPRs(repo string, prs []tracker.PR) {
+	r.change.Lock()
+	defer r.change.Unlock()
+	list := r.List()
+	i := slices.IndexFunc(list, func(p Project) bool { return p.Path == repo })
+	if i < 0 {
+		return // removed while gh ran
+	}
+	r.mu.Lock()
+	r.known[repo] = prs
+	r.mu.Unlock()
+	p := list[i]
+	p.Worktrees = slices.Clone(p.Worktrees)
+	withPRs(p.Worktrees, prs)
+	if reflect.DeepEqual(list[i], p) {
+		return
+	}
+	list[i] = p
+	_ = r.set(list, false) // returns an error only when saving
+}
+
+// withPRs gives each Worktree on a branch its Pull request among prs, or
+// NoPR when it has none.
+func withPRs(wts []worktree.Worktree, prs []tracker.PR) {
+	for i := range wts {
+		wts[i].PR, wts[i].NoPR = nil, false
+		if wts[i].Branch == "" {
+			continue
+		}
+		if pr, ok := tracker.BranchPR(prs, wts[i].Branch); ok {
+			wts[i].PR = &pr
+		} else {
+			wts[i].NoPR = true
+		}
+	}
 }

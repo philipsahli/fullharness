@@ -9,7 +9,9 @@ import { tempFolder, tempRepo, tempRepoWith, withOrigin, withRemoteBranch } from
 const test = base.extend<{ fh: Fh }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright fixtures must destructure their first argument
   fh: async ({}, use) => {
-    const fh = await Fh.start();
+    // A fake gh with no PRs: a Project on GitHub makes fh read its PRs, and
+    // the tests must not reach GitHub through the developer's own gh.
+    const fh = await Fh.start({ ghPRs: [] });
     await use(fh);
     await fh.dispose();
   },
@@ -515,6 +517,103 @@ test("on a GitHub board the Spec, Ticket and blocker numbers link to their issue
     );
     // Only the numbers link: the titles stay text.
     await expect(detail.getByRole("link", { name: /Login form|Session cookie/ })).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {
+  const pr = (number: number, branch: string, state: string, conclusion: string) => ({
+    number,
+    headRefName: branch,
+    body: "",
+    state,
+    isDraft: false,
+    url: `https://github.com/someone/shop/pull/${number}`,
+    statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion }],
+  });
+  const fh = await Fh.start({
+    ghPRs: [pr(21, "01-form", "OPEN", "SUCCESS"), pr(20, "01-form-v1", "CLOSED", "FAILURE")],
+  });
+  const ticket = (n: string, title: string) =>
+    `# ${n}: ${title}\n\n**Blocked by:** None\n\n**Status:** ready-for-agent\n`;
+  const repo = withOrigin(
+    tempRepoWith("shop", {
+      ".scratch/login/spec.md": "# Login\n",
+      ".scratch/login/issues/01-form.md": ticket("01", "Login form"),
+      ".scratch/login/issues/02-cookie.md": ticket("02", "Session cookie"),
+    }),
+    "git@github.com:someone/shop.git",
+  );
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page.locator(".fcard", { hasText: "Login" }).click();
+    const detail = page.getByRole("region", { name: "Feature Login" });
+    const form = detail.getByRole("listitem").filter({ hasText: "Login form" });
+    await expect(form.getByRole("link", { name: "#21" })).toHaveAttribute(
+      "href",
+      "https://github.com/someone/shop/pull/21",
+    );
+    await expect(form).toContainText("#21 ↗ Open ✓");
+    await expect(form).toContainText("#20 ↗ Closed ✗");
+    await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
+      "No PR yet",
+    );
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("the Session header links the Worktree's branch and shows its PR with PR state and checks", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: { default: [{ say: "hello" }] },
+    ghPRs: [
+      {
+        number: 21,
+        headRefName: "main",
+        body: "",
+        state: "OPEN",
+        isDraft: false,
+        url: "https://github.com/someone/shop/pull/21",
+        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }],
+      },
+    ],
+  });
+  const repo = withRemoteBranch(
+    withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"),
+    "main",
+  );
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    const form = page.getByRole("form", { name: "New Session" });
+    await form.getByRole("radio", { name: /main/ }).check();
+    await form.getByRole("button", { name: "Start Session" }).click();
+
+    const head = page.getByRole("region", { name: /^Session / }).locator("header");
+    await expect(head.getByRole("link", { name: "main ↗", exact: true })).toHaveAttribute(
+      "href",
+      "https://github.com/someone/shop/tree/main",
+    );
+    await expect(head.getByRole("link", { name: "PR #21" })).toHaveAttribute(
+      "href",
+      "https://github.com/someone/shop/pull/21",
+    );
+    await expect(head).toContainText("main ↗ · PR #21 ↗ Open · checks ✓");
   } finally {
     await fh.dispose();
   }

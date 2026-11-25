@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { command, get } from "./api";
 import type { Project } from "./events";
+import { PRPart, type PR } from "./PR";
 import { LinkOrText } from "./LinkOrText";
 import type { StartFrom } from "./Sessions";
 
@@ -22,6 +23,7 @@ type Ticket = {
   ref: string; // how a skill prompt names it, e.g. "#42"
   url?: string;
   next?: Step; // offered only while startable
+  prs: PR[]; // newest first; empty means No PR yet
 };
 type Feature = {
   id: string;
@@ -362,6 +364,11 @@ function FeatureDetail({
                   {next.label}
                 </button>
               )}
+              <span className="prs">
+                {t.prs.length === 0
+                  ? "No PR yet"
+                  : t.prs.map((p) => <PRPart key={p.number} pr={p} />)}
+              </span>
               {t.blockers.some((b) => b.open) && (
                 <span className="s">
                   blocked by {/* One element per blocker, so each number is its own link. */}

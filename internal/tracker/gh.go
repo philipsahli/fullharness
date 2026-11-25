@@ -11,6 +11,7 @@ import (
 )
 
 // ghTimeout bounds one gh call, so a hung gh can't hold a board forever.
+// The caller's context can end it sooner, as fh's Close does.
 const ghTimeout = 30 * time.Second
 
 // Reasons a gh read fails, each with what the user does about it.
@@ -38,13 +39,13 @@ const issuesQuery = `query($owner: String!, $repo: String!, $endCursor: String) 
 }`
 
 // CheckGh returns ErrNoGh or ErrGhLogin when gh can't read GitHub.
-func CheckGh(repo string) error {
+func CheckGh(ctx context.Context, repo string) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return ErrNoGh
 	}
 	// Any auth status failure reads as "not logged in": it is the usual
 	// cause, and the note's command is what fixes it.
-	if _, err := gh(repo, "auth", "status"); err != nil {
+	if _, err := gh(ctx, repo, "auth", "status"); err != nil {
 		return ErrGhLogin
 	}
 	return nil
@@ -61,8 +62,8 @@ func Note(err error) string {
 
 // FetchIssues reads every issue of the repo's GitHub repository through
 // the user's gh login; gh finds the repository from the git remote.
-func FetchIssues(repo string) ([]Issue, error) {
-	out, err := gh(repo, "api", "graphql", "--paginate", "--slurp",
+func FetchIssues(ctx context.Context, repo string) ([]Issue, error) {
+	out, err := gh(ctx, repo, "api", "graphql", "--paginate", "--slurp",
 		"-F", "owner={owner}", "-F", "repo={repo}", "-f", "query="+issuesQuery)
 	if err != nil {
 		return nil, err
@@ -86,9 +87,15 @@ func FetchIssues(repo string) ([]Issue, error) {
 	return issues, nil
 }
 
-// FetchPRs reads the repository's open PRs.
-func FetchPRs(repo string) ([]PR, error) {
-	out, err := gh(repo, "pr", "list", "--state", "open", "--limit", "500", "--json", "number,headRefName,body")
+// prLimit caps the PR read at the most recent PRs: enough for every open
+// one, while a long-closed Ticket's old Merged PR may drop off (#127).
+const prLimit = "500"
+
+// FetchPRs reads the repository's PRs in every state, the prLimit most
+// recent, with what a PRRecord needs.
+func FetchPRs(ctx context.Context, repo string) ([]PR, error) {
+	out, err := gh(ctx, repo, "pr", "list", "--state", "all", "--limit", prLimit,
+		"--json", "number,headRefName,body,state,isDraft,url,statusCheckRollup")
 	if err != nil {
 		return nil, err
 	}
@@ -99,11 +106,14 @@ func FetchPRs(repo string) ([]PR, error) {
 	return prs, nil
 }
 
-func gh(repo string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+func gh(ctx context.Context, repo string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = repo
+	// A child gh started keeps its output open after gh is killed; don't
+	// wait for it.
+	cmd.WaitDelay = time.Second
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"sync"
@@ -51,7 +52,18 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 			server.WriteError(w, http.StatusNotFound, "no such Project")
 			return
 		}
-		board, read := b.read(p.Path, r.URL.Query().Get("refresh") == "1")
+		refresh := r.URL.Query().Get("refresh") == "1"
+		if refresh {
+			// A board with no GitHub tracker reads no PRs below, yet its
+			// Worktrees' PRs should be re-read too.
+			b.expire(p.Path)
+		}
+		board, read := b.read(p.Path, refresh)
+		if refresh {
+			// The Session header shows the new PRs through a projects
+			// event, without waiting for the next Refresh.
+			projects.FetchPRs(p.Path)
+		}
 		tracker.Derive(board.Features, sessions.Links(p.Path))
 		// p.URL is set only for a github.com origin, so a GitHub tracker
 		// on another host gets no links (#101).
@@ -137,21 +149,19 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 	switch kind {
 	case tracker.KindLocal:
 		ok = true
-		var prBranches []string
+		var prs []tracker.PR
 		if tracker.HasGitHubRemote(repo) {
 			// Without gh the board skips Review; the Tickets still show.
-			if gr := b.gh(repo, false, refresh); gr.err == nil {
-				for _, p := range gr.prs {
-					prBranches = append(prBranches, p.HeadRefName)
-				}
+			if gr := b.gh(context.Background(), repo, false, refresh); gr.err == nil {
+				prs = gr.prs
 			}
 		}
-		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prBranches)
+		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
 		}
 	case tracker.KindGitHub:
-		gr := b.gh(repo, true, refresh)
+		gr := b.gh(context.Background(), repo, true, refresh)
 		if gr.err != nil {
 			board.Note = tracker.Note(gr.err)
 			break
@@ -176,29 +186,61 @@ func (b *boards) specs(repo string) (ids []string, ok bool) {
 	return specIDs(board), ok
 }
 
-// gh returns the repo's gh read, from the cache when it's fresh and has
-// what's asked for.
-func (b *boards) gh(repo string, withIssues, refresh bool) ghResult {
+// prs is repo's PRs for its Worktrees, from the same cache as its board, so
+// the two share one `gh pr list` per cache period; ok is false when gh
+// failed. Ending ctx stops a running gh call.
+func (b *boards) prs(ctx context.Context, repo string) (prs []tracker.PR, ok bool) {
+	gr := b.gh(ctx, repo, false, false)
+	return gr.prs, gr.err == nil
+}
+
+// entry is repo's cache entry, made on first use.
+func (b *boards) entry(repo string) *ghEntry {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	e, ok := b.cache[repo]
 	if !ok {
 		e = &ghEntry{}
 		b.cache[repo] = e
 	}
-	b.mu.Unlock()
+	return e
+}
 
+// expire makes the next gh read of repo call gh.
+func (b *boards) expire(repo string) {
+	e := b.entry(repo)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.at = time.Time{}
+}
+
+// gh returns the repo's gh read, from the cache when it's fresh and has
+// what's asked for.
+func (b *boards) gh(ctx context.Context, repo string, withIssues, refresh bool) ghResult {
+	e := b.entry(repo)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	fresh := !e.at.IsZero() && time.Since(e.at) < ghCacheFor
 	if fresh && !refresh && (e.withIssues || !withIssues || e.err != nil) {
 		return e.ghResult
 	}
+	if fresh && !refresh {
+		// The Worktree refresh read the PRs; the board adds the issues
+		// without a second `gh pr list`. A failed issue read isn't kept,
+		// so the Worktrees keep their PRs.
+		r := e.ghResult
+		r.withIssues = true
+		if r.issues, r.err = tracker.FetchIssues(ctx, repo); r.err == nil {
+			e.ghResult = r
+		}
+		return r
+	}
 	r := ghResult{at: time.Now(), withIssues: withIssues}
-	if r.err = tracker.CheckGh(repo); r.err == nil && withIssues {
-		r.issues, r.err = tracker.FetchIssues(repo)
+	if r.err = tracker.CheckGh(ctx, repo); r.err == nil && withIssues {
+		r.issues, r.err = tracker.FetchIssues(ctx, repo)
 	}
 	if r.err == nil {
-		r.prs, r.err = tracker.FetchPRs(repo)
+		r.prs, r.err = tracker.FetchPRs(ctx, repo)
 	}
 	e.ghResult = r
 	return r

@@ -17,7 +17,7 @@ export type GhIssue = {
   blockedByRepo?: Record<number, string>;
 };
 
-// GhPR is one open PR as `gh pr list --json number,headRefName,body` gives it.
+// GhPR is one PR, in any state, as `gh pr list --json number,headRefName,body` gives it.
 export type GhPR = { number: number; headRefName: string; body?: string };
 
 // fakeGhPath writes a gh that is logged in, answers fh's issues query with

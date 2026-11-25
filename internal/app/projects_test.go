@@ -197,6 +197,7 @@ func TestAddProjectRejectsABareRepositoryAndSaysWhy(t *testing.T) {
 }
 
 func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
+	fakeGh(t, nil, nil, true) // a GitHub origin makes fh read its PRs
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -235,6 +236,7 @@ func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
 }
 
 func TestAWorktreeBranchLinksToGitHubOnlyWhenOriginHasIt(t *testing.T) {
+	fakeGh(t, nil, nil, true) // a GitHub origin makes fh read its PRs
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())

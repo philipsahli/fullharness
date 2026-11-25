@@ -89,7 +89,7 @@ A GitHub pull request from a Worktree's branch. It belongs to a Ticket when its 
 _Avoid_: merge request, MR, change
 
 **PR state**:
-Where a Pull request is: **Draft**, **Open**, **Merged** or **Closed** (closed without merging), together with its checks taken as one result: passed, failed or running.
+Where a Pull request is: **Draft**, **Open**, **Merged** or **Closed** (closed without merging), together with its checks taken as one result: passed, failed or running. **Unmerged**: an Open or Draft PR.
 _Avoid_: status (also avoided for Session state), CI status
 
 **Startable ticket**:

@@ -155,6 +155,9 @@ dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; overflow-wrap: anywhere;
 .files { list-style: none; margin: 0; padding: 0; font-family: var(--f-mono); font-size: 12px; display: grid; gap: 3px; }
 .files b { display: inline-block; width: 16px; font-weight: 500; }
 .m { color: var(--waiting); } .a { color: var(--good); }
+.later-note { margin: 0; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 12px; color: var(--muted); }
+.later-note b { color: var(--fg); margin-right: 6px; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.detail:has(.later-note) > section { opacity: .5; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .ticketcard { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
 
@@ -428,7 +431,7 @@ const projects = [
 let sessions = [
   { id: "s1", title: "Grill: Inbox for permission requests", project: "fh", wt: "idea/acp-inbox", agent: "claude", state: "waiting", fid: "f-inbox",
     acp: "sess_7f3a…c21", started: "41 min ago", mode: "default", model: "Opus 5.5", usage: "31% context · $0.42",
-    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0009-inbox-batching.md"],["M","internal/acp/client.go"]], pr: null },
+    git: { ahead: 3, behind: 0, files: [["M","GLOSSARY.md"],["A","docs/adr/0009-inbox-batching.md"],["M","internal/acp/client.go"]], pr: null, pushed: true },
     perm: { id: "p1", kind: "Run command", cmd: "go test ./internal/acp/...", why: "Run the ACP client tests after the change to permission handling." },
     msgs: [
       { r: "user", t: "/grill-with-docs Idea #31: the Inbox should batch permission requests across Sessions." },
@@ -459,7 +462,7 @@ let sessions = [
     ] },
   { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "12-pty-fallback", agent: "copilot", state: "working", view: "terminal", fid: "f-acp", ticket: 12,
     acp: "— (terminal fallback)", started: "26 min ago",
-    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: null },
+    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
     msgs: [] },
   { id: "s10", title: "#10 Permission request card", project: "fh", wt: "10-permission-card", agent: "claude", state: "idle", fid: "f-acp", ticket: 10,
     acp: "sess_19aa…f02", started: "3 h ago", mode: "default", model: "Opus 5.5", usage: "54% context · $1.87",
@@ -511,8 +514,8 @@ const factory = {
       tickets: [
         { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
         { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
-        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
-        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Implementing", sid: "s2" },
+        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
+        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
         { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
         { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
       ] },
@@ -717,13 +720,21 @@ function prLine(pr) {
   return `<dd><a class="ext" href="#">#${pr.n} ↗</a> · <span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : pr.ci === "fail" ? "✗" : "●"} ${pr.checks}</span> · ${pr.review}</dd>`;
 }
 const FAKE_DIFF = { "internal/worktree/list.go": L("@@ func List(dir string) ([]Worktree, error)", "-\tout, err := git(dir, \"worktree\", \"list\")", "+\tout, err := git(dir, \"worktree\", \"list\", \"--porcelain\")", "+\tfor _, block := range strings.Split(out, \"\\n\\n\") {") };
+/* The Session header line (#129): the Worktree's branch, a link once pushed, then `PR #n ↗ <PR state> · checks <mark>`, or No PR yet. */
+function branchLine(s) {
+  const pr = s.git.pr;
+  const branch = pr || s.git.pushed ? `<a class="ext" href="#">${esc(s.wt)} ↗</a>` : `<span class="mono">${esc(s.wt)}</span>`;
+  if (!pr) return `${branch} · <span class="ci none">No PR yet</span>`;
+  const state = pr.state || "open", ci = pr.ci;
+  return `${branch} · <a class="ext" href="#">PR #${pr.n} ↗</a> ${PR_STATE[state]}${ci ? ` · checks <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}`;
+}
 function renderSession() {
   const s = sess(ui.current), p = proj(s.project), v = s.view || "chat", fx = s.fid && feat(s.fid);
   const crumb = fx ? `<button class="btn small" data-feat="${s.fid}">${esc(fx.f.name)}</button>${s.ticket ? ` / Ticket #${s.ticket}` : ""}` : `${p.name} / Loose Session`;
   const controls = s.mode ? `<select aria-label="Mode"><option>${s.mode}</option><option>plan</option><option>auto-accept edits</option></select><select aria-label="Model"><option>${s.model}</option></select><span class="usage">${s.usage}</span>` : "";
   $("#main").innerHTML = `
     <div class="mhead">
-      <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2></div>
+      <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2><span class="crumb">${branchLine(s)}</span></div>
       ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}${s.exit ? ` · ${s.exit}` : ""}</span>
       <div class="seg" role="group" aria-label="Session view">
         <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
@@ -742,6 +753,7 @@ function renderSession() {
   const tk = fx && s.ticket ? (fx.f.tickets || []).find(t => t.n === s.ticket) : null;
   const pr = s.git.pr, gone = s.folderGone;
   $("#detail").innerHTML = `
+    <p class="later-note" role="note"><b>Later</b> This pane isn't built yet (#127, Out of Scope). The branch and PR show in the Session header line.</p>
     <section><h3>Worktree${gone ? ` <span class="tag">Proposed — #156</span>` : ""}</h3>
       <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
       <dt>Branch</dt><dd class="mono">${s.wt}</dd>${gone ? "" : `<dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>`}
@@ -806,17 +818,23 @@ function renderFactory() {
 }
 
 /* ---------- Feature page ---------- */
+/* A Ticket's PR part (#128): every PR that belongs to it, newest first, as `#n ↗ <PR state> <checks>`. */
+const PR_STATE = { draft: "Draft", open: "Open", merged: "Merged", closed: "Closed" };
+const CI_MARK = { pass: "✓", fail: "✗", run: "…" };
+function prPart(pr) {
+  const ci = pr.ci;
+  return `<span style="white-space:nowrap"><a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${PR_STATE[pr.state]}</span>${ci ? ` <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}</span>`;
+}
 function ticketRow(fid, t) {
-  const s = t.sid && sess(t.sid), pr = t.pr;
+  const s = t.sid && sess(t.sid), pr = t.pr, prs = pr ? [pr, ...(t.older || [])] : [];
   const sessCell = s ? `<button class="btn small" data-open="${s.id}"><span class="dot ${s.state}" style="display:inline-block;margin-right:5px"></span>${STATE_LABEL[s.state]}</button>` : `<span class="chain">—</span>`;
-  const prCell = pr ? `<a class="ext" href="#">#${pr.n} ↗</a> <span class="chain">${pr.state}</span>` : `<span class="chain">—</span>`;
-  const ciCell = pr && pr.state === "open" ? `<span class="ci ${pr.ci}">${pr.ci === "pass" ? "✓" : "✗"} ${pr.checks}</span>` : `<span class="chain">${pr ? "merged" : "—"}</span>`;
+  const prCell = prs.length ? prs.map(prPart).join("<br>") : `<span class="ci none">No PR yet</span>`;
   let act = "";
   if (t.stage === "Startable") act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td>${ciCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -834,7 +852,7 @@ function renderFeature() {
     : f.stage === "Shipped" && !f.retroDone ? `<div class="callout"><span><strong>Shipped.</strong> Run a Retro to capture what to change next. Its follow-ups come back here as Ideas.</span><div class="acts"><button class="btn primary" data-retro="${f.id}">Start Retro</button></div></div>`
     : f.suggest ? `<div class="callout"><span><strong>${f.suggest}.</strong> Link it to move this Idea on to Spec; fh closes ${f.ref} with “Continued in Spec #32”.</span><div class="acts"><button class="btn primary" data-toast="Spec #32 linked · ${f.ref} closed · ${esc(f.name)} moved to Spec">Link Spec #32</button></div></div>` : "";
   const tickets = f.tickets ? `<section class="card"><h3><span>Tickets · ${f.tickets.length}</span><span class="chain" style="text-transform:none;letter-spacing:0">Ticket → Session → PR → checks → review → merge</span></h3>
-      <div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Stage</th><th>Session</th><th>PR</th><th>Checks</th><th>Review</th><th></th></tr></thead><tbody>${f.tickets.map(t => ticketRow(f.id, t)).join("")}</tbody></table></div></section>`
+      <div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Title</th><th>Stage</th><th>Session</th><th>PR</th><th>Review</th><th></th></tr></thead><tbody>${f.tickets.map(t => ticketRow(f.id, t)).join("")}</tbody></table></div></section>`
     : f.stage === "Spec" ? `<section class="card"><h3>Tickets</h3><p class="empty-note">No Tickets yet. <strong>Make tickets</strong> runs <code>/to-tickets</code> on ${f.ref}.</p></section>` : "";
   const checks = r ? `<section class="card"><h3><span>Readiness: ${v}</span>${rdBadge(f.id)}</h3><ul class="checks" aria-label="Readiness checks">${CHECKS.map((c, i) => {
       const st = r.checks[i], cls = st === 1 ? "c-ok" : st === 0 ? "c-bad" : "c-warn", g = st === 1 ? "✓" : st === 0 ? "✗" : "!";

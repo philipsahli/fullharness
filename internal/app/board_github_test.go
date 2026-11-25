@@ -54,8 +54,8 @@ func (i ghIssue) node() map[string]any {
 }
 
 // fakeGh puts a gh first on PATH that answers fh's GraphQL query with
-// issues, `pr list` with prs, and `auth status` with authOK. It returns a
-// function that counts the GraphQL calls.
+// issues, `pr list --state all --limit 500` with prs, and `auth status`
+// with authOK. It returns a function that counts the GraphQL calls.
 func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) func() int {
 	t.Helper()
 	calls, _, _ := fakeGhLogged(t, issues, prs, authOK)
@@ -64,8 +64,24 @@ func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) f
 
 // fakeGhLogged is fakeGh that also returns the gh commands it didn't
 // expect, such as a merge or an issue edit, one per line, and a function
-// that changes the open PRs.
+// that replaces the PRs `pr list` answers with.
 func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) (calls func() int, unexpected func() string, setPRs func([]map[string]any)) {
+	t.Helper()
+	g := newFakeGh(t, issues, prs, authOK)
+	return g.graphqlCalls, g.unexpected, g.setPRs
+}
+
+// ghFake is the fake gh: what it was asked, and a way to change its PRs.
+type ghFake struct {
+	graphqlCalls func() int    // the GraphQL (issues) reads
+	prListCalls  func() int    // the `pr list` reads
+	unexpected   func() string // other commands, one per line
+	setPRs       func([]map[string]any)
+	// hold makes each `pr list` wait, after it is counted, until release.
+	hold, release func()
+}
+
+func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) ghFake {
 	t.Helper()
 	dir := t.TempDir()
 	nodes := []any{}
@@ -92,10 +108,12 @@ func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK b
 	}
 	callsFile := filepath.Join(dir, "graphql-calls")
 	unexpectedFile := filepath.Join(dir, "unexpected")
+	prCallsFile := filepath.Join(dir, "pr-calls")
+	gate := filepath.Join(dir, "gate")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
-		"  *\"pr list\"*) cat \"" + dir + "/prs.json\" ;;\n" +
+		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
 	bin := filepath.Join(dir, "bin")
@@ -107,16 +125,27 @@ func fakeGhLogged(t *testing.T, issues []ghIssue, prs []map[string]any, authOK b
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	calls = func() int {
-		b, _ := os.ReadFile(callsFile) // no file yet means no calls
-		return strings.Count(string(b), "x")
+	count := func(file string) func() int {
+		return func() int {
+			b, _ := os.ReadFile(file) // no file yet means no calls
+			return strings.Count(string(b), "x")
+		}
 	}
-	unexpected = func() string {
-		b, _ := os.ReadFile(unexpectedFile) // no file yet means none
-		return string(b)
+	return ghFake{
+		graphqlCalls: count(callsFile),
+		prListCalls:  count(prCallsFile),
+		unexpected: func() string {
+			b, _ := os.ReadFile(unexpectedFile) // no file yet means none
+			return string(b)
+		},
+		setPRs: func(prs []map[string]any) { write("prs.json", prs) },
+		hold:   func() { writeFile(t, gate, "") },
+		release: func() {
+			if err := os.Remove(gate); err != nil && !os.IsNotExist(err) {
+				t.Error(err)
+			}
+		},
 	}
-	setPRs = func(prs []map[string]any) { write("prs.json", prs) }
-	return calls, unexpected, setPRs
 }
 
 func githubRepo(t *testing.T) string {
@@ -161,8 +190,8 @@ func TestAGitHubBoardPutsEachFeatureAtItsStage(t *testing.T) {
 		{Number: 61, Title: "Measure", State: "OPEN", Labels: []string{"wayfinder:research"}, Parent: 60},
 		{Number: 70, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
 	}, []map[string]any{
-		{"number": 100, "headRefName": "21-index", "body": "Adds the index"},
-		{"number": 101, "headRefName": "ranking", "body": "Ranks results.\n\ncloses #22"},
+		{"number": 100, "headRefName": "21-index", "body": "Adds the index", "state": "OPEN"},
+		{"number": 101, "headRefName": "ranking", "body": "Ranks results.\n\ncloses #22", "state": "OPEN"},
 	}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -322,7 +351,7 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 	repo := githubRepo(t)
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
-	fakeGh(t, nil, []map[string]any{{"number": 7, "headRefName": "1-form", "body": ""}}, true)
+	fakeGh(t, nil, []map[string]any{{"number": 7, "headRefName": "1-form", "body": "", "state": "OPEN", "url": "https://github.com/someone/shop/pull/7"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)
@@ -331,6 +360,9 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 
 	if s := ticketByNumber(t, login, "01")["stage"]; s != "review" {
 		t.Errorf("01 = %v, want review (open PR from branch 1-form)", s)
+	}
+	if got := asJSON(ticketByNumber(t, login, "01")["prs"]); got != `[{"checks":"","number":7,"state":"open","url":"https://github.com/someone/shop/pull/7"}]` {
+		t.Errorf("01 prs = %s, want PR #7, open, no checks", got)
 	}
 }
 
@@ -344,7 +376,7 @@ func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
 			Body: "## Blocked by\n\n- #3 (needs #9 first)\n- #5\n\n## Notes\n\n#7 is unrelated"},
 		{Number: 5, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 6, Title: "Linked by body", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
-	}, []map[string]any{{"number": 9, "headRefName": "3-part", "body": "Closes: #6"}}, true)
+	}, []map[string]any{{"number": 9, "headRefName": "3-part", "body": "Closes: #6", "state": "OPEN"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)
@@ -419,7 +451,7 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 		{Number: 2, Title: "In review", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 3, Title: "Implementing", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
 		{Number: 4, Title: "Not started", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 1},
-	}, []map[string]any{{"number": 9, "headRefName": "2-review", "body": ""}}, true)
+	}, []map[string]any{{"number": 9, "headRefName": "2-review", "body": "", "state": "OPEN"}}, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	f.addProject(c, repo)
