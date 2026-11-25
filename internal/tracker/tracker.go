@@ -61,6 +61,8 @@ type Feature struct {
 	Ref    string `json:"ref"`
 	// Idea names the Idea linked to this Spec, if any (#14).
 	Idea string `json:"idea,omitempty"`
+	// URL opens the Spec in its tracker; empty shows plain text (#86).
+	URL string `json:"url,omitempty"`
 	// Roadmap is the Spec's Roadmap group (ADR 0005): now, next or later,
 	// or empty. Autopilot works only on Features in Now (ADR-0009).
 	Roadmap string `json:"roadmap,omitempty"`
@@ -85,6 +87,7 @@ type Ticket struct {
 	// skill's prompt names the Ticket, e.g. "#42" (#13).
 	Branch string `json:"branch"`
 	Ref    string `json:"ref"`
+	URL    string `json:"url,omitempty"` // opens the Ticket in its tracker (#86)
 	// Next is the skill that moves it on from its Stage (next.go). The
 	// Board offers it only on a Startable Ticket.
 	Next *Step `json:"next,omitempty"`
@@ -102,8 +105,12 @@ type Blocker struct {
 	Number string `json:"number"`
 	// Known: the Ticket exists. An adapter that sees blockers outside the
 	// Feature (GitHub) sets Known and Open itself; unknown counts as open.
-	Known bool `json:"known"`
-	Open  bool `json:"open"`
+	Known bool   `json:"known"`
+	Open  bool   `json:"open"`
+	URL   string `json:"url,omitempty"` // opens the blocker in its tracker (#86)
+	// Repo is the GitHub repository ("owner/repo") gh's dependencies put
+	// the blocker in; empty means the Ticket's own repository.
+	Repo string `json:"-"`
 }
 
 // Detect finds the Project's Issue tracker: the `# Issue tracker: …`

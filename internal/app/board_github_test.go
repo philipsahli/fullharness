@@ -21,6 +21,9 @@ type ghIssue struct {
 	Parent    int
 	SubIssues []int
 	BlockedBy map[int]string // number → state
+	// BlockedByRepo puts a blocker in another repository ("owner/repo");
+	// a blocker not listed is in someone/shop, as githubRepo's origin.
+	BlockedByRepo map[int]string
 }
 
 func (i ghIssue) node() map[string]any {
@@ -34,7 +37,12 @@ func (i ghIssue) node() map[string]any {
 	}
 	blocked := []any{}
 	for n, st := range i.BlockedBy {
-		blocked = append(blocked, map[string]any{"number": n, "state": st})
+		repo := "someone/shop"
+		if r, ok := i.BlockedByRepo[n]; ok {
+			repo = r
+		}
+		blocked = append(blocked, map[string]any{"number": n, "state": st,
+			"repository": map[string]any{"nameWithOwner": repo}})
 	}
 	var parent any
 	if i.Parent != 0 {
@@ -218,6 +226,85 @@ func TestAGitHubBoardPutsEachFeatureAtItsStage(t *testing.T) {
 	}
 }
 
+var loginIssues = []ghIssue{
+	{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11, 12}},
+	{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
+	{Number: 12, Title: "Cookie", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10, BlockedBy: map[int]string{11: "OPEN"}},
+}
+
+func TestAGitHubBoardLinksSpecTicketAndBlockerNumbersToTheirIssues(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, loginIssues, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	login := featureByID(t, f.board(c, repo), "10")
+
+	issues := "https://github.com/someone/shop/issues/"
+	if login["url"] != issues+"10" {
+		t.Errorf("Spec url = %v, want %s10", login["url"], issues)
+	}
+	if got := ticketByNumber(t, login, "11")["url"]; got != issues+"11" {
+		t.Errorf("Ticket #11 url = %v, want %s11", got, issues)
+	}
+	blockers := objects(t, ticketByNumber(t, login, "12"), "blockers")
+	if len(blockers) != 1 || blockers[0]["url"] != issues+"11" {
+		t.Errorf("#12 blockers = %v, want #11 with url %s11", blockers, issues)
+	}
+}
+
+func TestABlockerInAnotherRepositoryOrUnknownGetsNoLink(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", SubIssues: []int{11, 12}},
+		// #7 in someone/auth is another issue than someone/shop#7.
+		{Number: 11, Title: "Form", State: "OPEN", Parent: 10,
+			BlockedBy: map[int]string{7: "OPEN"}, BlockedByRepo: map[int]string{7: "someone/auth"}},
+		// #99 doesn't exist: the body line names an unknown issue.
+		{Number: 12, Title: "Cookie", State: "OPEN", Parent: 10, Body: "Blocked by: #99"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	login := featureByID(t, f.board(c, repo), "10")
+
+	if got := asJSON(ticketByNumber(t, login, "11")["blockers"]); got != `[{"known":true,"number":"7","open":true}]` {
+		t.Errorf("#11 blockers = %s, want #7 without a url", got)
+	}
+	if got := asJSON(ticketByNumber(t, login, "12")["blockers"]); got != `[{"known":false,"number":"99","open":true}]` {
+		t.Errorf("#12 blockers = %s, want unknown #99 without a url", got)
+	}
+}
+
+func TestAGitHubTrackerOnAGitLabRemoteGetsNoLinks(t *testing.T) {
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	git(t, repo, "remote", "add", "origin", "git@gitlab.com:someone/shop.git")
+	// The tracker is GitHub by its doc, as the skills read it, but origin
+	// isn't on github.com: fh can't say which repository the numbers are in.
+	if err := os.MkdirAll(filepath.Join(repo, "docs", "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "docs", "agents", "issue-tracker.md"), "# Issue tracker: GitHub\n")
+	fakeGh(t, loginIssues, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	if b["tracker"] != "github" {
+		t.Fatalf("tracker = %v, want github (note %v)", b["tracker"], b["note"])
+	}
+	if len(objects(t, b, "features")) == 0 {
+		t.Fatal("no features: the check below would pass for nothing")
+	}
+	if s := asJSON(b["features"]); strings.Contains(s, `"url"`) {
+		t.Errorf("features carry urls on a GitLab remote: %s", s)
+	}
+}
+
 func TestGitHubReadsAreCachedUntilRefresh(t *testing.T) {
 	repo := githubRepo(t)
 	calls := fakeGh(t, []ghIssue{{Number: 1, Title: "Spec", State: "OPEN", Labels: []string{"ready-for-agent"}}}, nil, true)
@@ -302,7 +389,7 @@ func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
 	if s := ticketByNumber(t, spec, "3")["stage"]; s != "review" {
 		t.Errorf("#3 (Part of #1) = %v, want review via branch 3-part", s)
 	}
-	if got := asJSON(ticketByNumber(t, spec, "4")["blockers"]); got != `[{"known":true,"number":"3","open":true},{"known":true,"number":"5","open":false}]` {
+	if got := asJSON(ticketByNumber(t, spec, "4")["blockers"]); got != `[{"known":true,"number":"3","open":true,"url":"https://github.com/someone/shop/issues/3"},{"known":true,"number":"5","open":false,"url":"https://github.com/someone/shop/issues/5"}]` {
 		t.Errorf("#4 blockers = %s, want #3 (open) and #5 (closed) from the section", got)
 	}
 	if s := ticketByNumber(t, spec, "6")["stage"]; s != "review" {

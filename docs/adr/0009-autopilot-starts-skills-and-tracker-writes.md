@@ -16,9 +16,19 @@ Every Software factory step in fh is started by the user, so a Feature stands st
   - a grilling question (the Session is Waiting),
   - approving a Spec (an Inbox item; Approve adds `ready-for-agent`),
   - merging a PR (fh never merges without the user's confirmation),
+  - reviewing the screen of a PR that changes a screen (Screenshot review; see `AGENTS.md`, UI changes),
   - permission requests (Autopilot Sessions never auto-approve),
   - a Feature that failed review after 2 rework rounds.
 - fh records every Autopilot action per Feature in its local state, so the Loop view can draw it after a restart.
+
+## History
+
+fh keeps an Autopilot history per Feature (#112): each skill Autopilot started, how each turn of its Sessions ended, each Stop point, and each skill that failed to start. A Session that exits before its turn ends is a Stop point with reason `exited`.
+
+Planned with #113, not recorded yet: label writes, rework rounds, and an Approve the user clicks, marked as the user's, so the Loop view (#114) can draw the end of a wait.
+
+- A Stop point or a failed start that Autopilot meets again on its next look is recorded once, until something else happens to that Feature or Ticket. A failed start keeps its first error; fh.log has every retry.
+- Nothing is trimmed: trimming at a closed Spec or to the last N events would lose the drawing of a finished Feature. Revisit when `state.json` passes 1 MB or `/api/autopilot` is slow to load.
 
 ## Considered options
 

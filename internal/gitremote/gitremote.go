@@ -29,6 +29,17 @@ func (g GitHub) BranchURL(branch string) string {
 	return g.URL() + "/tree/" + strings.Join(parts, "/")
 }
 
+// IssueURL is issue number n's page. GitHub redirects it to the PR page
+// when n is a PR.
+func (g GitHub) IssueURL(n string) string {
+	return g.URL() + "/issues/" + url.PathEscape(n)
+}
+
+// NameWithOwner is "owner/repo", as GitHub's API names the repo.
+func (g GitHub) NameWithOwner() string {
+	return g.Owner + "/" + g.Repo
+}
+
 // GitHub's own rules: an owner is letters, digits and single hyphens; a repo
 // name is letters, digits, '.', '-' and '_'. Checking them also keeps
 // anything odd in a remote URL out of the links fh builds from it.

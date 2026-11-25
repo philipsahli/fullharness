@@ -286,6 +286,10 @@ tr:last-child td { border-bottom: 0; }
 .fphead .acts { margin-left: auto; }
 .ext { color: var(--accent); text-decoration: none; font-family: var(--f-mono); font-size: 12.5px; }
 .ext:hover { text-decoration: underline; }
+.fphead a.ext::after { content: " ↗"; }
+/* Spec, Ticket and blocker numbers link to their GitHub issues (#101); other #N in notes stay text (#89). */
+td.mono a { color: var(--accent); }
+td a:focus-visible, .ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stepper { display: flex; list-style: none; margin: 0; padding: 0; gap: 4px; flex-wrap: wrap; }
 .stepper li { flex: 1 1 110px; font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); display: grid; gap: 1px; }
 .stepper li small { font-family: var(--f-mono); font-size: 10.5px; }
@@ -484,6 +488,9 @@ let sessions = [
       { r: "user", t: "/grill-with-docs Idea: first-run onboarding for heroflow" },
       { r: "agent", t: "Recorded **Hero** and **Flow** in `GLOSSARY.md`. Next round: does onboarding create a sample Flow, or start empty?" },
     ] },
+  { id: "s9", title: "#89 Requeue with exponential backoff", project: "io", wt: "89-requeue-backoff", agent: "claude", state: "exited", exit: "fh quit", canReopen: false, folderGone: true, fid: "f-io1", ticket: 89,
+    acp: "ses_77a2…c41", started: "2 days ago", git: { ahead: 0, behind: 0, files: [], pr: { n: 88, state: "merged" } },
+    msgs: [{ r: "user", t: "/implement #89" }, { r: "agent", t: "Opened PR #88: requeue with exponential backoff, capped at 5 min." }] },
   { id: "s8", title: "#41 Template picker", project: "hf", wt: "41-template-picker", agent: "copilot", state: "exited", exit: "Agent crashed", canReopen: false, fid: "f-hf2", ticket: 41,
     acp: "ses_31c0…be2", started: "1 h ago", git: { ahead: 2, behind: 0, files: [["M","src/templates/picker.ts"]], pr: null },
     stderr: ["Error: session/load not supported by this Copilot CLI version", "    at AcpServer.load (dist/acp.js:212:11)"],
@@ -510,7 +517,7 @@ const factory = {
         { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
         { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
         { n: 11, t: "Reopen a Session via session/load", stage: "Startable" },
-        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", note: "blocked by #11" },
+        { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
       ] },
     { id: "f-wt", name: "Worktree view", stage: "Implementing", ref: "Spec #3", next: "Open Session", skill: "",
       tickets: [
@@ -533,7 +540,7 @@ const factory = {
   ],
   io: [
     { id: "f-io1", name: "Backoff for missing CRDs", stage: "Review", ref: "Spec #87", next: "Close Spec", skill: "", allClosed: true,
-      tickets: [ { n: 89, t: "Requeue with exponential backoff", stage: "Shipped", pr: { n: 88, state: "merged" } } ] },
+      tickets: [ { n: 89, t: "Requeue with exponential backoff", stage: "Shipped", sid: "s9", pr: { n: 88, state: "merged" } } ] },
     { id: "f-io3", name: "Cluster labels", stage: "Shipped", ref: "Spec #91", next: "Retro", skill: "/retro", closedEarly: 93, retroDone: true,
       tickets: [ { n: 92, t: "Read labels from the cluster API", stage: "Shipped", pr: { n: 94, state: "merged" } }, { n: 93, t: "Filter inventory by label", stage: "Implementing", note: "Spec closed by `Closes #91` in PR #94" } ] },
     { id: "f-io2", name: "Multi-cluster inventory", stage: "Spec", ref: "Spec #90", next: "Make tickets", skill: "/to-tickets" },
@@ -589,6 +596,8 @@ const proj = id => projects.find(p => p.id === id);
 const sess = id => sessions.find(s => s.id === id);
 const allFeats = () => Object.entries(factory).flatMap(([pid, fs]) => fs.map(f => ({ pid, f })));
 const feat = id => allFeats().find(x => x.f.id === id);
+// issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text, in a span when it has a class.
+const issueLink = (pid, n, text = `#${n}`, cls = "") => { const p = proj(pid), c = cls ? ` class="${cls}"` : ""; return p && p.url && n ? `<a${c} href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : cls ? `<span${c}>${text}</span>` : text; };
 const featSessions = fid => sessions.filter(s => s.fid === fid);
 const agentTag = a => `<span class="agent"><i style="background:${AGENTS[a].color}"></i>${AGENTS[a].name}</span>`;
 const sorted = list => [...list].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state]);
@@ -694,10 +703,12 @@ const TERM = `╭─────────────────────
 function composer(s) {
   const a = AGENTS[s.agent].name;
   if (s.state === "exited" && s.canReopen) return `<div class="composer"><span class="crumb" style="flex:1">Exited: ${s.exit}. ${a} supports session/load, so the history comes back.</span><button class="btn" data-closesess="${s.id}">Close Session</button><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`;
+  // Starting again needs the branch; once the PR is merged there is nothing left to work on.
+  const gone = s.folderGone, merged = s.git.pr && s.git.pr.state === "merged";
   if (s.state === "exited") return `<div class="composer" style="display:grid;gap:8px;align-items:stretch">
-      <div class="notice"><strong>Exited: ${s.exit}. This Session can't be reopened.</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
-      <span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span></div>
-      <div class="acts" style="justify-content:flex-end">${s.ticket ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
+      <div class="notice"><strong>Exited: ${s.exit}. ${gone ? "Can't reopen: the Worktree's folder is gone." : "This Session can't be reopened."}</strong>${s.stderr ? `<pre>${esc(s.stderr.join("\n"))}</pre>` : ""}
+      ${gone ? "" : `<span class="crumb">Close it to free the Worktree <span class="mono">${s.wt}</span>; the commits stay on the branch. Then start a new Session on the same Ticket.</span>`}</div>
+      <div class="acts" style="justify-content:flex-end">${s.ticket && !(gone && merged) ? `<button class="btn" data-toast="Session started on #${s.ticket} in ${s.wt}">Close and start again</button>` : ""}<button class="btn primary" data-closesess="${s.id}">Close Session</button></div></div>`;
   if (s.state === "starting") return `<div class="composer"><input type="text" disabled placeholder="Starting ${a}…" aria-label="Message"><button class="btn primary" disabled>Send</button></div>`;
   const hint = s.turnDone ? `<span class="crumb">${a} finished its turn and is waiting for your reply.</span>` : "";
   return `<form class="composer" data-send="${s.id}" style="flex-wrap:wrap">${hint ? `<div style="flex:1 1 100%">${hint}</div>` : ""}<input id="composer-input" type="text" placeholder="Message ${a}… (/ for skills)" aria-label="Message">
@@ -740,22 +751,23 @@ function renderSession() {
     ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><button data-diff="${f}" aria-expanded="${!!ui.open[f]}"><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</button>${ui.open[f] ? diffView(FAKE_DIFF[f] || L("@@ " + f, "+ (example diff)")) : ""}</li>`).join("")}</ul><p class="hint">Click a file to see its diff.</p>`
     : `<p class="hint">No uncommitted changes.</p>`;
   const tk = fx && s.ticket ? (fx.f.tickets || []).find(t => t.n === s.ticket) : null;
-  const pr = s.git.pr;
+  const pr = s.git.pr, gone = s.folderGone;
   $("#detail").innerHTML = `
     <p class="later-note" role="note"><b>Later</b> This pane isn't built yet (#127, Out of Scope). The branch and PR show in the Session header line.</p>
-    <section><h3>Worktree</h3>
+    <section><h3>Worktree${gone ? ` <span class="tag">Proposed — #156</span>` : ""}</h3>
       <dl class="kv"><dt>Path</dt><dd class="mono">${p.name}.worktrees/${s.wt}</dd>
-      <dt>Branch</dt><dd class="mono">${s.wt}</dd><dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>
+      <dt>Branch</dt><dd class="mono">${s.wt}</dd>${gone ? "" : `<dt>vs main</dt><dd>${s.git.ahead} ahead · ${s.git.behind} behind</dd>`}
       <dt>PR</dt>${prLine(pr)}</dl>
+      ${gone ? `<p class="hint">The folder is gone (removed after the merge). Close the Session to drop it from the list.</p><p class="hint">Proposed in #156: with the folder gone, this panel hides ahead/behind, Uncommitted and Remove Worktree.</p>` : ""}
       ${pr && pr.ci === "pass" && pr.state !== "merged" ? `<p class="hint"><button class="btn small primary" data-merge="${s.fid}:${s.ticket}">Merge #${pr.n}</button> <button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button></p>` : ""}</section>
-    <section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>
+    ${gone ? "" : `<section><h3>Uncommitted · ${s.git.files.length}</h3>${files}</section>`}
     ${fx ? `<section><h3>${tk ? "Ticket" : "Feature"}</h3><div class="ticketcard">${tk ? `<span class="mono">#${tk.n}</span><strong>${esc(tk.t)}</strong>` : `<strong>${esc(fx.f.name)}</strong>`}<span class="crumb">${esc(fx.f.name)} · Stage: ${tk ? tk.stage : fx.f.stage}</span><button class="btn small" data-feat="${s.fid}" style="justify-self:start">Open Feature</button></div></section>`
       : `<section><h3>Feature</h3><p class="hint" style="margin:0 0 6px">Not part of a Feature.</p><button class="btn small" data-toast="Pick a Feature, or file this as a new Idea">Attach to a Feature…</button></section>`}
     ${s.parent ? `<section><h3>Parent Session</h3><button class="btn small" data-open="${s.parent}">${esc(sess(s.parent).title)}</button></section>`
       : sessions.some(c => c.parent === s.id) ? `<section><h3>Child Sessions · ${sessions.filter(c => c.parent === s.id).length} of 3</h3>${sessions.filter(c => c.parent === s.id).map(k => `<p style="margin:0 0 4px"><button class="btn small" data-open="${k.id}">${esc(k.title)}</button></p>`).join("")}</section>` : ""}
     <section><h3>Session</h3><dl class="kv"><dt>Agent</dt><dd>${AGENTS[s.agent].name}</dd><dt>ACP id</dt><dd class="mono">${s.acp}</dd><dt>Started</dt><dd>${s.started}</dd></dl>
-      <p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
-      <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p></section>`;
+      ${gone ? "" : `<p class="hint" style="margin-top:10px"><button class="btn small" data-rmwt="${s.id}" ${pr && pr.state === "merged" ? "" : "disabled"}>Remove Worktree</button></p>
+      <p class="hint">Offered once the branch is merged (fh fetches first), has no uncommitted changes, and the Session is closed. One click closes the Session and removes the Worktree.</p>`}</section>`;
   const chat = $("#chat"); if (chat) chat.scrollTop = chat.scrollHeight;
 }
 
@@ -822,7 +834,7 @@ function ticketRow(fid, t) {
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
-  return `<tr><td class="mono">#${t.n}</td><td>${esc(t.t)}${t.note ? `<br><span class="chain">${inline(t.note)}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -851,7 +863,7 @@ function renderFeature() {
   const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
-    <div class="fphead"><h2>${esc(f.name)}</h2><a class="ext" href="#">${f.ref} ↗</a><span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
+    <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
     ${stepper}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 
@@ -1044,7 +1056,7 @@ document.addEventListener("click", e => {
   if (d.viewmode) { sess(ui.current).view = d.viewmode; return render(); }
   if (d.diff) { ui.open[d.diff] = !ui.open[d.diff]; return render(); }
   if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.exit = null; s.msgs.push({ r: "agent", t: "Session reopened via `session/load`. History restored." }); toast("Session reopened"); return render(); }
-  if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}The Worktree <span class="mono">${s.wt}</span> and its commits stay; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
+  if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}${s.folderGone ? `The Worktree's folder <span class="mono">${s.wt}</span> is already gone` : `The Worktree <span class="mono">${s.wt}</span> and its commits stay`}; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
       () => { sessions = sessions.filter(x => x.id !== s.id); toast(`Closed ${s.title}`); ui.view = s.fid ? "feature" : "factory"; if (s.fid) ui.feature = s.fid; render(); }, true); }
   if (d.rmwt) { const s = sess(d.rmwt); return confirmModal("Remove Worktree?", `<p style="margin:0">Closes the Session and deletes <span class="mono">${s.wt}</span>. The branch is merged, so nothing is lost. Ignored files deleted with it: <span class="mono">.env.local</span></p>`, "Remove Worktree", () => toast(`Removed ${s.wt}`), true); }
   if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }
@@ -1062,7 +1074,7 @@ document.addEventListener("click", e => {
       () => { f.closedEarly = null; f.stage = "Implementing"; toast(`${f.ref} reopened`); render(); }); }
   if (d.retro) { const { f } = feat(d.retro); f.retroDone = true; f.followups = [{ t: "Backoff limits should be configurable per CRD", filed: null }]; toast(`Session started: /retro for ${f.name}`); return render(); }
   if (d.fileup) { const [fid, i] = d.fileup.split(":"); const x = feat(fid).f.followups[+i]; x.filed = `Idea #${67 + +i}`; toast(`Issue ${x.filed} created · label idea`); return render(); }
-  if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "blocked by #11 · Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
+  if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
   if (d.spallow || d.spdeny) {
     const r = spawns.find(x => x.id === (d.spallow || d.spdeny)), par = sess(r.parent), msg = par.msgs.find(m => m.k === "fh");
     if (d.spdeny) { r.answer = "Denied"; if (msg) { msg.st = "Denied"; msg.s = "ok"; } toast("Child Session denied"); return render(); }

@@ -2,6 +2,7 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Fh, runFh } from "./fh";
+import { fakeGhPath } from "./gh";
 import { tempFolder, tempRepo, tempRepoWith, withOrigin, withRemoteBranch } from "./repo";
 
 // Browser smoke tests (ADR 0007): the UI logic no Go test can reach.
@@ -453,7 +454,7 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
     "Startable",
   );
   await expect(detail.getByRole("listitem").filter({ hasText: "Session cookie" })).toContainText(
-    "blocked by 01",
+    "blocked by #01",
   );
   // The next-step rule's button shows on the Startable Ticket only.
   await expect(
@@ -462,6 +463,63 @@ test("the Software factory shows a local markdown Feature at its Stage, with its
   await expect(
     detail.getByRole("listitem").filter({ hasText: "Session cookie" }).getByRole("button"),
   ).toHaveCount(0);
+  // No GitHub remote, so the server sends no urls: numbers are plain text.
+  await expect(detail.getByRole("link")).toHaveCount(0);
+});
+
+test("on a GitHub board the Spec, Ticket and blocker numbers link to their issues", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    env: {
+      PATH: fakeGhPath([
+        { number: 10, title: "Login", labels: ["ready-for-agent"], subIssues: [11, 12] },
+        { number: 11, title: "Login form", labels: ["ready-for-agent"], parent: 10 },
+        {
+          number: 12,
+          title: "Session cookie",
+          labels: ["ready-for-agent"],
+          parent: 10,
+          blockedBy: { 11: "OPEN" },
+        },
+      ]),
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page
+      .locator('.column[aria-label="Tickets"]')
+      .getByRole("button", { name: /Login/ })
+      .click();
+
+    const issues = "https://github.com/someone/shop/issues/";
+    const detail = page.getByRole("region", { name: "Feature Login" });
+    await expect(detail.getByRole("link", { name: "#10" })).toHaveAttribute("href", issues + "10");
+    const form = detail.getByRole("listitem").filter({ hasText: "Login form" });
+    const number = form.getByRole("link", { name: "#11", exact: true });
+    await expect(number).toHaveAttribute("href", issues + "11");
+    await expect(number).toHaveAttribute("target", "_blank");
+    await expect(number).toHaveAttribute("rel", "noopener");
+    const cookie = detail.getByRole("listitem").filter({ hasText: "Session cookie" });
+    await expect(cookie).toContainText("blocked by #11");
+    await expect(cookie.getByRole("link", { name: "#11", exact: true })).toHaveAttribute(
+      "href",
+      issues + "11",
+    );
+    // Only the numbers link: the titles stay text.
+    await expect(detail.getByRole("link", { name: /Login form|Session cookie/ })).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
 });
 
 test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {

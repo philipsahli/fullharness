@@ -13,26 +13,28 @@ const fakeAgent = path.resolve(import.meta.dirname, "../../bin/fakeagent");
 // the way a user runs it, minus opening the browser.
 export class Fh {
   private proc?: ChildProcess;
-  private path = process.env.PATH ?? "";
   launchURL = "";
 
   private constructor(
     readonly port: number,
     readonly dir: string,
     readonly dev: boolean,
+    public env: Record<string, string>,
   ) {}
 
   // start launches fh; dev adds --dev (the token survives restarts),
   // agentScript makes the "claude" Agent the fake agent running that script,
-  // and ghPRs puts a logged-in fake gh on fh's PATH whose `gh pr list`
+  // env is added to fh's environment, e.g. a PATH with a fake gh first, and
+  // ghPRs puts a logged-in fake gh on fh's PATH whose `gh pr list`
   // answers with those PRs (as `gh pr list --json` gives them); any other gh
   // command fails.
   static async start({
     dev = false,
     agentScript = undefined as object | undefined,
     ghPRs = undefined as object[] | undefined,
+    env = {} as Record<string, string>,
   } = {}): Promise<Fh> {
-    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev);
+    const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev, env);
     if (ghPRs) {
       const bin = path.join(fh.dir, "bin");
       mkdirSync(bin);
@@ -42,7 +44,7 @@ export class Fh {
         `#!/bin/sh\ncase "$*" in\n  *"auth status"*) exit 0 ;;\n  *"pr list"*) cat ${JSON.stringify(path.join(fh.dir, "prs.json"))} ;;\n  *) exit 1 ;;\nesac\n`,
       );
       chmodSync(path.join(bin, "gh"), 0o755);
-      fh.path = `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
+      fh.env = { ...fh.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` };
     }
     if (agentScript) {
       writeFileSync(
@@ -86,7 +88,7 @@ export class Fh {
     if (this.dev) args.push("--dev");
     const proc = spawn(binary, args, {
       stdio: ["ignore", "pipe", "inherit"],
-      env: { ...process.env, PATH: this.path },
+      env: { ...process.env, ...this.env },
     });
     this.proc = proc;
     return new Promise((resolve, reject) => {

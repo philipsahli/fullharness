@@ -81,6 +81,10 @@ func (p *Process) ExitErr() error { return p.err }
 // Done closes when the process has exited.
 func (p *Process) Done() <-chan struct{} { return p.done }
 
+// Disconnected closes when the Agent's output ends, as it does when the
+// Agent exits; Done closes a moment later, once the process is reaped.
+func (p *Process) Disconnected() <-chan struct{} { return p.conn.Done() }
+
 // Stop ends the process group: SIGTERM, then SIGKILL after 3 s.
 func (p *Process) Stop() {
 	pgid := -p.cmd.Process.Pid

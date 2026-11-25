@@ -42,6 +42,10 @@ _Avoid_: status, busy, blocked, error (an error is an Exited reason)
 A message the user sent while the Agent was Starting, Working or Waiting. fullharness sends it as the Session's next turn once the current turn ends, never into the running turn. A Session has at most one; sending again adds to it.
 _Avoid_: pending message, draft; and never call the Inbox a queue
 
+**Cancel**:
+The button in the Session composer that ends the running turn. If the prompt hasn't gone out to the Agent yet, the turn ends at once and the Agent never sees that message; the conversation still shows it, followed by "Turn cancelled."
+_Avoid_: stop, abort, kill
+
 **Notification**:
 A desktop alert that a Session started Waiting while nobody was looking at it: shown by an fh tab, or natively by macOS when no tab can. It points to the Session; answering happens there or in the Inbox.
 _Avoid_: alert, ping; and never "notifications" for the Inbox
@@ -97,8 +101,12 @@ fullharness starting the next skill for a Feature by itself, for Features in the
 _Avoid_: pipeline, automation, bot, agent (an Agent is a CLI)
 
 **Stop point**:
-A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
+A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, reviewing the screen of a PR that changes a screen, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
 _Avoid_: gate, checkpoint, pause
+
+**Autopilot history**:
+What Autopilot did for one Feature, in order: each skill it started, how each turn ended, each Stop point it reached, each skill that failed to start. It is kept across restarts.
+_Avoid_: log (fh.log is fh's own log), audit trail, timeline
 
 ## Planning
 
@@ -117,3 +125,13 @@ _Avoid_: score, quality, health, "plan" (say Spec and its Tickets)
 **Assessment**:
 An Agent's written verdict on a Spec's Readiness, posted to the Issue tracker by the `plan-readiness` skill. It is Stale once the Spec or one of its Tickets changes after it was posted.
 _Avoid_: review (that is `/code-review`), audit, evaluation
+
+## Distribution
+
+**Release channel**:
+Which releases an installed fullharness follows: **stable** (tags like `v0.3.0`) or **beta** (prerelease tags like `v0.3.0-beta.2`). See ADR 0011 for how a channel is installed and switched.
+_Avoid_: track, ring, edition, branch (a branch is git)
+
+**Update notice**:
+The menu-bar item and the UI banner saying that a newer release exists on the user's Release channel. The user can dismiss the banner, or pick "Skip this version", which fh saves in its state. The update itself runs through Homebrew; fullharness never replaces itself.
+_Avoid_: notification (that is a Session's Notification), auto-update, updater

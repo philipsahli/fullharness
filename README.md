@@ -224,6 +224,7 @@ When the Agent wants to edit a file or run a command, it asks first:
 - Answering in the Inbox or in the Session is the same answer; the request leaves both.
 - A Session with an open request is **Waiting**.
 - **Cancel** ends the turn, answers its open requests as cancelled, and puts a Queued message back in the composer.
+- If you cancel before your message has gone out to the Agent, the turn ends at once and the Agent never sees that message. The conversation still shows it, followed by "Turn cancelled."
 
 fh starts Claude Code in its asking mode (`default`), even if your own Claude Code setting is `auto`. With **Auto-approve** on, fh starts it in `auto` instead: Claude Code decides by itself what's safe and asks less. Anything it still asks goes to the Inbox. fh never uses the mode that skips asking altogether.
 
@@ -288,6 +289,7 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through 
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
+- Spec, Ticket and blocker numbers link to their GitHub issues. A blocker in another repo, or one fh can't read, shows as plain text.
 - An Unmerged (Open or Draft) PR puts its Ticket in Review. Merged and Closed PRs leave the Stage alone.
 - A PR belongs to a Ticket by its branch `<N>-…`, or by `Closes`, `Fixes` or `Resolves #N` in its body.
 - Each Ticket row lists its PRs, newest first, each with its PR state and checks, or **No PR yet**.
@@ -373,6 +375,15 @@ fh runs one Autopilot Session per Project at a time. It looks for new work every
 A Stop point stays one across restarts. Closing the waiting Session hands the Project back to Autopilot.
 
 Autopilot starts Claude Code; pick another Agent next to the Autopilot box. fh keeps what it started in `state.json`, so a restart doesn't start a step twice.
+
+fh also keeps a history per Feature in `state.json`: each skill Autopilot started, how each of its turns ended, each Stop point it reached, and each skill that failed to start. To read it, open `/api/autopilot?project=<path>` in the browser where fh runs (shortened here):
+
+```json
+{ "features": [ { "feature": "login", "events": [
+  { "kind": "skill", "ticket": "01", "skill": "implement", "session": "uacsy6t46u" },
+  { "kind": "classified", "ticket": "01", "skill": "implement", "verdict": "asking", "by": "rule:permission" },
+  { "kind": "stop", "ticket": "01", "skill": "implement", "reason": "asking" } ] } ] }
+```
 
 ### Agents
 
