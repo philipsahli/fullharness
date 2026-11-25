@@ -134,7 +134,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 5px 12px; font-weight: 500; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.small { padding: 2px 9px; font-size: 12.5px; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; } /* aria-disabled: a button that explains in its title why it can't act */
 .resolved { font-size: 12.5px; color: var(--muted); }
 .composer { border-top: 1px solid var(--line); padding: 12px 18px; display: flex; gap: 10px; align-items: center; }
 .composer input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 8px 12px; font: inherit; }

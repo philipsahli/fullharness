@@ -341,12 +341,13 @@ export function NewSession(props: {
       )}
       <div className="row">
         <button
+          className="btn primary"
           type="submit"
           disabled={!agent || (from?.idea ? !ideaName.trim() : !worktree && !branch.trim())}
         >
           Start Session
         </button>
-        <button type="button" onClick={props.onCancel}>
+        <button className="btn" type="button" onClick={props.onCancel}>
           Cancel
         </button>
       </div>
@@ -503,7 +504,7 @@ export function Conversation(props: {
         <h2>{session.title}</h2>
         <StateBadge state={session.state} />
         {session.autoApprove && <span className="tag">auto-approve</span>}
-        <button type="button" className="link close" onClick={() => void close()}>
+        <button type="button" className="btn small close" onClick={() => void close()}>
           Close
         </button>
         <span className="crumb" title={session.worktree}>
@@ -537,7 +538,7 @@ export function Conversation(props: {
             {session.folderGone && <p>Can't reopen: the Worktree's folder is gone.</p>}
             {session.canReopen && (
               <p>
-                <button type="button" onClick={() => void reopen()}>
+                <button className="btn primary" type="button" onClick={() => void reopen()}>
                   Reopen
                 </button>{" "}
                 restarts the Agent and loads this conversation again.
@@ -550,14 +551,22 @@ export function Conversation(props: {
             <span className="why">Queued, sends when the turn ends</span>
             <p>{session.queued}</p>
             <div className="row">
-              <button type="button" onClick={() => void takeBack()}>
+              <button className="btn small" type="button" onClick={() => void takeBack()}>
                 Edit
               </button>
-              <button type="button" onClick={() => void actOnQueued("remove")}>
+              <button
+                className="btn small"
+                type="button"
+                onClick={() => void actOnQueued("remove")}
+              >
                 Remove
               </button>
               {session.state !== "starting" && (
-                <button type="button" onClick={() => void actOnQueued("send-now")}>
+                <button
+                  className="btn small"
+                  type="button"
+                  onClick={() => void actOnQueued("send-now")}
+                >
                   Send now
                 </button>
               )}
@@ -623,11 +632,15 @@ export function Conversation(props: {
             }
           }}
         />
-        <button type="submit" disabled={!canSend}>
+        <button className="btn primary" type="submit" disabled={!canSend}>
           {queues ? "Queue" : "Send"}
         </button>
         {queues && session.state !== "starting" && (
-          <button type="button" onClick={() => void command(`/api/sessions/${session.id}/cancel`)}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => void command(`/api/sessions/${session.id}/cancel`)}
+          >
             Cancel
           </button>
         )}
@@ -832,14 +845,14 @@ export function PermissionCard({
       )}
       {pending ? (
         <div className="row">
-          <button type="button" className="allow" onClick={() => void answer("allow")}>
+          <button type="button" className="btn primary" onClick={() => void answer("allow")}>
             Allow
           </button>
-          <button type="button" onClick={() => void answer("deny")}>
+          <button className="btn" type="button" onClick={() => void answer("deny")}>
             Deny
           </button>
           {request.always && (
-            <button type="button" className="quiet" onClick={() => void answer("always")}>
+            <button type="button" className="btn" onClick={() => void answer("always")}>
               Always allow
             </button>
           )}
