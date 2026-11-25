@@ -14,9 +14,9 @@
   --accent: #0d6b5f;
   --accent-soft: #d5ece7;
   --on-accent: #ffffff;
-  --waiting: #b45309;
+  --waiting: #ab4f09;
   --waiting-soft: #fdecd3;
-  --working: #2563eb;
+  --working: #225cdb;
   --working-soft: #dde7fd;
   --idle: #7a8580;
   --exited: #a3aca8;
@@ -29,20 +29,14 @@
   --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+/* Dark follows the OS setting only; there is no theme switch (ADR 0012). */
+@media (prefers-color-scheme: dark) { :root {
   --bg: #111816; --surface: #18211e; --sunken: #0d1311; --line: #2a3632; --fg: #e3ebe8; --muted: #93a19c;
   --accent: #3fb8a5; --accent-soft: #163a34; --on-accent: #0b1513;
   --waiting: #f2a541; --waiting-soft: #3a2a12; --working: #6c9cff; --working-soft: #1b2847;
   --idle: #7f8c87; --exited: #56625e; --good: #4ade80; --bad: #f87171;
   --term-bg: #0a0f0e; --term-fg: #cfdcd6; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
   color-scheme: dark; } }
-:root[data-theme="dark"] {
-  --bg: #111816; --surface: #18211e; --sunken: #0d1311; --line: #2a3632; --fg: #e3ebe8; --muted: #93a19c;
-  --accent: #3fb8a5; --accent-soft: #163a34; --on-accent: #0b1513;
-  --waiting: #f2a541; --waiting-soft: #3a2a12; --working: #6c9cff; --working-soft: #1b2847;
-  --idle: #7f8c87; --exited: #56625e; --good: #4ade80; --bad: #f87171;
-  --term-bg: #0a0f0e; --term-fg: #cfdcd6; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
-  color-scheme: dark; }
 
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.45;
