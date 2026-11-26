@@ -46,8 +46,12 @@ type script map[string]any
 // for, asks before running a command, and replays its history on reopen.
 func wellBehaved() script {
 	return script{
-		"onStart":  []any{map[string]any{"commands": []string{"fh-smoke-echo"}}},
-		"prompts":  map[string]any{"/fh-smoke-echo": []any{map[string]any{"say": "FH-SMOKE-ECHO-4412"}}},
+		"onStart": []any{map[string]any{"commands": []string{"fh-smoke-echo"}}},
+		"prompts": map[string]any{
+			"/fh-smoke-echo": []any{map[string]any{"say": "FH-SMOKE-ECHO-4412"}},
+			// check 9's long turn, which runs until cancelled
+			"Write the numbers from 1 to 2000 in English words, one per line. Do not use any tools.": []any{map[string]any{"say": "one"}, map[string]any{"waitCancel": true}},
+		},
 		"default":  []any{map[string]any{"say": "PONG-1"}, map[string]any{"permission": map[string]any{"id": "t1", "title": "touch fh-perm.txt", "kind": "execute", "command": "touch fh-perm.txt"}}},
 		"history":  []map[string]string{{"user": "Reply with PONG-1"}, {"agent": "PONG-1"}},
 		"allowAll": true, // Copilot's allow_all option, which the smoke test switches off
@@ -94,7 +98,7 @@ func TestAllChecksPassForWellBehavedAgents(t *testing.T) {
 	if strings.Contains(out, "FAIL") {
 		t.Fatalf("output has a FAIL:\n%s", out)
 	}
-	for _, check := range []string{"drive over ACP", "slash skills", "permission and turn end", "reopen", "no fs/terminal", "claude adapter", ".claude/skills/", "OPENCODE_PERMISSION"} {
+	for _, check := range []string{"drive over ACP", "slash skills", "permission and turn end", "reopen", "no fs/terminal", "claude adapter", ".claude/skills/", "OPENCODE_PERMISSION", "cancel and resend"} {
 		if !strings.Contains(out, check) {
 			t.Errorf("output doesn't name check %q:\n%s", check, out)
 		}
@@ -134,5 +138,19 @@ func TestFailsWhenOpenCodeDoesNotAsk(t *testing.T) {
 	}
 	if !strings.Contains(out, `8 FAIL OPENCODE_PERMISSION: started with OPENCODE_PERMISSION={"bash":"ask","edit":"ask"}; permission_requested=false`) {
 		t.Errorf("output doesn't fail check 8 with the variable fh set:\n%s", out)
+	}
+}
+
+func TestFailsWhenACancelledTurnDoesNotSayCancelled(t *testing.T) {
+	// ACP says a cancelled turn MUST stop with "cancelled"; this Agent says
+	// end_turn, which fh would show as a finished turn.
+	stubborn := wellBehaved()
+	stubborn["endAfterCancel"] = true
+	out, code := runSmoke(t, map[string]script{"copilot": stubborn}, "-agent", "copilot")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1\n%s", code, out)
+	}
+	if !strings.Contains(out, `9 FAIL cancel and resend: cancelled stop="end_turn"`) {
+		t.Errorf("output doesn't fail check 9 with stop end_turn:\n%s", out)
 	}
 }

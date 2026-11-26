@@ -33,6 +33,7 @@ const (
 	echoMarker = "FH-SMOKE-ECHO-4412"
 	skillName  = "fh-smoke-echo"
 	permFile   = "fh-perm.txt"
+	longPrompt = "Write the numbers from 1 to 2000 in English words, one per line. Do not use any tools."
 	// The first Claude Code start downloads its adapter through npx.
 	startLimit  = 2 * time.Minute
 	promptLimit = 4 * time.Minute
@@ -52,6 +53,7 @@ var labels = [...]string{
 	6: "claude adapter",
 	7: ".claude/skills/ loading",
 	8: "OPENCODE_PERMISSION",
+	9: "cancel and resend",
 }
 
 type result struct {
@@ -360,6 +362,11 @@ func runAgent(def agent.Definition, logDir string) report {
 	set(2, listed && ran, "listed=%v ran=%v stop=%q reply=%q", listed, ran, stop, clip(text))
 	set(7, ran, "skill from .claude/skills/ produced its marker: %v", ran)
 
+	// 9 A cancel, resent the way fh resends it, ends the turn and leaves the
+	// next one alone
+	pass, note := r.cancelAndResend(sess.ID)
+	set(9, pass, "%s", note)
+
 	// 4 Reopen: stop the Agent, start it again, session/load
 	r.proc.Stop()
 	if !canLoad {
@@ -381,6 +388,57 @@ func runAgent(def agent.Definition, logDir string) report {
 	ok := rep.results[1].pass && rep.results[2].pass && rep.results[3].pass && rep.results[4].pass
 	set(5, ok && len(refused) == 0, "checks 1-4 passed=%v; fs/terminal requests refused=%v", ok, refused)
 	return rep
+}
+
+// cancelAndResend runs check 9. fh resends session/cancel every 200 ms
+// until the turn ends, because the first can overtake the prompt (#56);
+// one more can arrive just after the turn ended. The turn must stop with
+// "cancelled" and the next prompt must still run.
+func (r *agentRun) cancelAndResend(sid sdk.SessionId) (bool, string) {
+	type end struct {
+		stop sdk.StopReason
+		err  error
+	}
+	done := make(chan end, 1)
+	go func() {
+		stop, _, err := r.prompt(sid, longPrompt)
+		done <- end{stop, err}
+	}()
+	// Cancel once the reply streams, so the turn is surely running.
+	for deadline := time.Now().Add(promptLimit); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		r.obs.mu.Lock()
+		streaming := r.obs.text.Len() > 0
+		r.obs.mu.Unlock()
+		if streaming {
+			break
+		}
+	}
+	send := func() { _ = r.proc.Cancel(context.Background(), sid) } // a failed write shows as a turn that doesn't end
+	start, sent := time.Now(), 1
+	send()
+	tick := time.NewTicker(200 * time.Millisecond)
+	defer tick.Stop()
+	var cancelled end
+	for waiting := true; waiting; {
+		select {
+		case cancelled = <-done:
+			waiting = false
+		case <-tick.C:
+			if sent == 50 {
+				return false, "the turn didn't end after 50 cancels"
+			}
+			send()
+			sent++
+		}
+	}
+	took := time.Since(start).Round(time.Millisecond)
+	send() // the late one
+	sent++
+	stop, text, err := r.prompt(sid, "Reply with exactly the word "+pongWord+" and nothing else. Do not use any tools.")
+	pass := cancelled.err == nil && cancelled.stop == sdk.StopReasonCancelled &&
+		err == nil && stop == sdk.StopReasonEndTurn && strings.Contains(text, pongWord)
+	return pass, fmt.Sprintf("cancelled stop=%q err=%v after %v, %d cancels; next stop=%q err=%v reply=%q",
+		cancelled.stop, cancelled.err, took, sent, stop, err, clip(text))
 }
 
 // applies reports whether check n runs for agent id.
