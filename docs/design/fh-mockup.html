@@ -203,6 +203,7 @@ tr:last-child td { border-bottom: 0; }
 .triage li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; border-top: 1px solid var(--line); padding-top: 6px; }
 .triage li .t { flex-basis: 100%; order: -1; font-size: 13px; }
 .triage li .mono { font-size: 12px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; } /* a local file path (#182) breaks anywhere */
+.triage li .note { flex-basis: 100%; color: var(--waiting); font-size: 12px; }
 .triage li .btn { margin-left: auto; }
 .notice.board-note { margin: 12px 18px 0; }
 .setup { margin: 24px 18px; border: 1px dashed var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 10px; max-width: 60ch; }
@@ -773,10 +774,12 @@ const roadmap = {
   next:  [["fh","f-board"],["hf","f-hf2"],["fh","f-diff"]],
   later: [["io","f-io2"],["fh","f-inbox"],["hf","f-hf1"]],
 };
-/* Untriaged issues (#180): open, no parent, no Tickets, not ready-for-agent. Newest first. */
+/* Untriaged issues (#180): open, no parent, no Tickets, not ready-for-agent.
+   Or a Ticket whose parent isn't on the board, whatever its labels, with a note (#181). Newest first. */
 const untriaged = {
   fh: [
     { n: 66, t: "Idea: export the board as CSV", labels: [] },
+    { n: 64, t: "Retry a failed Worktree removal", labels: ["ready-for-agent"], note: "parent #40 not on the board" },
     { n: 63, t: "Session list jumps when a Session ends", labels: ["needs-triage", "bug"] },
     { n: 58, t: "Copilot CLI asks for permission twice", labels: ["needs-info"] },
     { n: 52, t: "Inbox contrast in dark mode", labels: ["ready-for-human"] },
@@ -1014,7 +1017,7 @@ function featCard(f) {
 function triageGroup(p, unt) {
   if (!unt.length) return "";
   const key = p.id + ":" + ui.demo, open = ui.triageOpen[key] ?? unt.length <= 5;
-  const rows = unt.map(u => `<li><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
+  const rows = unt.map(u => `<li><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}${u.note ? `<span class="note">${esc(u.note)}</span>` : ""}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
   return `<section class="triage" aria-label="Needs triage"><button class="triage-head" aria-expanded="${open}" data-triagetoggle="${key}"><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>Needs triage<span class="count">${unt.length}</span></button>${open ? `<ul>${rows}</ul>` : ""}</section>`;
 }
 function openTriage(pid, ref) {

@@ -93,7 +93,7 @@ Where a Pull request is: **Draft**, **Open**, **Merged** or **Closed** (closed w
 _Avoid_: status (also avoided for Session state), CI status
 
 **Untriaged issue**:
-An open issue the Software factory can't place: it has no parent, no Tickets, and no `ready-for-agent` label. Any other label, such as `needs-triage` or `needs-info`, still leaves it Untriaged. The board lists Untriaged issues under **Needs triage**. Closed issues and `wayfinder:*` issues are never Untriaged. On local markdown, an open issue file in a `.scratch` folder without `spec.md` is an Untriaged issue.
+An open issue the Software factory can't place: it has no parent, no Tickets, and no `ready-for-agent` label. Any other label, such as `needs-triage` or `needs-info`, still leaves it Untriaged. A Ticket whose parent isn't on the board is Untriaged too, whatever its labels, `ready-for-agent` included: its parent is a `wayfinder:*` issue, or `Part of #N` names an issue outside the board. Its row carries the note "parent #N not on the board". The board lists Untriaged issues under **Needs triage**. Closed issues and `wayfinder:*` issues are never Untriaged. On local markdown, an open issue file in a `.scratch` folder without `spec.md` is an Untriaged issue.
 _Avoid_: backlog, inbox (the Inbox is Waiting Sessions), orphan, needs-triage issue (that is one label)
 
 **Startable ticket**:

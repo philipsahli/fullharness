@@ -288,6 +288,7 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through 
 
 - A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
 - An open issue with no parent, no Tickets and no `ready-for-agent` label is an Untriaged issue. It goes under **Needs triage**, described below.
+- An open Ticket whose parent isn't on the board is an Untriaged issue too, whatever its labels. Its parent is a `wayfinder:*` issue, or `Part of #N` names an issue fh didn't read.
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
@@ -309,6 +310,7 @@ The **Needs triage** group at the top of the Idea column lists the Project's Unt
 - On GitHub, each row shows the issue's `#N` link, its title, and its labels as tags (`needs-triage`, `needs-info`, or none).
 - On local markdown, each row shows the file's path, such as `.scratch/x/issues/01-a.md`, its title, and its `**Status:**` as a tag.
 - `Idea: …` issues are listed here too.
+- A Ticket whose parent isn't on the board shows the note "parent #N not on the board".
 - Rows are newest first: by issue number on GitHub, by file name on local markdown.
 - The heading shows how many there are, even while the group is collapsed.
 - The group starts collapsed when it has more than 5 rows. Once you open or close it, it stays that way across board refreshes, until you reload the page.
