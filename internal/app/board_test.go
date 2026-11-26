@@ -207,6 +207,17 @@ func writeDoc(t *testing.T, repo, content string) {
 	writeFile(t, filepath.Join(repo, "docs", "agents", "issue-tracker.md"), content)
 }
 
+// joined lists field of each object in board[list], comma-separated, for a
+// test that checks which items a list holds and in what order.
+func joined(t *testing.T, board map[string]any, list, field string) string {
+	t.Helper()
+	var out []string
+	for _, o := range objects(t, board, list) {
+		out = append(out, o[field].(string))
+	}
+	return strings.Join(out, ",")
+}
+
 func asJSON(v any) string {
 	b, _ := json.Marshal(v) // test helper: values come from decoded JSON, which always re-encodes
 	return string(b)
@@ -281,12 +292,7 @@ func TestAClosedIssueFileWithoutASpecIsNotUntriaged(t *testing.T) {
 	scratch(t, repo, "x/issues/03-c.md", ticket("03", "Won't do", "closed", "None"))
 	f.addProject(c, repo)
 
-	refs := []string{}
-	for _, u := range objects(t, f.board(c, repo), "untriaged") {
-		refs = append(refs, u["ref"].(string))
-	}
-
-	if got := strings.Join(refs, ","); got != ".scratch/x/issues/01-a.md" {
+	if got := joined(t, f.board(c, repo), "untriaged", "ref"); got != ".scratch/x/issues/01-a.md" {
 		t.Errorf("untriaged refs = %s, want only the open 01-a.md", got)
 	}
 }
@@ -302,12 +308,8 @@ func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
 
 	b := f.board(c, repo)
 
-	refs := []string{}
-	for _, u := range objects(t, b, "untriaged") {
-		refs = append(refs, u["ref"].(string))
-	}
 	want := ".scratch/x/issues/03-c.md,.scratch/y/issues/02-b.md,.scratch/x/issues/01-a.md"
-	if got := strings.Join(refs, ","); got != want {
+	if got := joined(t, b, "untriaged", "ref"); got != want {
 		t.Errorf("untriaged refs = %s\nwant %s", got, want)
 	}
 	if note := b["note"]; note != "No Specs yet; 3 issues need triage" {

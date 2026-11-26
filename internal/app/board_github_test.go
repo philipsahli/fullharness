@@ -433,11 +433,7 @@ func TestClosedIssuesWithoutTicketsAreLeftOff(t *testing.T) {
 
 	b := f.board(c, repo)
 
-	ids := []string{}
-	for _, ft := range objects(t, b, "features") {
-		ids = append(ids, ft["id"].(string))
-	}
-	if strings.Join(ids, ",") != "2,4" {
+	if ids := joined(t, b, "features", "id"); ids != "2,4" {
 		t.Errorf("features = %v, want 2 (closed with Tickets) and 4 (open), not 1", ids)
 	}
 }
@@ -508,11 +504,7 @@ func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
 	if got := asJSON(b["untriaged"]); got != want {
 		t.Errorf("untriaged = %s\nwant %s (newest first; no closed one-off, no wayfinder)", got, want)
 	}
-	ids := []string{}
-	for _, ft := range objects(t, b, "features") {
-		ids = append(ids, ft["id"].(string))
-	}
-	if strings.Join(ids, ",") != "10" {
+	if ids := joined(t, b, "features", "id"); ids != "10" {
 		t.Errorf("features = %v, want only 10", ids)
 	}
 	if len(objects(t, featureByID(t, b, "10"), "tickets")) != 1 {
