@@ -350,11 +350,185 @@ td a:focus-visible, .ext:focus-visible { outline: 2px solid var(--accent); outli
 .msg.agent { display: block; border: 0; padding: 0; border-radius: 0; font-size: inherit; font-weight: inherit; }
 td .btn .dot { display: inline-block; margin-right: 5px; }
 td .btn { white-space: nowrap; }
+
+/* ---------- Autopilot status (#202, ADR 0013) ----------
+   One colour per Autopilot status: a base for text and marks, a soft tint for backgrounds, a glow for the live pulse.
+   The names are meant to be copied into web/src/styles.css as they are (ADR 0012).
+   The hues stay apart from the Session state colours (--working blue, --waiting orange, --idle grey):
+   an Autopilot status of idle or waiting is not the Session state Idle or Waiting.
+   Every base colour reaches 4.5:1 or more on its own tint, on --surface and on --bg, in both themes. */
+:root {
+  --ap-off: #5f6b7a;     --ap-off-tint: #eceff3;     --ap-off-glow: rgba(95,107,122,.30);
+  --ap-idle: #0b6e85;    --ap-idle-tint: #ddf2f6;    --ap-idle-glow: rgba(11,110,133,.35);
+  --ap-running: #6a2fd6; --ap-running-tint: #ece4fd; --ap-running-glow: rgba(106,47,214,.45);
+  --ap-waiting: #875c00; --ap-waiting-tint: #faefc8; --ap-waiting-glow: rgba(214,150,0,.50);
+  --ap-failed: #c11f3a;  --ap-failed-tint: #fde3e7;  --ap-failed-glow: rgba(193,31,58,.40);
+  --ap-done: #12773a;    --ap-done-tint: #daf2e2;    --ap-done-glow: rgba(18,119,58,.35);
+}
+@media (prefers-color-scheme: dark) { :root {
+  --ap-off: #97a3b4;     --ap-off-tint: #1f2631;     --ap-off-glow: rgba(151,163,180,.25);
+  --ap-idle: #4fd1e6;    --ap-idle-tint: #0f2d34;    --ap-idle-glow: rgba(79,209,230,.40);
+  --ap-running: #b49bff; --ap-running-tint: #281d48; --ap-running-glow: rgba(150,115,255,.60);
+  --ap-waiting: #f5c84b; --ap-waiting-tint: #33290b; --ap-waiting-glow: rgba(245,200,75,.50);
+  --ap-failed: #ff7a8e;  --ap-failed-tint: #3d1520;  --ap-failed-glow: rgba(255,122,142,.45);
+  --ap-done: #56d98a;    --ap-done-tint: #12301f;    --ap-done-glow: rgba(86,217,138,.40);
+} }
+/* Any element with data-ap gets --c (base), --t (tint) and --g (glow), so the badge, card edge, flow graph and panel all read one status. */
+[data-ap="off"]     { --c: var(--ap-off);     --t: var(--ap-off-tint);     --g: var(--ap-off-glow); }
+[data-ap="idle"]    { --c: var(--ap-idle);    --t: var(--ap-idle-tint);    --g: var(--ap-idle-glow); }
+[data-ap="running"] { --c: var(--ap-running); --t: var(--ap-running-tint); --g: var(--ap-running-glow); }
+[data-ap="waiting"] { --c: var(--ap-waiting); --t: var(--ap-waiting-tint); --g: var(--ap-waiting-glow); }
+[data-ap="failed"]  { --c: var(--ap-failed);  --t: var(--ap-failed-tint);  --g: var(--ap-failed-glow); }
+[data-ap="done"]    { --c: var(--ap-done);    --t: var(--ap-done-tint);    --g: var(--ap-done-glow); }
+
+/* badge */
+@property --ap-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.ap { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 3px 10px 3px 8px; border-radius: 999px;
+  background: var(--t); color: var(--c); font-size: 11.5px; font-weight: 600; white-space: nowrap; line-height: 1.35;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent), 0 2px 12px -4px var(--g); }
+.ap > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fcard-wrap, .fcard, .fcard > * { min-width: 0; }
+.fcard > .ap { justify-self: start; }
+.fcard .ap-outside { white-space: normal; justify-self: start; }
+.ap b { font-weight: 600; }
+.ap b.mono { font-size: 11px; }
+.ap .ap-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .09em; opacity: .75; }
+.ap[data-ap="off"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.ap[data-ap="off"].in-now { color: var(--ap-off); box-shadow: inset 0 0 0 1.5px var(--ap-off); border-radius: 999px; background: var(--ap-off-tint); }
+.ap[data-ap="failed"] { box-shadow: inset 0 0 0 1.5px var(--c), 0 2px 12px -4px var(--g); }
+/* running: a light runs round the rim */
+.ap[data-ap="running"]::before { content: ""; position: absolute; inset: -1.5px; z-index: -1; border-radius: inherit; padding: 1.5px;
+  background: conic-gradient(from var(--ap-angle), transparent 0 55%, color-mix(in srgb, var(--c) 30%, transparent) 70%, var(--c) 88%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: ap-spin 2.6s linear infinite; }
+/* waiting: the glow breathes slowly, so a Stop point catches the eye without flashing */
+.ap[data-ap="waiting"] { animation: ap-breathe 3.2s ease-in-out infinite; }
+.ap.lg { font-size: 13.5px; padding: 6px 14px 6px 11px; gap: 9px; }
+.ap.lg b.mono { font-size: 12.5px; }
+
+/* the mark in front of the label */
+.ap-mark { flex: none; position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--c); font-style: normal; display: grid; place-items: center; }
+.ap.lg .ap-mark { width: 10px; height: 10px; }
+.ap[data-ap="off"] .ap-mark { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.ap[data-ap="idle"] .ap-mark { background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+.ap[data-ap="running"] .ap-mark { box-shadow: 0 0 8px 1px var(--g); }
+.ap[data-ap="running"] .ap-mark::before, .ap[data-ap="running"] .ap-mark::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--c); animation: ap-ring 1.8s cubic-bezier(.2,.6,.3,1) infinite; }
+.ap[data-ap="running"] .ap-mark::after { animation-delay: .9s; }
+.ap[data-ap="waiting"] .ap-mark, .ap[data-ap="failed"] .ap-mark, .ap[data-ap="done"] .ap-mark { background: transparent; width: auto; height: auto; font-size: 11px; line-height: 1; }
+.ap.lg[data-ap="waiting"] .ap-mark, .ap.lg[data-ap="failed"] .ap-mark, .ap.lg[data-ap="done"] .ap-mark { font-size: 13px; }
+
+/* live pulse: the running turn's current tool call, under the badge */
+.ap-live { max-width: 100%; display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.ap-live i { font-style: normal; color: var(--c); }
+.ap-live .ap-tool { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-live .ap-tool.tick { animation: ap-tick .45s cubic-bezier(.2,.7,.2,1); }
+.ap-live .ap-eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 10px; }
+.ap-live .ap-eq span { width: 2px; background: var(--c); border-radius: 1px; animation: ap-eq 1s ease-in-out infinite; }
+.ap-live .ap-eq span:nth-child(2) { animation-delay: .2s; } .ap-live .ap-eq span:nth-child(3) { animation-delay: .4s; }
+.ap-note { font-size: 11.5px; color: var(--muted); }
+.ap-outside { display: inline-flex; gap: 5px; align-items: center; }
+.ap-outside::before { content: "↗"; font-weight: 700; }
+
+/* the Feature card takes the status as a lit left edge */
+.fcard[data-ap] { position: relative; overflow: hidden; }
+.fcard[data-ap]::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); box-shadow: 0 0 10px 1px var(--g); }
+.fcard[data-ap="off"]::before { display: none; }
+.fcard[data-ap="running"] { box-shadow: 0 6px 22px -14px var(--g); }
+.fcard-wrap { display: grid; }
+.fcard-wrap:has(.ap-offlink) .fcard { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.ap-offlink { border: 1px solid var(--line); border-top: 1px dashed var(--line); background: var(--ap-off-tint); color: var(--ap-off); border-radius: 0 0 8px 8px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; text-align: left; }
+.ap-offlink u { text-underline-offset: 2px; }
+.ap-offlink:hover { color: var(--fg); }
+
+/* status change: the new badge springs in with a burst of its glow */
+.ap.changed { animation: ap-in .7s cubic-bezier(.2,.9,.25,1.25); }
+.ap.changed > span:last-child { animation: ap-slide .5s cubic-bezier(.2,.7,.2,1); }
+.fcard.changed::before, .ap-panel.changed .ap-panel-glow { animation: ap-flash .9s ease-out; }
+
+/* the legend on the board: every status side by side */
+.ap-legend { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 10px 18px 0; }
+.ap-legend > .bd { margin-right: 4px; text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; font-weight: 600; }
+
+/* rail: the Autopilot switch on each Project */
+.apsw { margin-left: auto; margin-right: 6px; border: 0; background: transparent; display: inline-flex; gap: 5px; align-items: center; font-size: 11px; font-weight: 500; color: var(--muted); padding: 1px 2px; border-radius: 10px; }
+.apsw i { width: 22px; height: 12px; border-radius: 6px; background: var(--line); position: relative; transition: background .25s; }
+.apsw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); transition: transform .25s cubic-bezier(.3,.7,.3,1.3); }
+.apsw[aria-checked="true"] { color: var(--ap-running); }
+.apsw[aria-checked="true"] i { background: var(--ap-running); box-shadow: 0 0 8px var(--ap-running-glow); }
+.apsw[aria-checked="true"] i::after { transform: translateX(10px); }
+.apsw.flash { animation: ap-callout 1.2s ease-out 2; }
+.proj > div { gap: 6px; }
+.proj > div > small { order: 3; }
+
+/* Feature page panel */
+.ap-panel { position: relative; }
+.ap-panel-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(90% 130% at 0% 0%, color-mix(in srgb, var(--t) 85%, transparent), transparent 62%); }
+.ap-panel > * { position: relative; }
+.ap-panel > h3 { background: transparent; }
+.ap-switchline { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); display: inline-flex; gap: 8px; align-items: center; }
+.ap-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 14px 14px 4px; }
+.ap-head .ap-live { font-size: 12px; }
+.ap-head .ap-note { flex-basis: 100%; font-size: 12.5px; }
+.ap-head .ap-offcta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* flow graph: Stages on a main line, each Ticket's Worktree branches off and merges back. One SVG, scaled by its viewBox, so the Loop view (#114) can draw it full-screen. */
+.flow-wrap { overflow-x: auto; padding: 4px 6px 2px; }
+svg.flow { display: block; width: 100%; min-width: 700px; height: auto; font-family: var(--f-body); }
+svg.flow .fl-bridge { fill: none; stroke: var(--surface); stroke-width: 8; }
+svg.flow .fl-line { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+svg.flow .fl-done { stroke: color-mix(in srgb, var(--ap-done) 60%, var(--line)); }
+svg.flow .fl-todo { stroke: var(--line); stroke-dasharray: 2 6; }
+svg.flow .fl-live { stroke: var(--c); stroke-dasharray: 6 6; animation: fl-flow .9s linear infinite; filter: drop-shadow(0 0 3px var(--g)); }
+svg.flow .fl-open { stroke: color-mix(in srgb, var(--muted) 55%, var(--line)); }
+svg.flow .fl-run { fill: var(--surface); stroke: color-mix(in srgb, var(--ap-done) 70%, var(--line)); stroke-width: 2; }
+svg.flow .fl-run.done { fill: color-mix(in srgb, var(--ap-done) 70%, var(--line)); }
+svg.flow .fl-stage { fill: var(--surface); stroke: color-mix(in srgb, var(--ap-done) 70%, var(--line)); stroke-width: 2; }
+svg.flow .fl-stage.done { fill: color-mix(in srgb, var(--ap-done) 75%, var(--line)); }
+svg.flow .fl-stage.todo { stroke: var(--line); stroke-dasharray: 3 3; }
+svg.flow .fl-stop { fill: var(--surface); stroke: var(--ap-waiting); stroke-width: 2; }
+svg.flow .fl-stop.done { fill: color-mix(in srgb, var(--ap-done) 75%, var(--line)); stroke: color-mix(in srgb, var(--ap-done) 75%, var(--line)); }
+svg.flow .fl-stop-dot { fill: var(--ap-waiting); }
+svg.flow .fl-fail { stroke: var(--ap-failed); stroke-width: 2.4; stroke-linecap: round; }
+svg.flow .fl-pend { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 2 2; }
+svg.flow .fl-cur { fill: var(--c); filter: drop-shadow(0 0 6px var(--g)); }
+svg.flow .fl-ring { fill: none; stroke: var(--c); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: fl-ring 1.8s cubic-bezier(.2,.6,.3,1) infinite; }
+svg.flow .fl-ring.r2 { animation-delay: .9s; }
+svg.flow .fl-halo { fill: var(--t); }
+svg.flow g[data-ap="waiting"] .fl-halo { animation: fl-breathe 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+svg.flow text { fill: var(--muted); font-size: 10.5px; }
+svg.flow text.cap { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+svg.flow text.tn { font-family: var(--f-mono); font-size: 10.5px; fill: var(--fg); }
+svg.flow text.lbl { font-family: var(--f-mono); font-size: 9.5px; }
+svg.flow text.curlbl { font-family: var(--f-mono); font-size: 10.5px; font-weight: 500; fill: var(--c); }
+svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
+.flow-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 6px 14px 12px; font-size: 11.5px; color: var(--muted); }
+.flow-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.flow-legend svg { width: 14px; height: 14px; }
+
+@keyframes ap-spin { to { --ap-angle: 360deg; } }
+@keyframes ap-ring { from { transform: scale(1); opacity: .8; } to { transform: scale(3.2); opacity: 0; } }
+@keyframes ap-breathe { 50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent), 0 0 18px 0 var(--g); } }
+@keyframes ap-tick { from { transform: translateY(70%); opacity: 0; } }
+@keyframes ap-eq { 0%, 100% { height: 3px; } 50% { height: 10px; } }
+@keyframes ap-in { 0% { transform: scale(.82); box-shadow: 0 0 0 0 var(--g); } 45% { transform: scale(1.07); box-shadow: 0 0 0 7px transparent, 0 0 24px 4px var(--g); } 100% { transform: none; } }
+@keyframes ap-slide { from { transform: translateY(60%); opacity: 0; } }
+@keyframes ap-flash { 0% { opacity: 1; filter: brightness(1.8); box-shadow: 0 0 22px 6px var(--g); } 100% { filter: none; } }
+@keyframes ap-callout { 0%, 100% { box-shadow: none; } 40% { box-shadow: 0 0 0 3px var(--ap-running-glow); } }
+@keyframes fl-flow { to { stroke-dashoffset: -12; } }
+@keyframes fl-ring { from { transform: scale(1); opacity: .9; } to { transform: scale(2.6); opacity: 0; } }
+@keyframes fl-breathe { 50% { transform: scale(1.25); opacity: .6; } }
+/* Reduced motion: every Autopilot animation stops; the status still shows by colour, mark and words. */
+@media (prefers-reduced-motion: reduce) {
+  .ap, .ap::before, .ap *, .ap *::before, .ap *::after, .ap-live *, .fcard[data-ap]::before, .ap-panel-glow, .apsw, .apsw i, .apsw i::after, svg.flow * { animation: none !important; transition: none !important; }
+  .ap[data-ap="running"]::before { background: color-mix(in srgb, var(--c) 45%, transparent); }
+  .ap-live .ap-eq span { height: 6px; }
+}
+@media (max-width: 720px) { .ap-legend { padding: 10px 12px 0; } .ap-head { padding: 12px 12px 4px; } }
 </style>
 
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
-    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option>
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option>
   </select></label></p>
 
 <div class="app">
@@ -654,7 +828,7 @@ function renderRail() {
   const loose = sessions.filter(s => !s.fid);
   $("#loose").innerHTML = loose.length ? sTree(loose) : `<li class="hint" style="padding:0 8px">None. Sessions started outside a Feature land here.</li>`;
   $("#ptree").innerHTML = projects.map(p => `
-    <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}<small>${p.tracker ?? "no tracker"}</small></div>
+    <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}${apSwitch(p)}<small>${p.tracker ?? "no tracker"}</small></div>
       <ul class="wts">${p.worktrees.map(w => {
         // The most urgent state of the Worktree's Sessions; faint with none (#167).
         const st = sessions.filter(x => x.project === p.id && x.wt === w.path).map(x => x.state).sort((a, b) => STATE_ORDER[a] - STATE_ORDER[b])[0];
@@ -792,9 +966,10 @@ function sessSummary(fid) {
 function featCard(f) {
   const early = f.closedEarly ? `<span class="warn">Spec closed, #${f.closedEarly} still open</span>` : "";
   const ci = (f.tickets || []).some(t => t.pr && t.pr.ci === "fail") ? `<span class="ci fail">✗ checks failing</span>` : "";
-  return `<button class="fcard" data-feat="${f.id}">
-    <span class="n">${esc(f.name)}</span><span class="ref">${f.ref}${f.trackerIdea && !featSessions(f.id).length ? " · not grilled yet" : ""}</span>${rdBadge(f.id)}${bar(bd(f))}${sessSummary(f.id)}${ci}${early}
-    <span class="next">${f.allClosed ? "Close Spec to ship" : f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>`;
+  const pid = feat(f.id).pid, ap = apStatus(pid, f);
+  return `<div class="fcard-wrap"><button class="fcard${apChanged(f.id + ":card", ap) ? " changed" : ""}" data-feat="${f.id}" data-ap="${ap.st}">
+    <span class="n">${esc(f.name)}</span><span class="ref">${f.ref}${f.trackerIdea && !featSessions(f.id).length ? " · not grilled yet" : ""}</span>${apCardBlock(pid, f, ap)}${rdBadge(f.id)}${bar(bd(f))}${sessSummary(f.id)}${ci}${early}
+    <span class="next">${f.allClosed ? "Close Spec to ship" : f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>${apOffLink(pid, f, ap)}</div>`;
 }
 function renderFactory() {
   const p = proj(ui.factoryProject);
@@ -815,7 +990,7 @@ function renderFactory() {
     const fs = feats.filter(f => f.stage === st);
     return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${fs.map(featCard).join("") || `<p class="hint" style="margin:4px">—</p>`}</div></div>`;
   }).join("");
-  $("#main").innerHTML = head + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
+  $("#main").innerHTML = head + apLegend() + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
 }
 
 /* ---------- Feature page ---------- */
@@ -865,7 +1040,7 @@ function renderFeature() {
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
     <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
-    ${stepper}${callout}${tickets}${fups}${checks}${doc}</div>`;
+    ${stepper}${apPanel(pid, f)}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 
 /* ---------- Roadmap ---------- */
@@ -932,6 +1107,186 @@ function render() {
   document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === tab));
   renderRail();
 }
+
+/* ---------- Autopilot status (#202, ADR 0013) ----------
+   fh works out one Autopilot status per Feature in Go, from the Autopilot history, the Issue tracker and the Sessions, and pushes it over the WebSocket.
+   The UI only draws it. Here the result is example data. */
+const AP_ON = { fh: true, io: true, hf: false, bt: false }; // the per-Project Autopilot switch
+const AP = {
+  "f-acp":   { st: "running", skill: "/implement", t: 11, on: "#11",
+               tools: ["Read internal/acp/client.go", "Edit internal/acp/load.go (+42 −3)", "Run go test ./internal/acp/", "Edit web/src/Board.tsx (+12 −1)", "Run make check"] },
+  "f-board": { st: "running", skill: "/to-tickets", on: "Spec #15", tools: ["Read Spec #15", "Write .scratch/tickets/01-board-columns.md", "Run gh issue create"] },
+  "f-wt":    { st: "waiting", stop: "Agent asking", t: 14, on: "#14", note: "OpenCode asks to edit internal/worktree/list.go. Answer it in the Inbox or the Session." },
+  "f-clean": { st: "failed", skill: "/code-review", t: 19, on: "PR #20", note: "Copilot CLI exited before its first turn: session/new not supported." },
+  "f-io1":   { st: "idle", note: "Nothing to start: every Ticket is closed. Closing Spec #87 is yours." },
+  "f-rel":   { st: "done", note: "Spec #1 is closed and the retro turn ended done." },
+};
+const AP_WORD = { off: "Off", idle: "Idle", running: "Running", waiting: "Waiting", failed: "Failed", done: "Done" };
+const AP_GLYPH = { waiting: "◉", failed: "✖", done: "✓" };
+const inNow = fid => roadmap.now.some(([, y]) => y === fid);
+const groupOf = fid => GROUPS.find(g => roadmap[g].some(([, y]) => y === fid));
+function apStatus(pid, f) {
+  const a = AP[f.id];
+  if (a && a.st === "done") return a;
+  // Leaving Now doesn't stop a running turn; it ends, and Step starts nothing new for this Feature.
+  if (a && a.st === "running" && !inNow(f.id)) return { ...a, outside: true };
+  if (!inNow(f.id)) return { st: "off", why: "group" };
+  if (!AP_ON[pid]) return { st: "off", why: "project" };
+  return a || { st: "idle" };
+}
+const apPrev = {};
+// True when this badge's status differs from the one drawn last time, so the new one animates in.
+function apChanged(key, ap) { const was = apPrev[key]; apPrev[key] = ap.st; return was !== undefined && was !== ap.st; }
+function apText(ap, fid) {
+  if (ap.st === "running") return `Running <b class="mono">${ap.skill}</b>${ap.on ? ` · ${ap.on}` : ""}`;
+  if (ap.st === "failed") return `Failed to start <b class="mono">${ap.skill}</b>`;
+  if (ap.st === "waiting") return `Waiting · <b>${esc(ap.stop)}</b>`;
+  if (ap.st === "off") return ap.why === "project" ? "Autopilot off" : `Off · ${GROUP_LABEL[groupOf(fid)] || "no Roadmap group"}`;
+  return AP_WORD[ap.st];
+}
+function apBadge(ap, o = {}) {
+  const ch = o.key && apChanged(o.key, ap);
+  const glyph = AP_GLYPH[ap.st] || "";
+  const plain = apText(ap, o.fid).replace(/<[^>]+>/g, "");
+  return `<span class="ap${o.lg ? " lg" : ""}${ap.st === "off" && ap.why === "project" ? " in-now" : ""}${ch ? " changed" : ""}" data-ap="${ap.st}" role="img" aria-label="Autopilot status: ${plain}">
+    <i class="ap-mark" aria-hidden="true">${glyph}</i>${o.lg ? `<span class="ap-k">Autopilot</span>` : ""}<span>${apText(ap, o.fid)}</span></span>`;
+}
+let apTick = 0;
+const apLive = (fid, ap) => ap.st === "running" && ap.tools ? `<span class="ap-live" data-ap="running"><span class="ap-eq" aria-hidden="true"><span></span><span></span><span></span></span><span class="ap-tool" data-aptool="${fid}">${esc(ap.tools[apTick % ap.tools.length])}</span></span>` : "";
+function apCardBlock(pid, f, ap) {
+  if (ap.st === "off" && ap.why === "group") return ""; // the Roadmap group already says why; keep the card quiet
+  return `${apBadge(ap, { key: f.id + ":badge", fid: f.id })}${apLive(f.id, ap)}${ap.outside ? `<span class="warn ap-outside">Session running outside Now</span>` : ""}`;
+}
+// A Feature in Now whose Project has Autopilot off: a link to the switch, outside the card's button.
+const apOffLink = (pid, f, ap) => ap.st === "off" && ap.why === "project" ? `<button class="ap-offlink" data-apgo="${pid}">Autopilot off for ${proj(pid).name} · <u>Turn on</u></button>` : "";
+const apSwitch = p => p.tracker ? `<button class="apsw" role="switch" aria-checked="${!!AP_ON[p.id]}" data-apswitch="${p.id}" aria-label="Autopilot for ${p.name}" title="Autopilot for ${p.name}"><i aria-hidden="true"></i>Autopilot</button>` : "";
+function apLegend() {
+  const ex = [
+    [{ st: "off", why: "group" }, "f-diff"], [{ st: "off", why: "project" }], [{ st: "idle" }], [{ st: "running", skill: "/implement", on: "#11" }],
+    [{ st: "waiting", stop: "Approve spec" }], [{ st: "failed", skill: "/code-review" }], [{ st: "done" }],
+  ];
+  return `<div class="ap-legend" aria-label="Autopilot statuses"><span class="bd">Autopilot</span>${ex.map(([a, fid]) => apBadge(a, { fid })).join("")}<span class="warn ap-outside">Session running outside Now</span></div>`;
+}
+
+/* The flow graph: the Stages on a main line, each Ticket's Worktree as a branch that merges back.
+   flowGraph() returns one SVG scaled by its viewBox; the Loop view (#114) draws the same SVG full-screen. */
+function flowNodes(t, ap) {
+  const n = [];
+  if (t.stage === "Shipped") n.push({ k: "run", s: "/implement" }, { k: "run", s: "/code-review" }, { k: "stop", s: "Merge", done: true });
+  else if (t.stage === "Review") {
+    n.push({ k: "run", s: "/implement" });
+    (t.older || []).filter(o => o.ci === "fail").forEach(o => n.push({ k: "fail", s: `PR #${o.n} checks failed` }, { k: "run", s: "/implement (rework)" }));
+    if (t.pr && t.pr.ci === "fail") n.push({ k: "fail", s: `PR #${t.pr.n} checks failed` });
+    else if (t.pr && t.pr.ci === "run") n.push({ k: "pend", s: `PR #${t.pr.n} checks running` });
+    else n.push({ k: "run", s: "/code-review" }, { k: "stop", s: "Merge" });
+  } else if (t.stage === "Implementing") n.push({ k: "pend", s: "/implement" });
+  if (ap.t === t.n && ["running", "waiting", "failed"].includes(ap.st)) {
+    if (n.length && (n[n.length - 1].k === "pend" || n[n.length - 1].k === "fail")) n.pop();
+    n.push({ k: "cur", s: ap.st === "waiting" ? ap.stop : ap.skill });
+  }
+  return n;
+}
+function flowGraph(pid, f, ap) {
+  const tk = f.tickets || [], MY = 34, LANE = 32, W = 920, H = MY + LANE * Math.max(tk.length, 1) + 30;
+  const si = STAGES.findIndex(([st]) => st === f.stage), past = i => i < si || f.stage === "Shipped";
+  const out = [], top = [], caps = [], lanes = [];
+  let mergedTo = 296;
+  tk.forEach((t, i) => {
+    const y = MY + LANE * (i + 1), xs = 300 + (tk.length - 1 - i) * 26, nodes = flowNodes(t, ap), merged = t.stage === "Shipped";
+    // When Autopilot's node is the lane's first, push it right so the live line and the Ticket number have room.
+    const off = nodes.length && nodes[0].k === "cur" ? 30 : 0;
+    const xOf = k => xs + 44 + 44 * k + off, last = nodes.length ? xOf(nodes.length - 1) : xs + 70;
+    const lit = nodes.some(x => x.k === "cur");
+    const cls = merged ? "fl-done" : nodes.length ? "fl-open" : "fl-todo";
+    const ci = nodes.findIndex(x => x.k === "cur"), solidTo = lit ? (ci > 0 ? xOf(ci - 1) : xs + 22) : last;
+    let d = `M${xs},${MY} C${xs + 14},${MY} ${xs + 6},${y} ${xs + 22},${y} H${solidTo}`;
+    if (merged) { d += ` C${last + 18},${y} ${last + 10},${MY} ${last + 30},${MY}`; mergedTo = Math.max(mergedTo, last + 30); }
+    const lane = [`<path class="fl-bridge" d="${d}"/>`, `<path class="fl-line ${cls}" d="${d}"/>`];
+    if (lit) lane.push(`<g data-ap="${ap.st}"><path class="fl-line fl-live" d="M${solidTo},${y} H${xOf(ci)}"/></g>`);
+    lanes.unshift(lane.join(""));
+    out.push(`<text class="tn" x="${xs + 24}" y="${y - 7}">#${t.n}</text>`);
+    if (!nodes.length) out.push(`<text class="lbl" x="${xs + 52}" y="${y - 7}">${t.blockedBy ? `blocked by #${t.blockedBy.join(", #")}` : t.startable ? "Startable" : "not started"}</text>`);
+    nodes.forEach((nd, k) => {
+      const x = xOf(k), title = `<title>#${t.n} · ${esc(nd.s)}</title>`;
+      if (nd.k === "run") top.push(`<circle class="fl-run${merged || k < nodes.length - 1 ? " done" : ""}" cx="${x}" cy="${y}" r="4.5">${title}</circle>`);
+      else if (nd.k === "pend") top.push(`<circle class="fl-pend" cx="${x}" cy="${y}" r="5">${title}</circle><text class="lbl" x="${x}" y="${y + 17}" text-anchor="middle">${t.pr && t.pr.ci === "run" ? "checks…" : "Session"}</text>`);
+      else if (nd.k === "fail") top.push(`<g>${title}<path class="fl-fail" d="M${x - 4},${y - 4} L${x + 4},${y + 4} M${x + 4},${y - 4} L${x - 4},${y + 4}"/></g>`);
+      else if (nd.k === "stop") top.push(nd.done ? `<rect class="fl-stop done" x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1.5" transform="rotate(45 ${x} ${y})">${title}</rect>`
+        : `<g>${title}<circle class="fl-stop" cx="${x}" cy="${y}" r="6.5"/><circle class="fl-stop-dot" cx="${x}" cy="${y}" r="2.6"/><text class="lbl" x="${x}" y="${y + 19}" text-anchor="middle">merge · yours</text></g>`);
+      else if (nd.k === "cur") top.push(`<g data-ap="${ap.st}">${title}<circle class="fl-halo" cx="${x}" cy="${y}" r="11"/>${ap.st === "running" ? `<circle class="fl-ring" cx="${x}" cy="${y}" r="6"/><circle class="fl-ring r2" cx="${x}" cy="${y}" r="6"/><circle class="fl-cur" cx="${x}" cy="${y}" r="6"/>`
+        : `<text class="glyph" x="${x}" y="${y + 4.5}" text-anchor="middle">${AP_GLYPH[ap.st]}</text>`}<text class="curlbl" x="${x + 16}" y="${y + 4}">${esc(nd.s)}</text></g>`);
+    });
+  });
+  // main line: solid up to the last merge, dashed after
+  const SX = [40, 125, 280, 470, 650, 860];
+  const main = [`<path class="fl-line fl-done" d="M${SX[0]},${MY} H${Math.max(si >= 2 ? Math.max(SX[2], mergedTo) : SX[si], SX[0])}"/>`,
+    `<path class="fl-line fl-todo" d="M${si >= 2 ? Math.max(SX[2], mergedTo) : SX[si]},${MY} H${SX[5]}"/>`];
+  STAGES.forEach(([st, sk], i) => {
+    caps.push(`<text class="cap" x="${SX[i]}" y="${MY - 16}" text-anchor="middle">${st}</text>`);
+    if (i === 3 || i === 4) return; // Implementing and Review happen on the branches
+    top.push(`<circle class="fl-stage${past(i) ? " done" : i === si ? "" : " todo"}" cx="${SX[i]}" cy="${MY}" r="${i === si ? 7 : 5.5}"><title>${st} · ${sk}</title></circle>`);
+  });
+  // Approve spec, the Stop point between Spec and Tickets
+  const ax = 202, aDone = si >= 2, aWait = ap.st === "waiting" && ap.stop === "Approve spec";
+  caps.push(`<text class="cap" x="${ax}" y="${MY - 16}" text-anchor="middle">Approve spec</text>`);
+  top.push(aWait ? `<g data-ap="waiting"><circle class="fl-halo" cx="${ax}" cy="${MY}" r="11"/><text class="glyph" x="${ax}" y="${MY + 4.5}" text-anchor="middle">◉</text></g>`
+    : `<rect class="fl-stop${aDone ? " done" : ""}" x="${ax - 5}" y="${MY - 5}" width="10" height="10" rx="1.5" transform="rotate(45 ${ax} ${MY})"><title>Stop point: Approve spec</title></rect>`);
+  return `<svg class="flow" viewBox="0 0 ${W} ${H}" role="img" aria-label="Flow graph of ${esc(f.name)}: ${tk.length} Tickets, Autopilot ${AP_WORD[ap.st].toLowerCase()}">${caps.join("")}${main.join("")}${lanes.join("")}${out.join("")}${top.join("")}</svg>`;
+}
+const FLOW_LEGEND = `<div class="flow-legend" aria-hidden="true">
+  <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="color-mix(in srgb, var(--ap-done) 70%, var(--line))"/></svg>skill run</span>
+  <span><svg viewBox="0 0 14 14"><rect x="3.5" y="3.5" width="7" height="7" rx="1" transform="rotate(45 7 7)" fill="color-mix(in srgb, var(--ap-done) 75%, var(--line))"/></svg>Stop point passed</span>
+  <span style="color:var(--ap-waiting)">◉ <span style="color:var(--muted)">waiting at a Stop point</span></span>
+  <span style="color:var(--ap-failed)">✖ <span style="color:var(--muted)">failed</span></span>
+  <span><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="var(--ap-running)"/></svg>Autopilot is here now</span>
+  <span><svg viewBox="0 0 22 14"><path d="M2 7 H20" stroke="var(--line)" stroke-width="2.5" stroke-dasharray="2 5" stroke-linecap="round"/></svg>not started</span></div>`;
+function apPanel(pid, f) {
+  const ap = apStatus(pid, f), p = proj(pid);
+  if (!p.tracker) return "";
+  const sw = `<span class="ap-switchline">${AP_ON[pid] ? `On for ${p.name}` : `Off for ${p.name}`} <button class="btn small" data-apswitch="${pid}">${AP_ON[pid] ? "Turn off" : "Turn on"}</button></span>`;
+  const note = ap.st === "off" && ap.why === "project" ? `Autopilot is off for ${p.name}, so it starts nothing here, even in Now. Turning it on steps the Project at once.`
+    : ap.st === "off" ? `Autopilot only drives Features in Now. This one is in ${GROUP_LABEL[groupOf(f.id)] || "no Roadmap group"}.`
+    : ap.outside ? `This Feature left Now. The running turn finishes, then Autopilot starts nothing new here and the Project is no longer held.`
+    : ap.note || "";
+  const ch = apChanged(f.id + ":panel", ap);
+  return `<section class="card ap-panel${ch ? " changed" : ""}" data-ap="${ap.st}"><div class="ap-panel-glow"></div>
+    <h3><span>Autopilot</span>${sw}</h3>
+    <div class="ap-head">${apBadge(ap, { lg: true, key: f.id + ":lg", fid: f.id })}${apLive(f.id, ap)}${ap.outside ? `<span class="warn ap-outside">Session running outside Now</span>` : ""}
+      ${ap.st === "off" && ap.why === "project" ? `<span class="ap-offcta"><button class="btn primary small" data-apswitch="${pid}">Turn on Autopilot for ${p.name}</button></span>` : ""}
+      ${note ? `<span class="ap-note">${esc(note)}</span>` : ""}</div>
+    <div class="flow-wrap">${flowGraph(pid, f, ap)}</div>${FLOW_LEGEND}</section>`;
+}
+// The live pulse: the current tool call changes as the turn goes on; fh pushes each one over the WebSocket.
+setInterval(() => {
+  apTick++;
+  document.querySelectorAll("[data-aptool]").forEach(el => {
+    const a = AP[el.dataset.aptool]; if (!a || !a.tools) return;
+    el.textContent = a.tools[apTick % a.tools.length]; el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick");
+  });
+}, 2600);
+// Demo: walk "ACP session view" through a few status changes so the motion can be judged.
+const AP_DEMO = [
+  { st: "running", skill: "/implement", t: 11, on: "#11", tools: AP["f-acp"].tools },
+  { st: "waiting", stop: "Merge", t: 11, on: "PR #25", note: "PR #25 for #11 is green. Merging is yours." },
+  { st: "running", skill: "/implement", t: 13, on: "#13", tools: ["Read internal/acp/events.go", "Edit internal/acp/events.go (+18 −2)"] },
+  { st: "failed", skill: "/implement", t: 13, on: "#13", note: "Claude Code exited before its first turn." },
+  { st: "idle", note: "Nothing to start: #13 waits for you." },
+];
+const AP_ACP = AP["f-acp"];
+let apDemoTimer = null, apDemoStep = 0;
+$("#demo").addEventListener("change", e => {
+  clearInterval(apDemoTimer); apDemoTimer = null; AP["f-acp"] = AP_ACP;
+  if (e.target.value !== "apflow") return render();
+  apDemoStep = 0;
+  apDemoTimer = setInterval(() => { apDemoStep = (apDemoStep + 1) % AP_DEMO.length; AP["f-acp"] = AP_DEMO[apDemoStep]; render(); }, 2400);
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-apswitch], [data-apgo]"); if (!b) return;
+  if (b.dataset.apgo) { const sw = $(`.apsw[data-apswitch="${b.dataset.apgo}"]`); sw.scrollIntoView({ block: "nearest" }); sw.focus(); sw.classList.remove("flash"); void sw.offsetWidth; sw.classList.add("flash"); return; }
+  const pid = b.dataset.apswitch; AP_ON[pid] = !AP_ON[pid];
+  toast(AP_ON[pid] ? `Autopilot on for ${proj(pid).name} · stepped the Project now` : `Autopilot off for ${proj(pid).name} · a running turn finishes first`);
+  render();
+});
 
 /* ---------- actions ---------- */
 let toastTimer;
