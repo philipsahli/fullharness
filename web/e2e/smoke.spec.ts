@@ -700,12 +700,16 @@ test("Needs triage lists the Untriaged issues, and Triage opens the Start dialog
   }
 });
 
-test("a Needs triage group of 5 or fewer starts open", async ({ page }) => {
+test("a Needs triage group of 5 or fewer starts open, with a note on an orphan Ticket", async ({
+  page,
+}) => {
   const fh = await Fh.start({
     env: {
       PATH: fakeGhPath([
         { number: 10, title: "Login", labels: ["ready-for-agent"] },
         { number: 11, title: "Crash on save", labels: ["needs-triage"] },
+        // A Ticket whose parent, #7, isn't in the issue set (#181).
+        { number: 12, title: "Retry uploads", labels: ["ready-for-agent"], body: "Part of #7" },
       ]),
     },
   });
@@ -725,7 +729,11 @@ test("a Needs triage group of 5 or fewer starts open", async ({ page }) => {
       "aria-expanded",
       "true",
     );
-    await expect(group.getByRole("listitem")).toHaveText([/Crash on save/]);
+    const rows = group.getByRole("listitem");
+    await expect(rows).toHaveText([/Retry uploads/, /Crash on save/]);
+    await expect(rows.first().getByText("parent #7 not on the board")).toBeVisible();
+    await expect(rows.first().getByText("ready-for-agent", { exact: true })).toBeVisible();
+    await expect(rows.last()).not.toContainText("not on the board");
     // A Spec exists, so the note is not the triage count.
     await expect(page.locator(".notice")).toHaveCount(0);
   } finally {
