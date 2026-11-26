@@ -630,6 +630,109 @@ test("a failed Mark ready-for-agent shows gh's error beside the button", async (
   }
 });
 
+test("Needs triage lists the Untriaged issues, and Triage opens the Start dialog on one", async ({
+  page,
+}) => {
+  // Seven Untriaged issues and no Spec: more than 5 rows, so the group
+  // starts collapsed.
+  const fh = await Fh.start({
+    env: {
+      PATH: fakeGhPath([
+        { number: 1, title: "Crash on save", labels: ["needs-triage", "bug"] },
+        { number: 2, title: "Idea: dark mode" },
+        { number: 3, title: "Slow search", labels: ["needs-info"] },
+        { number: 4, title: "Old one-off", state: "CLOSED", labels: ["needs-triage"] },
+        { number: 5, title: "Export to CSV", labels: ["ready-for-human"] },
+        { number: 6, title: "Typo in README" },
+        { number: 7, title: "Flaky login", labels: ["needs-triage"] },
+        { number: 8, title: "Idea: themes" },
+      ]),
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const board = page.getByRole("region", { name: "Software factory" });
+    await expect(board.locator(".notice")).toHaveText("No Specs yet; 7 issues need triage");
+    const group = board.getByRole("region", { name: "Needs triage" });
+    const toggle = group.getByRole("button", { name: /Needs triage/ });
+    await expect(toggle).toContainText("7");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(group.getByRole("listitem")).toHaveCount(0);
+
+    await toggle.click();
+    const rows = group.getByRole("listitem");
+    await expect(rows).toHaveCount(7);
+    // Newest first, by issue number; the closed one-off is not there.
+    await expect(rows.first()).toContainText("Idea: themes");
+    await expect(rows.last()).toContainText("Crash on save");
+    await expect(group).not.toContainText("Old one-off");
+    const crash = rows.filter({ hasText: "Crash on save" });
+    await expect(crash.getByRole("link", { name: "#1", exact: true })).toHaveAttribute(
+      "href",
+      "https://github.com/someone/shop/issues/1",
+    );
+    await expect(crash.getByText("needs-triage", { exact: true })).toBeVisible();
+    await expect(crash.getByText("bug", { exact: true })).toBeVisible();
+
+    // A board refresh keeps the group open.
+    const refreshed = page.waitForResponse(
+      (r) => r.url().includes("/api/board?") && r.url().endsWith("&refresh=1"),
+    );
+    await board.getByRole("button", { name: "Refresh" }).click();
+    await refreshed;
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(rows).toHaveCount(7);
+
+    await rows.filter({ hasText: "Flaky login" }).getByRole("button", { name: "Triage" }).click();
+    const form = page.getByRole("form", { name: "Triage #7" });
+    await expect(form.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue("/triage #7");
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a Needs triage group of 5 or fewer starts open", async ({ page }) => {
+  const fh = await Fh.start({
+    env: {
+      PATH: fakeGhPath([
+        { number: 10, title: "Login", labels: ["ready-for-agent"] },
+        { number: 11, title: "Crash on save", labels: ["needs-triage"] },
+      ]),
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const group = page.getByRole("region", { name: "Needs triage" });
+    await expect(group.getByRole("button", { name: /Needs triage/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expect(group.getByRole("listitem")).toHaveText([/Crash on save/]);
+    // A Spec exists, so the note is not the triage count.
+    await expect(page.locator(".notice")).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {
   const pr = (number: number, branch: string, state: string, conclusion: string) => ({
     number,
