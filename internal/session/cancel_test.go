@@ -165,3 +165,30 @@ func TestSendNowBeforeThePromptIsSentSendsTheQueuedMessage(t *testing.T) {
 		}
 	}
 }
+
+// A cancel written to the Agent just before session/prompt reaches it
+// first, and the SDK drops a cancel that arrives before its prompt. fh
+// must resend it so the turn still ends (#56, #155).
+func TestACancelThatOvertakesThePromptStillEndsTheTurn(t *testing.T) {
+	cancelled := make(chan error, 1)
+	m, id, ends := startHooked(t, map[string]any{"default": []any{map[string]any{"waitCancel": true}}},
+		func(*session.Manager, string) {})
+	session.SetBeforePromptWrite(t, func(string) {
+		cancelled <- m.Cancel(id)
+		// Give the cancel time to reach the Agent before the prompt does.
+		time.Sleep(50 * time.Millisecond)
+	})
+	if err := m.Prompt(id, "go"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-cancelled; err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if e := nextEnd(t, ends, "the turn"); e.StopReason != "cancelled" || e.Err != nil {
+		t.Errorf("turn end = %+v, want cancelled", e)
+	}
+	if st := detail(t, m, id).State; st != session.Idle {
+		t.Errorf("state = %v, want Idle", st)
+	}
+}

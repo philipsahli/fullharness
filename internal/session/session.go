@@ -930,7 +930,36 @@ func (s *session) cancelTurn(turn int) error {
 	// ACP: a client that cancels a turn answers its open permission
 	// requests with "cancelled".
 	s.settleAll(StatusCancelled)
-	return proc.Cancel(context.Background(), sid)
+	if err := proc.Cancel(context.Background(), sid); err != nil {
+		return err
+	}
+	go s.resendCancel(proc, sid, turn)
+	return nil
+}
+
+// cancelResend is how often resendCancel repeats a cancel; cancelResends
+// caps how many times, so a turn that ignores cancels doesn't keep it
+// running forever.
+const (
+	cancelResend  = 200 * time.Millisecond
+	cancelResends = 50
+)
+
+// resendCancel repeats session/cancel until turn ends. The first one can
+// reach the Agent before the prompt it is meant for, if it was written
+// before the SDK wrote that prompt, and the Agent drops a cancel that
+// comes before its prompt (#56, #155). A repeat that finds no prompt
+// running does nothing.
+func (s *session) resendCancel(proc *acp.Process, sid sdk.SessionId, turn int) {
+	for range cancelResends {
+		time.Sleep(cancelResend)
+		s.mu.Lock()
+		running := s.proc == proc && s.turns == turn && s.inTurn
+		s.mu.Unlock()
+		if !running || proc.Cancel(context.Background(), sid) != nil {
+			return
+		}
+	}
 }
 
 // Inbox returns every open permission request, oldest first, never nil.
@@ -1297,6 +1326,11 @@ func (s *session) watch(proc *acp.Process) {
 	s.exit(ReasonCrashed, lastLines(s.logPath, stderrTail))
 }
 
+// beforePromptWrite, when set by a test, runs in prompt after promptSent
+// and before session/prompt is written: the moment a cancel can overtake
+// the prompt it is meant for.
+var beforePromptWrite func(id string)
+
 func (s *session) prompt(text string) {
 	s.mu.Lock()
 	proc, sid := s.proc, s.acpID
@@ -1313,9 +1347,12 @@ func (s *session) prompt(text string) {
 		s.finishTurn(turnCancelled, TurnEnd{Session: s.sum.ID, StopReason: string(sdk.StopReasonCancelled)})
 		return
 	}
-	// A cancel from here on is written to the Agent. It can still get
-	// there first if it runs before the SDK writes this prompt, a gap
-	// left open on purpose (#56).
+	// A cancel from here on is written to the Agent. It can get there
+	// before this prompt if it runs before the SDK writes it; cancelTurn
+	// resends it until the turn ends (#56).
+	if beforePromptWrite != nil {
+		beforePromptWrite(s.sum.ID)
+	}
 	reason, err := proc.Prompt(context.Background(), sid, text)
 	if err != nil {
 		s.m.cfg.Log.Info("prompt failed", "session", s.sum.ID, "err", err)
