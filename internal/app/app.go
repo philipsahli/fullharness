@@ -250,6 +250,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	boards := &boards{cache: map[string]*ghEntry{}}
 	reg.ReadPRs(boards.prs)
 	registerBoardRoutes(srv, reg, boards, sessions)
+	registerTrackerWrites(srv, reg, boards)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)
 	if err != nil {

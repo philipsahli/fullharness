@@ -187,6 +187,8 @@ table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13p
 th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
 tr:last-child td { border-bottom: 0; }
+/* A failed tracker write (#192): gh's own message, next to the button that started it. */
+.error { margin: 4px 8px; color: var(--bad); font-size: 12px; }
 .lbl { font-family: var(--f-mono); font-size: 11.5px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
 .stage { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--sunken); color: var(--muted); white-space: nowrap; }
 .stage.shipped { color: var(--good); } .stage.review { color: var(--accent); } .stage.implementing { color: var(--working); background: var(--working-soft); }
@@ -681,7 +683,7 @@ const factory = {
       body: L("Show changed files and diffs next to the conversation, so you can review an Agent's work without a terminal.", "", "_Filed from the Retro of Release pipeline._") },
     { id: "f-inbox", name: "Inbox for permission requests", stage: "Idea", ref: "Idea #31", trackerIdea: true, next: "Open grilling Session", skill: "",
       body: "Batch permission requests across Sessions into one list.", suggest: "Spec #32 appeared after this grilling started" },
-    { id: "f-board", name: "Software factory board", stage: "Spec", ref: "Spec #15", next: "Make tickets", skill: "/to-tickets", spec: SPEC_BOARD },
+    { id: "f-board", name: "Software factory board", stage: "Spec", ref: "Spec #15", next: "Make tickets", skill: "/to-tickets", spec: SPEC_BOARD, unapproved: "needs-triage" },
     { id: "f-acp", name: "ACP session view", stage: "Tickets", ref: "Spec #7", next: "Implement spec", skill: "/implement-spec", spec: SPEC_ACP,
       tickets: [
         { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
@@ -696,6 +698,7 @@ const factory = {
         { n: 5, t: "Show Worktrees under each Project", stage: "Shipped", pr: { n: 9, state: "merged" } },
         { n: 6, t: "Ahead/behind against the base branch", stage: "Shipped", pr: { n: 11, state: "merged" } },
         { n: 14, t: "List every git worktree, mark Agent worktrees", stage: "Implementing", sid: "s3" },
+        { n: 15, t: "Rename a Worktree's branch", stage: "Tickets", label: "needs-triage", readyFail: "gh issue: could not add label: 'ready-for-agent' not found" },
       ] },
     { id: "f-clean", name: "Worktree removal offer", stage: "Review", ref: "Spec #4", next: "Review all", skill: "/code-review",
       tickets: [
@@ -1009,7 +1012,7 @@ function ticketRow(fid, t) {
   if (t.startable) act = `<button class="btn primary small" data-start="${fid}:${t.n}">Start Session</button>`;
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
-  else if (t.label === "needs-info") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>`;
+  else if (t.label === "needs-info" || t.label === "needs-triage") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>${t.readyErr ? `<div class="error" role="alert">${esc(t.readyErr)}</div>` : ""}`;
   return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
@@ -1039,7 +1042,7 @@ function renderFeature() {
   const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
-    <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${mainBtn}</div></div>
+    <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${f.unapproved ? `<span class="lbl">${f.unapproved}</span><button class="btn small" data-readyspec="${f.id}">Mark ready-for-agent</button>` : ""}${mainBtn}</div></div>
     ${stepper}${apPanel(pid, f)}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 
@@ -1430,6 +1433,8 @@ document.addEventListener("click", e => {
       () => { f.closedEarly = null; f.stage = "Implementing"; toast(`${f.ref} reopened`); render(); }); }
   if (d.retro) { const { f } = feat(d.retro); f.retroDone = true; f.followups = [{ t: "Backoff limits should be configurable per CRD", filed: null }]; toast(`Session started: /retro for ${f.name}`); return render(); }
   if (d.fileup) { const [fid, i] = d.fileup.split(":"); const x = feat(fid).f.followups[+i]; x.filed = `Idea #${67 + +i}`; toast(`Issue ${x.filed} created · label idea`); return render(); }
+  if (d.readyspec) { const { f } = feat(d.readyspec); toast(`Label ready-for-agent set on ${f.ref} · ${f.unapproved} removed`); f.unapproved = null; return render(); }
+  if (d.ready && ticketOf(d.ready).t.readyFail) { const { t } = ticketOf(d.ready); t.readyErr = t.readyFail; return render(); }
   if (d.ready) { const { t } = ticketOf(d.ready); t.label = null; t.note = "Startable once #11 closes"; toast(`Label ready-for-agent set on #${t.n} · needs-info removed`); return render(); }
   if (d.spallow || d.spdeny) {
     const r = spawns.find(x => x.id === (d.spallow || d.spdeny)), par = sess(r.parent), msg = par.msgs.find(m => m.k === "fh");

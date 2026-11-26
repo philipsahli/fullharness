@@ -20,15 +20,7 @@ export type GhIssue = {
 // GhPR is one PR, in any state, as `gh pr list --json number,headRefName,body` gives it.
 export type GhPR = { number: number; headRefName: string; body?: string };
 
-// fakeGhPath writes a gh that is logged in, answers fh's issues query with
-// issues and `pr list` with prs, and returns a PATH with it first. Pass it
-// to Fh.start({ env: { PATH } }), as the Go tests' fakeGh does. repo is the
-// "owner/repo" the issues are in; match it to the test repo's origin.
-export function fakeGhPath(
-  issues: GhIssue[],
-  { repo = "someone/shop", prs = [] as GhPR[] } = {},
-): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "fh-e2e-gh-"));
+function issuesPage(issues: GhIssue[], repo: string) {
   const nodes = issues.map((i) => ({
     number: i.number,
     title: i.title,
@@ -45,14 +37,36 @@ export function fakeGhPath(
       })),
     },
   }));
-  const page = [
+  return [
     {
       data: {
         repository: { issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } } },
       },
     },
   ];
-  writeFileSync(path.join(dir, "issues.json"), JSON.stringify(page));
+}
+
+// fakeGhPath writes a gh that is logged in, answers fh's issues query with
+// issues and `pr list` with prs, and returns a PATH with it first. Pass it
+// to Fh.start({ env: { PATH } }), as the Go tests' fakeGh does. repo is the
+// "owner/repo" the issues are in; match it to the test repo's origin.
+// An `issue edit` succeeds and makes the issues read afterEdit from then
+// on, as GitHub would show them; with editFails it fails with that
+// message on stderr instead.
+export function fakeGhPath(
+  issues: GhIssue[],
+  {
+    repo = "someone/shop",
+    prs = [] as GhPR[],
+    afterEdit = undefined as GhIssue[] | undefined,
+    editFails = undefined as string | undefined,
+  } = {},
+): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "fh-e2e-gh-"));
+  writeFileSync(path.join(dir, "issues.json"), JSON.stringify(issuesPage(issues, repo)));
+  if (afterEdit)
+    writeFileSync(path.join(dir, "after.json"), JSON.stringify(issuesPage(afterEdit, repo)));
+  if (editFails !== undefined) writeFileSync(path.join(dir, "edit-fails"), editFails + "\n");
   writeFileSync(
     path.join(dir, "prs.json"),
     JSON.stringify(prs.map((p) => ({ ...p, body: p.body ?? "" }))),
@@ -66,6 +80,8 @@ export function fakeGhPath(
       '  *"auth status"*) exit 0 ;;',
       `  *graphql*) cat "${dir}/issues.json" ;;`,
       `  *"pr list"*) cat "${dir}/prs.json" ;;`,
+      `  "issue edit "*) if [ -f "${dir}/edit-fails" ]; then cat "${dir}/edit-fails" >&2; exit 1; fi`,
+      `    if [ -f "${dir}/after.json" ]; then mv "${dir}/after.json" "${dir}/issues.json"; fi ;;`,
       '  *) echo "fake gh: unexpected $*" >&2; exit 2 ;;',
       "esac",
       "",

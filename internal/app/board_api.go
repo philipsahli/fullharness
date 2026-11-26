@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"sync"
@@ -71,6 +73,42 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 			tracker.LinkIssues(board.Features, g)
 		}
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
+	})
+}
+
+// registerTrackerWrites adds one POST endpoint per write fh runs itself
+// (ADR 0008), each taking {"project", "ref"}, with ref a Spec's or
+// Ticket's Ref from the board. After a write the repo's cached gh read is
+// expired and its PRs fetched again, so the board read the UI makes next
+// shows the change. A failed write answers with gh's own message.
+func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *boards) {
+	srv.Handle("POST /api/tracker/mark-ready", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Ref     string `json:"ref"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Project == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"project": "…", "ref": "…"}`)
+			return
+		}
+		p, ok := projects.Get(req.Project)
+		if !ok {
+			server.WriteError(w, http.StatusNotFound, "no such Project")
+			return
+		}
+		err := tracker.MarkReady(r.Context(), p.Path, req.Ref)
+		switch {
+		case errors.Is(err, tracker.ErrBadRef) || errors.Is(err, tracker.ErrNoWrites):
+			server.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		case err != nil:
+			// gh (or the file write) failed: the message is its own.
+			server.WriteError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		b.expire(p.Path)
+		projects.FetchPRs(p.Path)
+		w.WriteHeader(http.StatusNoContent)
 	})
 }
 
