@@ -180,12 +180,14 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		return fail(err)
 	}
 	var srv *server.Server
+	statuses := newAutopilotStatuses()
 	// sessions doesn't exist yet when Open reads the Projects; a Relabel
 	// once sessions are restored fills in the Session rule.
 	var sessions *session.Manager
 	linked := func(path string) bool { return sessions != nil && sessions.Linked(path) }
 	reg, err := project.Open(opts.Dir, st.CreatedWorktree, linked, func(ps []project.Project) {
 		srv.Broadcast(map[string]any{"type": "projects", "projects": ps})
+		statuses.Kick() // the Autopilot switch, or a Project added or removed
 	})
 	if err != nil {
 		return fail(err)
@@ -200,7 +202,14 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	sessions = session.New(session.Config{
 		StartTimeout: startTimeout,
 		LogDir:       logDir,
-		Broadcast:    func(ev any) { srv.Broadcast(ev) },
+		Broadcast: func(ev any) {
+			srv.Broadcast(ev)
+			// A Session that starts, ends a turn, exits or closes can
+			// change its Feature's Autopilot status.
+			if m, ok := ev.(map[string]any); ok && (m["type"] == "session" || m["type"] == "closed") {
+				statuses.Kick()
+			}
+		},
 		// A turn usually changes files; show it without waiting for a tick.
 		TurnEnded: func(e session.TurnEnd) {
 			reg.Refresh()
@@ -242,7 +251,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	sessions.SweepLogs()
 	srv = server.New(ln, token, web.Dist(), func() map[string]any {
 		// dev tells the tab to reload on a restart instead of stopping.
-		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "dev": opts.Dev}
+		return map[string]any{"projects": reg.List(), "sessions": sessions.List(), "inbox": sessions.Inbox(), "autopilot": statuses.List(), "dev": opts.Dev}
 	})
 	reg.Relabel() // broadcasts, so only once srv exists
 	notes = newNotifier(srv, log)
@@ -266,7 +275,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		log:      log,
 	}
 	registerSessionRoutes(srv, deps)
-	if pilot, err = newAutopilot(deps, boards, classifier); err != nil {
+	if pilot, err = newAutopilot(deps, boards, classifier, statuses.Kick); err != nil {
 		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
 	}
 	registerAutopilotRoutes(srv, reg, agents, pilot, inst.goBackground)
@@ -287,6 +296,12 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		pilotInterval = DefaultAutopilotInterval
 	}
 	inst.goBackground(func(ctx context.Context) { pilot.Run(ctx, pilotInterval) })
+	inst.goBackground(func(ctx context.Context) {
+		statuses.run(ctx, pilotInterval, func(prev []autopilot.Status) []autopilot.Status {
+			return computeAutopilotStatuses(reg, boards, sessions, pilot, prev)
+		}, srv.Broadcast)
+	})
+	statuses.Kick()
 	go func() {
 		inst.serveErr = inst.srv.Serve()
 		close(inst.done)

@@ -57,6 +57,49 @@ for (const scheme of ["light", "dark"] as const) {
       }
     });
 
+    // Autopilot status badges (#203): one Feature running, one waiting at
+    // Spec approval, one outside Now without a badge.
+    test("Software factory board with Autopilot badges", async ({ page }) => {
+      const fh = await Fh.start({
+        ghPRs: [],
+        agentScript: { default: [{ sleepMs: 60_000 }] },
+        verdict: "done",
+      });
+      try {
+        const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+        const repo = tempRepoWith(
+          "shop",
+          {
+            ".scratch/login/spec.md":
+              "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+            ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
+            ".scratch/search/spec.md": "# Search\n\n**Roadmap:** now\n\n**Status:** needs-triage\n",
+            ".scratch/billing/spec.md": "# Billing\n\n**Roadmap:** next\n",
+          },
+          path.join(tmpdir(), "fh-visual", slug),
+        );
+        await open(page, fh, repo);
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        await page
+          .getByRole("region", { name: "Projects" })
+          .getByRole("checkbox", { name: "Autopilot" })
+          .click();
+        const badges = page.getByRole("img", { name: /^Autopilot status/ });
+        await expect(badges).toHaveCount(2);
+        await expect(badges.first()).toHaveAccessibleName(
+          "Autopilot status: Waiting at Approve spec",
+        );
+        await expect(badges.last()).toHaveAccessibleName(
+          "Autopilot status: Running /implement on #01",
+        );
+        await expect(page).toHaveScreenshot(`board-autopilot-${scheme}.png`, {
+          mask: dynamic(page),
+        });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
     test("Feature detail", async ({ page }) => {
       const fh = await Fh.start({ ghPRs: [] });
       try {
