@@ -115,9 +115,6 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 span.agent { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
 span.agent i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 .srow .s span.agent { border: 0; padding: 0; font-size: inherit; font-weight: inherit; gap: 5px; } /* in a rail row: the colour square, no box */
-.seg { margin-left: auto; display: flex; background: var(--sunken); border-radius: 7px; padding: 2px; }
-.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 5px; font-size: 12.5px; color: var(--muted); }
-.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); }
 
 .chat { flex: 1; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; max-height: 620px; }
 .msg { max-width: 72ch; }
@@ -142,8 +139,6 @@ span.agent i { width: 8px; height: 8px; border-radius: 2px; display: inline-bloc
 .resolved { font-size: 12.5px; color: var(--muted); }
 .composer { border-top: 1px solid var(--line); padding: 12px 18px; display: flex; gap: 10px; align-items: center; }
 .composer input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 8px 12px; font: inherit; }
-.term { flex: 1; margin: 0; background: var(--term-bg); color: var(--term-fg); font-family: var(--f-mono); font-size: 12.5px; padding: 16px 18px; overflow: auto; max-height: 680px; white-space: pre; line-height: 1.5; }
-.fallback-note { padding: 6px 18px; font-size: 12px; color: var(--muted); background: var(--sunken); border-bottom: 1px solid var(--line); }
 
 /* detail */
 .detail { border-left: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 18px; background: var(--bg); overflow: auto; }
@@ -458,10 +453,14 @@ let sessions = [
       { r: "user", t: "Started by OpenCode (#14): Check whether `git worktree list --porcelain` output differs between git 2.39 and 2.54. Report differences only." },
       { r: "agent", t: L("No differences that affect parsing.", "", "| git | Extra line | Parser |", "|---|---|---|", "| 2.39 | — | ok |", "| 2.54 | `locked <reason>` | skip unknown keys |") },
     ] },
-  { id: "s2", title: "#12 Terminal fallback view", project: "fh", wt: "12-pty-fallback", agent: "copilot", state: "working", view: "terminal", fid: "f-acp", ticket: 12,
-    acp: "— (terminal fallback)", started: "26 min ago",
-    git: { ahead: 4, behind: 0, files: [["M","internal/pty/pty.go"],["M","web/src/terminal.ts"]], pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
-    msgs: [] },
+  { id: "s2", title: "#12 Token usage in the Session header", project: "fh", wt: "12-session-usage", agent: "copilot", state: "working", fid: "f-acp", ticket: 12,
+    acp: "sess_2b9d…e04", started: "26 min ago",
+    git: { ahead: 4, behind: 0, files: [["M","internal/acp/client.go"],["M","web/src/Sessions.tsx"]], pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
+    msgs: [
+      { r: "user", t: "/implement #12" },
+      { r: "tool", k: "Edit", d: "internal/acp/client.go", s: "ok" },
+      { r: "agent", t: "Usage now comes from the `usage_update` notification. Wiring it into the Session header next." },
+    ] },
   { id: "s10", title: "#10 Permission request card", project: "fh", wt: "10-permission-card", agent: "claude", state: "idle", fid: "f-acp", ticket: 10,
     acp: "sess_19aa…f02", started: "3 h ago", mode: "default", model: "Opus 5.5", usage: "54% context · $1.87",
     git: { ahead: 3, behind: 0, files: [], pr: { n: 21, ci: "pass", checks: "4 of 4 passed", review: "Approved" } },
@@ -513,7 +512,7 @@ const factory = {
         { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
         { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
         { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
-        { n: 12, t: "Terminal fallback when an Agent can't speak ACP", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
+        { n: 12, t: "Token usage in the Session header", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
         { n: 11, t: "Reopen a Session via session/load", stage: "Tickets", startable: true },
         { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
       ] },
@@ -686,21 +685,6 @@ function renderMsgs(s) {
     return "";
   }).join("");
 }
-const TERM = `╭──────────────────────────────────────────────────────────╮
-│ GitHub Copilot CLI 1.0.109                               │
-│ ~/work/fullharness.worktrees/12-pty-fallback             │
-╰──────────────────────────────────────────────────────────╯
-
-> /implement #12
-
-● Reading issue #12: Terminal fallback when an Agent can't speak ACP
-● Edit internal/pty/pty.go (+64 -3)
-● Edit web/src/terminal.ts (+41 -0)
-● Run go test ./internal/pty/
-  ok  	fullharness/internal/pty	0.31s
-
-● Wiring resize events from xterm.js to the PTY (TIOCSWINSZ)…
-  ⠼ Thinking`;
 function composer(s) {
   const a = AGENTS[s.agent].name;
   if (s.state === "exited" && s.canReopen) return `<div class="composer"><span class="crumb" style="flex:1">Exited: ${s.exit}. ${a} supports session/load, so the history comes back.</span><button class="btn" data-closesess="${s.id}">Close Session</button><button class="btn primary" data-reopen="${s.id}">Reopen Session</button></div>`;
@@ -730,23 +714,17 @@ function branchLine(s) {
   return `${branch} · <a class="ext" href="#">PR #${pr.n} ↗</a> ${PR_STATE[state]}${ci ? ` · checks <span class="ci ${ci}" title="checks ${ci}">${CI_MARK[ci]}</span>` : ""}`;
 }
 function renderSession() {
-  const s = sess(ui.current), p = proj(s.project), v = s.view || "chat", fx = s.fid && feat(s.fid);
+  const s = sess(ui.current), p = proj(s.project), fx = s.fid && feat(s.fid);
   const crumb = fx ? `<button class="btn small" data-feat="${s.fid}">${esc(fx.f.name)}</button>${s.ticket ? ` / Ticket #${s.ticket}` : ""}` : `${p.name} / Loose Session`;
   const controls = s.mode ? `<select aria-label="Mode"><option>${s.mode}</option><option>plan</option><option>auto-accept edits</option></select><select aria-label="Model"><option>${s.model}</option></select><span class="usage">${s.usage}</span>` : "";
   $("#main").innerHTML = `
     <div class="mhead">
       <div style="display:grid;gap:2px;min-width:0"><span class="crumb">${crumb}</span><h2>${esc(s.title)}</h2><span class="crumb">${branchLine(s)}</span></div>
       ${agentTag(s.agent)} <span class="state ${s.state}">${STATE_LABEL[s.state]}${s.exit ? ` · ${s.exit}` : ""}</span>
-      <div class="seg" role="group" aria-label="Session view">
-        <button type="button" data-viewmode="chat" aria-pressed="${v === "chat"}" ${s.id === "s2" ? "disabled title=\"Copilot CLI is running in the terminal fallback\"" : ""}>Chat (ACP)</button>
-        <button type="button" data-viewmode="terminal" aria-pressed="${v === "terminal"}">Terminal</button>
-      </div>
-      ${s.state !== "exited" ? `<button class="btn small" data-closesess="${s.id}">Close Session</button>` : ""}
+      ${s.state !== "exited" ? `<button class="btn small" style="margin-left:auto" data-closesess="${s.id}">Close Session</button>` : ""}
     </div>
-    ${controls && v === "chat" ? `<div class="mhead" style="padding-block:6px;gap:8px">${controls}</div>` : ""}
-    ${v === "terminal"
-      ? `${s.id === "s2" ? `<div class="fallback-note">Terminal fallback: this Session runs in the Agent's own TUI. Waiting is detected from output silence.</div>` : ""}<pre class="term" aria-label="Terminal">${s.id === "s2" ? TERM : "$ " + AGENTS[s.agent].name.toLowerCase().split(" ")[0] + "\n(terminal view of the same Session)"}</pre>`
-      : `<div class="chat" id="chat">${renderMsgs(s)}</div>`}
+    ${controls ? `<div class="mhead" style="padding-block:6px;gap:8px">${controls}</div>` : ""}
+    <div class="chat" id="chat">${renderMsgs(s)}</div>
     ${composer(s)}`;
   const files = s.git.files.length
     ? `<ul class="files">${s.git.files.map(([k, f]) => `<li><button data-diff="${f}" aria-expanded="${!!ui.open[f]}"><b class="${k === "M" ? "m" : "a"}">${k}</b>${f}</button>${ui.open[f] ? diffView(FAKE_DIFF[f] || L("@@ " + f, "+ (example diff)")) : ""}</li>`).join("")}</ul><p class="hint">Click a file to see its diff.</p>`
@@ -1054,7 +1032,6 @@ document.addEventListener("click", e => {
   if (d.allow) return answer(d.allow, true);
   if (d.allowAlways) return answer(d.allowAlways, true, true);
   if (d.deny) return answer(d.deny, false);
-  if (d.viewmode) { sess(ui.current).view = d.viewmode; return render(); }
   if (d.diff) { ui.open[d.diff] = !ui.open[d.diff]; return render(); }
   if (d.reopen) { const s = sess(d.reopen); s.state = "idle"; s.exit = null; s.msgs.push({ r: "agent", t: "Session reopened via `session/load`. History restored." }); toast("Session reopened"); return render(); }
   if (d.closesess) { const s = sess(d.closesess); return confirmModal(`Close “${esc(s.title)}”?`, `<p style="margin:0">${s.state === "exited" ? "" : `${AGENTS[s.agent].name} is stopped first. `}${s.folderGone ? `The Worktree's folder <span class="mono">${s.wt}</span> is already gone` : `The Worktree <span class="mono">${s.wt}</span> and its commits stay`}; ${AGENTS[s.agent].name} keeps its own history.</p>`, "Close Session",
@@ -1063,7 +1040,7 @@ document.addEventListener("click", e => {
   if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }
   if (d.start) { const [fid, n] = d.start.split(":"); return openStart(fid, +n); }
   if (d.merge) { const { f, t } = ticketOf(d.merge); const pr = t.pr;
-    return confirmModal(`Merge PR #${pr.n}?`, `<p style="margin:0">fh runs <code>gh pr merge ${pr.n}</code> with the repo's default merge method. Checks: ${pr.checks}. Review: ${pr.review}. Merging closes #${t.n}.</p>`, "Merge",
+    return confirmModal(`Merge PR #${pr.n}?`, `<p style="margin:0">fh runs <code>gh pr merge ${pr.n}</code> with squash if the repo allows it, else merge, else rebase. Checks: ${pr.checks}. Review: ${pr.review}. Merging closes #${t.n}.</p>`, "Merge",
       () => { pr.state = "merged"; t.stage = "Shipped"; const s = t.sid && sess(t.sid); if (s) s.git.pr.state = "merged";
         if (f.tickets.every(x => x.stage === "Shipped")) { f.allClosed = true; f.stage = "Review"; }
         toast(`PR #${pr.n} merged · #${t.n} closed`); render(); }); }
