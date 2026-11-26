@@ -94,8 +94,11 @@ func LinkIssues(features []Feature, untriaged []Untriaged, repo gitremote.GitHub
 // Stages are left to Derive.
 //
 // Every other open issue with no parent and no Tickets is an Untriaged
-// issue, whatever its labels, "Idea: …" titles included (#92). They come
-// back newest first. Closed ones stay left out, as above.
+// issue, whatever its labels, "Idea: …" titles included (#92). So is an
+// open Ticket whose parent isn't in the set, because the parent is a
+// wayfinder issue or "Part of #N" names another issue; its Note names the
+// parent, and ready-for-agent doesn't place it (#181). They come back
+// newest first. Closed ones stay left out, as above.
 func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []Untriaged) {
 	byNum := map[int]Issue{}
 	for _, i := range issues {
@@ -105,16 +108,21 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []
 	}
 	children := map[int][]int{}
 	hasParent := map[int]bool{}
+	onBoard := map[int]bool{} // a Ticket whose parent is on the board
 	for _, i := range byNum {
 		for _, s := range i.SubIssues.Nodes {
 			if _, ok := byNum[s.Number]; ok && !slices.Contains(children[i.Number], s.Number) {
 				children[i.Number] = append(children[i.Number], s.Number)
 				hasParent[s.Number] = true
+				onBoard[s.Number] = true
 			}
 		}
 		if p := parentOf(i); p != 0 {
-			if _, ok := byNum[p]; ok && !slices.Contains(children[p], i.Number) {
-				children[p] = append(children[p], i.Number)
+			if _, ok := byNum[p]; ok {
+				if !slices.Contains(children[p], i.Number) {
+					children[p] = append(children[p], i.Number)
+				}
+				onBoard[i.Number] = true
 			}
 			hasParent[i.Number] = true
 		}
@@ -123,8 +131,15 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []
 	untriaged := []Untriaged{}
 	for _, i := range byNum {
 		kids := children[i.Number]
+		n := strconv.Itoa(i.Number)
+		if len(kids) == 0 && hasParent[i.Number] && !onBoard[i.Number] && i.State != "CLOSED" {
+			// A Ticket whose parent is a wayfinder issue or outside the
+			// issue set. Listed whatever its labels, so it isn't lost.
+			untriaged = append(untriaged, Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...),
+				Note: "parent #" + strconv.Itoa(parentOf(i)) + " not on the board"})
+			continue
+		}
 		if len(kids) == 0 && !hasParent[i.Number] && i.State != "CLOSED" && !slices.Contains(labels(i), ReadyLabel) {
-			n := strconv.Itoa(i.Number)
 			untriaged = append(untriaged, Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...)})
 			continue
 		}

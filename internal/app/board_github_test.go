@@ -546,3 +546,66 @@ func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
 		t.Errorf("untriaged = %s, want []", got)
 	}
 }
+
+func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
+		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
+		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},
+		{Number: 31, Title: "Measure hit rate", State: "OPEN", Labels: []string{"needs-triage"}, Parent: 30},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["needs-triage"],"note":"parent #30 not on the board","number":"31","ref":"#31","title":"Measure hit rate","url":"https://github.com/someone/shop/issues/31"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+	if len(objects(t, b, "features")) != 1 || len(objects(t, featureByID(t, b, "10"), "tickets")) != 1 {
+		t.Errorf("features = %s, want only Spec #10 with its one Ticket", asJSON(b["features"]))
+	}
+}
+
+func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 40, Title: "Retry uploads", State: "OPEN", Labels: []string{"ready-for-agent"}, Body: "Part of #7"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["ready-for-agent"],"note":"parent #7 not on the board","number":"40","ref":"#40","title":"Retry uploads","url":"https://github.com/someone/shop/issues/40"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+	if got := asJSON(b["features"]); got != "[]" {
+		t.Errorf("features = %s, want none", got)
+	}
+}
+
+func TestAWayfinderChildOfAWayfinderIssueIsNowhereOnTheBoard(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},
+		{Number: 31, Title: "Read the CDN docs", State: "OPEN", Labels: []string{"wayfinder:task"}, Parent: 30},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	if got := asJSON(b["untriaged"]); got != "[]" {
+		t.Errorf("untriaged = %s, want []", got)
+	}
+	if got := asJSON(b["features"]); got != "[]" {
+		t.Errorf("features = %s, want none", got)
+	}
+}
