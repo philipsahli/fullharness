@@ -74,6 +74,15 @@ func localItem(repo, ref string) (string, bool) {
 	if err != nil || !info.Mode().IsRegular() {
 		return "", false
 	}
+	// A linked folder on the way could still lead out of .scratch.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	root, err := filepath.EvalSymlinks(filepath.Join(repo, ".scratch"))
+	if err != nil || !strings.HasPrefix(resolved, root+string(filepath.Separator)) {
+		return "", false
+	}
 	return path, true
 }
 

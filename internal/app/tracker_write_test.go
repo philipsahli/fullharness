@@ -109,14 +109,23 @@ func TestMarkReadyRefusesARefThatIsNotASpecOrTicket(t *testing.T) {
 	c := f.authorisedClient()
 	f.addProject(c, repo)
 	writeFile(t, filepath.Join(repo, "README.md"), "**Status:** draft\n")
+	// A feature folder that links out of the repo is not followed.
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "spec.md"), "# Elsewhere\n")
+	if err := os.Symlink(outside, filepath.Join(repo, ".scratch", "linked")); err != nil {
+		t.Fatal(err)
+	}
 
-	for _, ref := range []string{"../outside.md", "README.md", ".scratch/../README.md", "#12", ""} {
+	for _, ref := range []string{"../outside.md", "README.md", ".scratch/../README.md", "#12", "", ".scratch/linked/spec.md"} {
 		if status, _ := f.markReady(c, repo, ref); status != http.StatusBadRequest {
 			t.Errorf("ref %q: status %d, want 400", ref, status)
 		}
 	}
 	if b, _ := os.ReadFile(filepath.Join(repo, "README.md")); string(b) != "**Status:** draft\n" {
 		t.Errorf("README.md changed: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(outside, "spec.md")); string(b) != "# Elsewhere\n" {
+		t.Errorf("linked spec.md changed: %q", b)
 	}
 }
 
