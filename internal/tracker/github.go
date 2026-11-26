@@ -57,13 +57,19 @@ var (
 	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
 
-// LinkIssues points every Spec, Ticket and Blocker at its issue in repo,
-// the Project's GitHub repository. Specs and Tickets are issues of repo. A
+// LinkIssues points every Spec, Ticket, Blocker and Untriaged issue at its
+// issue in repo, the Project's GitHub repository. Specs, Tickets and
+// Untriaged issues are issues of repo. A
 // blocker links only when it is known and in repo: gh's dependencies can
 // name an issue in another repository (Blocker.Repo), where the same
 // number is a different issue, and an unknown "#N" body line may name no
 // issue at all.
-func LinkIssues(features []Feature, repo gitremote.GitHub) {
+func LinkIssues(features []Feature, untriaged []Untriaged, repo gitremote.GitHub) {
+	for i := range untriaged {
+		if n := untriaged[i].Number; n != "" {
+			untriaged[i].URL = repo.IssueURL(n)
+		}
+	}
 	for i := range features {
 		f := &features[i]
 		f.URL = repo.IssueURL(f.ID)
@@ -86,7 +92,11 @@ func LinkIssues(features []Feature, repo gitremote.GitHub) {
 // only when open and labelled ready-for-agent. Wayfinder issues are left out.
 // aheadBranches are the Project's branches with commits ahead of its base.
 // Stages are left to Derive.
-func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
+//
+// Every other open issue with no parent and no Tickets is an Untriaged
+// issue, whatever its labels, "Idea: …" titles included (#92). They come
+// back newest first. Closed ones stay left out, as above.
+func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []Untriaged) {
 	byNum := map[int]Issue{}
 	for _, i := range issues {
 		if !wayfinder(i) {
@@ -110,8 +120,14 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 		}
 	}
 	features := []Feature{}
+	untriaged := []Untriaged{}
 	for _, i := range byNum {
 		kids := children[i.Number]
+		if len(kids) == 0 && !hasParent[i.Number] && i.State != "CLOSED" && !slices.Contains(labels(i), ReadyLabel) {
+			n := strconv.Itoa(i.Number)
+			untriaged = append(untriaged, Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...)})
+			continue
+		}
 		if len(kids) == 0 && (hasParent[i.Number] || !slices.Contains(labels(i), ReadyLabel) || i.State == "CLOSED") {
 			// A Ticket, an issue outside the factory, or a closed one-off
 			// issue: without Tickets a closed issue was never a Feature
@@ -133,7 +149,8 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) []Feature {
 		features = append(features, f)
 	}
 	slices.SortFunc(features, func(a, b Feature) int { return atoi(a.ID) - atoi(b.ID) })
-	return features
+	slices.SortFunc(untriaged, func(a, b Untriaged) int { return atoi(b.Number) - atoi(a.Number) })
+	return features, untriaged
 }
 
 func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string) Ticket {

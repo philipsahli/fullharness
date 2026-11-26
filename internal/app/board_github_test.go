@@ -486,3 +486,63 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
+		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
+		{Number: 20, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage", "bug"}},
+		{Number: 21, Title: "Old one-off", State: "CLOSED", Labels: []string{"needs-triage"}},
+		{Number: 22, Title: "Idea: dark mode", State: "OPEN"},
+		{Number: 23, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":[],"number":"22","ref":"#22","title":"Idea: dark mode","url":"https://github.com/someone/shop/issues/22"},` +
+		`{"labels":["needs-triage","bug"],"number":"20","ref":"#20","title":"A plain bug","url":"https://github.com/someone/shop/issues/20"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s (newest first; no closed one-off, no wayfinder)", got, want)
+	}
+	ids := []string{}
+	for _, ft := range objects(t, b, "features") {
+		ids = append(ids, ft["id"].(string))
+	}
+	if strings.Join(ids, ",") != "10" {
+		t.Errorf("features = %v, want only 10", ids)
+	}
+	if len(objects(t, featureByID(t, b, "10"), "tickets")) != 1 {
+		t.Error("Spec #10 lost its Ticket")
+	}
+}
+
+func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
+		{Number: 2, Title: "Idea: dark mode", State: "OPEN"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	if note := f.board(c, repo)["note"]; note != "No Specs yet; 2 issues need triage" {
+		t.Errorf("note = %q, want %q", note, "No Specs yet; 2 issues need triage")
+	}
+}
+
+func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, loginIssues, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	if got := asJSON(f.board(c, repo)["untriaged"]); got != "[]" {
+		t.Errorf("untriaged = %s, want []", got)
+	}
+}

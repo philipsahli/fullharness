@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,7 +71,7 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 		// p.URL is set only for a github.com origin, so a GitHub tracker
 		// on another host gets no links (#101).
 		if g, ok := gitremote.ParseGitHub(p.URL); ok && board.Tracker == tracker.KindGitHub {
-			tracker.LinkIssues(board.Features, g)
+			tracker.LinkIssues(board.Features, board.Untriaged, g)
 		}
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
@@ -183,7 +184,7 @@ type ghResult struct {
 // none, unsupported, or gh failed.
 func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) {
 	kind, name := tracker.Detect(repo)
-	board = tracker.Board{Tracker: kind, Features: []tracker.Feature{}}
+	board = tracker.Board{Tracker: kind, Features: []tracker.Feature{}, Untriaged: []tracker.Untriaged{}}
 	switch kind {
 	case tracker.KindLocal:
 		ok = true
@@ -205,7 +206,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 			break
 		}
 		ok = true
-		board.Features = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
+		board.Features, board.Untriaged = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in GitHub yet: run /to-spec in a Session to write one."
 		}
@@ -213,6 +214,13 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 		board.Note = name + " is not supported in v1. fh reads GitHub Issues and local markdown."
 	case tracker.KindNone:
 		board.Note = "No Issue tracker set up: add docs/agents/issue-tracker.md, or run /setup-matt-pocock-skills in a Session."
+	}
+	if n := len(board.Untriaged); n > 0 && len(board.Features) == 0 {
+		// Open issues wait for triage, so writing a Spec isn't the next step.
+		board.Note = "No Specs yet; " + strconv.Itoa(n) + " issues need triage"
+		if n == 1 {
+			board.Note = "No Specs yet; 1 issue needs triage"
+		}
 	}
 	return board, ok
 }
