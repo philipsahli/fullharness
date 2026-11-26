@@ -1,5 +1,5 @@
 ---
-status: accepted, amends ADR-0004 and ADR-0005
+status: accepted, amends ADR-0004 and ADR-0005, amended by ADR-0009 and ADR-0014
 ---
 
 # fullharness runs a fixed list of Issue tracker writes itself

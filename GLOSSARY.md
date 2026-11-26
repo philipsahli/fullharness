@@ -101,7 +101,7 @@ fullharness starting the next skill for a Feature by itself, for Features in the
 _Avoid_: pipeline, automation, bot, agent (an Agent is a CLI)
 
 **Stop point**:
-A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec, merging a PR, reviewing the screen of a PR that changes a screen, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
+A place where Autopilot waits for the user instead of going on: an answer to a grilling question, approving a Spec (Approve spec), merging a PR, reviewing the screen of a PR that changes a screen, a permission request, or a Feature that failed review twice. Each one is a Waiting Session or an Inbox item.
 _Avoid_: gate, checkpoint, pause
 
 **Autopilot history**:
@@ -109,11 +109,11 @@ What Autopilot did for one Feature, in order: each skill it started, how each tu
 _Avoid_: log (fh.log is fh's own log), audit trail, timeline
 
 **Autopilot status**:
-What Autopilot is doing with one Feature right now, worked out by fullharness from the Autopilot history, the board and the Sessions: **off** (Autopilot is off for the Project, or the Feature is not in Now), **idle** (in Now, nothing to start yet), **running** a skill, **waiting** at a Stop point, **failed** to start a skill, or **done** (the Spec is closed and the retro turn ended done). A Feature has exactly one.
-_Avoid_: state (that is a Session state), stage (that is a Stage), progress
+What Autopilot is doing with one Feature right now, worked out by fullharness from the Autopilot history, the Issue tracker and the Sessions: **off** (Autopilot is off for the Project, or the Feature is not in Now and no Autopilot turn of it is still running), **idle** (in Now, nothing to start yet), **running** a skill (also just after the Feature left Now, until that turn ends), **waiting** at a Stop point, **failed** to start a skill, or **done** (the Spec is closed and the retro turn ended done). A Feature has exactly one. Idle and waiting are not the Session states Idle and Waiting: a Feature can wait at Approve spec while no Session is Waiting.
+_Avoid_: status alone (say Autopilot status), state (that is a Session state), stage (that is a Stage), progress
 
 **Screenshot review**:
-The Stop point for a PR that changes files under `web/src`, unless its description says "No visible UI change". The user sees the Agent's screenshot of the changed screen in the Inbox and picks Looks good or Request changes; merging waits until then.
+The Stop point for a PR that changes a screen, which fullharness tells from the PR's changed files (in fullharness itself, files under `web/src`), unless its description says "No visible UI change". The user sees the Agent's screenshot of the changed screen in the Inbox and picks Looks good or Request changes; merging waits until then.
 _Avoid_: UI review, visual check, design review
 
 ## Planning
