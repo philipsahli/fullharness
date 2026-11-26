@@ -1058,7 +1058,9 @@ function renderFactory() {
   const cols = STAGES.map(([st, skill]) => {
     const fs = feats.filter(f => f.stage === st);
     const top = st === "Idea" ? triageGroup(p, unt) : "";
-    return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${top + fs.map(featCard).join("") || `<p class="hint" style="margin:4px">—</p>`}</div></div>`;
+    /* The empty Idea column names Ideas, so "one" can't read as an issue of the Needs triage group above it. */
+    const empty = st === "Idea" ? `<p class="hint" style="margin:4px">No Ideas yet: start one with Grill new idea.</p>` : `<p class="hint" style="margin:4px">—</p>`;
+    return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${top + (fs.map(featCard).join("") || empty)}</div></div>`;
   }).join("");
   $("#main").innerHTML = head + apLegend() + note + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
 }

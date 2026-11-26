@@ -258,7 +258,7 @@ export function Board({
                   />
                 )}
                 {board?.ideas.length === 0 && (
-                  <p className="empty">Start one with Grill new idea.</p>
+                  <p className="empty">No Ideas yet: start one with Grill new idea.</p>
                 )}
                 {board?.ideas.map((i) => (
                   <IdeaCard

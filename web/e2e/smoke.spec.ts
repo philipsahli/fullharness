@@ -667,6 +667,11 @@ test("Needs triage lists the Untriaged issues, and Triage opens the Start dialog
     await expect(toggle).toContainText("7");
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(group.getByRole("listitem")).toHaveCount(0);
+    // The empty-Ideas line under the group names Ideas, so "one" can't be
+    // read as one of the issues above.
+    await expect(board.locator('[aria-label="Idea"] .empty')).toHaveText(
+      "No Ideas yet: start one with Grill new idea.",
+    );
 
     await toggle.click();
     const rows = group.getByRole("listitem");
