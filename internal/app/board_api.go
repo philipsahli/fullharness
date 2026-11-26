@@ -71,7 +71,7 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 		// p.URL is set only for a github.com origin, so a GitHub tracker
 		// on another host gets no links (#101).
 		if g, ok := gitremote.ParseGitHub(p.URL); ok && board.Tracker == tracker.KindGitHub {
-			tracker.LinkIssues(board.Features, board.Untriaged, g)
+			tracker.LinkIssues(&board, g)
 		}
 		server.WriteJSON(w, http.StatusOK, withIdeas(p.Path, board, read, sessions))
 	})
@@ -195,7 +195,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 				prs = gr.prs
 			}
 		}
-		board.Features, board.Untriaged = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
+		board = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
 		}
@@ -206,7 +206,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 			break
 		}
 		ok = true
-		board.Features, board.Untriaged = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
+		board = tracker.ReadGitHub(gr.issues, gr.prs, worktree.BranchesAhead(repo))
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in GitHub yet: run /to-spec in a Session to write one."
 		}
@@ -217,9 +217,10 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 	}
 	if n := len(board.Untriaged); n > 0 && len(board.Features) == 0 {
 		// Open issues wait for triage, so writing a Spec isn't the next step.
-		board.Note = "No Specs yet; " + strconv.Itoa(n) + " issues need triage"
 		if n == 1 {
 			board.Note = "No Specs yet; 1 issue needs triage"
+		} else {
+			board.Note = "No Specs yet; " + strconv.Itoa(n) + " issues need triage"
 		}
 	}
 	return board, ok

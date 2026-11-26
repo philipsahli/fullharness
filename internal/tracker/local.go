@@ -2,7 +2,6 @@ package tracker
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -10,7 +9,7 @@ import (
 	"strings"
 )
 
-// ReadLocal reads Features from .scratch/<feature>/spec.md and
+// ReadLocal reads a local markdown board's Features from .scratch/<feature>/spec.md and
 // .scratch/<feature>/issues/<NN>-<slug>.md, as Matt's skills write them.
 // aheadBranches are the Project's branches with commits ahead of its base,
 // prs its PRs in every state (when it has a GitHub remote and gh). Stages
@@ -21,12 +20,14 @@ import (
 // instead: its ref is the file's path relative to the Project, its Status
 // its one label. They come newest first by file name; closed ones are
 // skipped.
-func ReadLocal(repo string, aheadBranches []string, prs []PR) ([]Feature, []Untriaged) {
-	features, untriaged := []Feature{}, []Untriaged{}
+func ReadLocal(repo string, aheadBranches []string, prs []PR) Board {
+	board := Board{Tracker: KindLocal, Features: []Feature{}, Untriaged: []Untriaged{}}
 	dirs, err := os.ReadDir(filepath.Join(repo, ".scratch"))
 	if err != nil {
-		return features, untriaged // no .scratch: no Features
+		return board // no .scratch: no Features
 	}
+
+	var issueFiles []untriagedFile
 
 	for _, d := range dirs {
 		if !d.IsDir() {
@@ -35,7 +36,7 @@ func ReadLocal(repo string, aheadBranches []string, prs []PR) ([]Feature, []Untr
 		dir := filepath.Join(repo, ".scratch", d.Name())
 		spec, err := os.ReadFile(filepath.Join(dir, "spec.md"))
 		if err != nil {
-			untriaged = append(untriaged, readUntriaged(d.Name(), dir)...)
+			issueFiles = append(issueFiles, readUntriaged(d.Name(), dir)...)
 			continue
 		}
 		// Local Specs have no number: the folder names the branch, and the
@@ -60,23 +61,33 @@ func ReadLocal(repo string, aheadBranches []string, prs []PR) ([]Feature, []Untr
 			f.Tickets = append(f.Tickets, t)
 		}
 		slices.SortFunc(f.Tickets, func(a, b Ticket) int { return strings.Compare(a.Number, b.Number) })
-		features = append(features, f)
+		board.Features = append(board.Features, f)
 	}
 	// Newest first: file names start with a number that grows with each
-	// issue, so the name sorts them; the path breaks a tie between folders.
-	slices.SortFunc(untriaged, func(a, b Untriaged) int {
-		if c := strings.Compare(path.Base(b.Ref), path.Base(a.Ref)); c != 0 {
+	// issue, so the name sorts them; the folder breaks a tie.
+	slices.SortFunc(issueFiles, func(a, b untriagedFile) int {
+		if c := strings.Compare(b.file, a.file); c != 0 {
 			return c
 		}
-		return strings.Compare(b.Ref, a.Ref)
+		return strings.Compare(b.folder, a.folder)
 	})
-	return features, untriaged
+	for _, f := range issueFiles {
+		board.Untriaged = append(board.Untriaged, f.issue)
+	}
+	return board
+}
+
+// untriagedFile is an Untriaged issue with the folder and file name it
+// sorts by.
+type untriagedFile struct {
+	folder, file string
+	issue        Untriaged
 }
 
 // readUntriaged reads the issue files of folder, a .scratch folder with no
 // spec.md, as Untriaged issues: with no Spec they have nowhere else to show.
-func readUntriaged(folder, dir string) []Untriaged {
-	out := []Untriaged{}
+func readUntriaged(folder, dir string) []untriagedFile {
+	var out []untriagedFile
 	files, _ := filepath.Glob(filepath.Join(dir, "issues", "*.md")) // a bad pattern is impossible here
 	for _, file := range files {
 		b, err := os.ReadFile(file)
@@ -87,12 +98,13 @@ func readUntriaged(folder, dir string) []Untriaged {
 		if t.Closed {
 			continue // closed one-off issues stay hidden, as on GitHub (#12)
 		}
-		u := Untriaged{Ref: filepath.ToSlash(filepath.Join(".scratch", folder, "issues", filepath.Base(file))),
+		name := filepath.Base(file)
+		u := Untriaged{Ref: filepath.ToSlash(filepath.Join(".scratch", folder, "issues", name)),
 			Title: t.Title, Labels: []string{}}
 		if t.Label != "" {
 			u.Labels = append(u.Labels, t.Label)
 		}
-		out = append(out, u)
+		out = append(out, untriagedFile{folder: folder, file: name, issue: u})
 	}
 	return out
 }

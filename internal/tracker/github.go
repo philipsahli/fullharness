@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -57,21 +58,20 @@ var (
 	closingRef = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)`)
 )
 
-// LinkIssues points every Spec, Ticket, Blocker and Untriaged issue at its
-// issue in repo, the Project's GitHub repository. Specs, Tickets and
-// Untriaged issues are issues of repo. A
-// blocker links only when it is known and in repo: gh's dependencies can
+// LinkIssues points every Spec, Ticket, Blocker and Untriaged issue of b at
+// its issue in repo, the Project's GitHub repository. Specs, Tickets and
+// Untriaged issues are issues of repo. A blocker links only when it is known and in repo: gh's dependencies can
 // name an issue in another repository (Blocker.Repo), where the same
 // number is a different issue, and an unknown "#N" body line may name no
 // issue at all.
-func LinkIssues(features []Feature, untriaged []Untriaged, repo gitremote.GitHub) {
-	for i := range untriaged {
-		if n := untriaged[i].Number; n != "" {
-			untriaged[i].URL = repo.IssueURL(n)
+func LinkIssues(b *Board, repo gitremote.GitHub) {
+	for i := range b.Untriaged {
+		if n := b.Untriaged[i].Number; n != "" {
+			b.Untriaged[i].URL = repo.IssueURL(n)
 		}
 	}
-	for i := range features {
-		f := &features[i]
+	for i := range b.Features {
+		f := &b.Features[i]
 		f.URL = repo.IssueURL(f.ID)
 		for j := range f.Tickets {
 			t := &f.Tickets[j]
@@ -86,7 +86,7 @@ func LinkIssues(features []Feature, untriaged []Untriaged, repo gitremote.GitHub
 	}
 }
 
-// ReadGitHub builds Features from a repository's issues and PRs
+// ReadGitHub builds a GitHub board's Features from a repository's issues and PRs
 // (#12). A Spec is an issue with sub-issues, or that others name with
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
 // only when open and labelled ready-for-agent. Wayfinder issues are left out.
@@ -99,7 +99,7 @@ func LinkIssues(features []Feature, untriaged []Untriaged, repo gitremote.GitHub
 // wayfinder issue or "Part of #N" names another issue; its Note names the
 // parent, and ready-for-agent doesn't place it (#181). They come back
 // newest first. Closed ones stay left out, as above.
-func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []Untriaged) {
+func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) Board {
 	byNum := map[int]Issue{}
 	for _, i := range issues {
 		if !wayfinder(i) {
@@ -108,7 +108,11 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []
 	}
 	children := map[int][]int{}
 	hasParent := map[int]bool{}
-	onBoard := map[int]bool{} // a Ticket whose parent is on the board
+	// onBoard marks a Ticket whose parent is on the board. The loop skips
+	// wayfinder issues, so it never reads a wayfinder parent's subIssues;
+	// GitHub returns each sub-issue link from both ends, so the Ticket's
+	// own parent field (parentOf) still names that parent.
+	onBoard := map[int]bool{}
 	for _, i := range byNum {
 		for _, s := range i.SubIssues.Nodes {
 			if _, ok := byNum[s.Number]; ok && !slices.Contains(children[i.Number], s.Number) {
@@ -129,18 +133,21 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []
 	}
 	features := []Feature{}
 	untriaged := []Untriaged{}
-	for _, i := range byNum {
+	// Ascending by number, so Features come out in order; untriaged is
+	// reversed at the end.
+	for _, num := range slices.Sorted(maps.Keys(byNum)) {
+		i := byNum[num]
 		kids := children[i.Number]
-		n := strconv.Itoa(i.Number)
-		if len(kids) == 0 && hasParent[i.Number] && !onBoard[i.Number] && i.State != "CLOSED" {
-			// A Ticket whose parent is a wayfinder issue or outside the
-			// issue set. Listed whatever its labels, so it isn't lost.
-			untriaged = append(untriaged, Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...),
-				Note: "parent #" + strconv.Itoa(parentOf(i)) + " not on the board"})
-			continue
-		}
-		if len(kids) == 0 && !hasParent[i.Number] && i.State != "CLOSED" && !slices.Contains(labels(i), ReadyLabel) {
-			untriaged = append(untriaged, Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...)})
+		// A Ticket whose parent is a wayfinder issue or outside the issue
+		// set is listed whatever its labels, so it isn't lost.
+		orphan := hasParent[i.Number] && !onBoard[i.Number]
+		if len(kids) == 0 && i.State != "CLOSED" && (orphan || !hasParent[i.Number] && !slices.Contains(labels(i), ReadyLabel)) {
+			n := strconv.Itoa(i.Number)
+			u := Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...)}
+			if orphan {
+				u.Note = "parent #" + strconv.Itoa(parentOf(i)) + " not on the board"
+			}
+			untriaged = append(untriaged, u)
 			continue
 		}
 		if len(kids) == 0 && (hasParent[i.Number] || !slices.Contains(labels(i), ReadyLabel) || i.State == "CLOSED") {
@@ -157,15 +164,14 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) ([]Feature, []
 			}
 			f.Approved = f.Approved || l == ReadyLabel
 		}
+		slices.Sort(kids)
 		for _, k := range kids {
 			f.Tickets = append(f.Tickets, githubTicket(byNum[k], byNum, prs, aheadBranches))
 		}
-		slices.SortFunc(f.Tickets, func(a, b Ticket) int { return atoi(a.Number) - atoi(b.Number) })
 		features = append(features, f)
 	}
-	slices.SortFunc(features, func(a, b Feature) int { return atoi(a.ID) - atoi(b.ID) })
-	slices.SortFunc(untriaged, func(a, b Untriaged) int { return atoi(b.Number) - atoi(a.Number) })
-	return features, untriaged
+	slices.Reverse(untriaged) // newest first
+	return Board{Tracker: KindGitHub, Features: features, Untriaged: untriaged}
 }
 
 func githubTicket(i Issue, byNum map[int]Issue, prs []PR, aheadBranches []string) Ticket {
