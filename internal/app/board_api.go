@@ -195,7 +195,7 @@ func (b *boards) read(repo string, refresh bool) (board tracker.Board, ok bool) 
 				prs = gr.prs
 			}
 		}
-		board.Features = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
+		board.Features, board.Untriaged = tracker.ReadLocal(repo, worktree.BranchesAhead(repo), prs)
 		if len(board.Features) == 0 {
 			board.Note = "No Specs in .scratch yet: run /to-spec in a Session to write one."
 		}

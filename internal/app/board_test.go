@@ -254,3 +254,63 @@ func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T
 		t.Errorf("label from a plain Status: line = %v, want ready-for-agent", l)
 	}
 }
+
+func TestIssueFilesInAFolderWithoutASpecAreUntriaged(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "login/spec.md", "# Login\n")
+	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "Crash on start", "needs-triage", "None"))
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["needs-triage"],"ref":".scratch/x/issues/01-a.md","title":"Crash on start"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+}
+
+func TestAClosedIssueFileWithoutASpecIsNotUntriaged(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "Crash on start", "needs-triage", "None"))
+	scratch(t, repo, "x/issues/02-b.md", ticket("02", "Fixed already", "done", "None"))
+	scratch(t, repo, "x/issues/03-c.md", ticket("03", "Won't do", "closed", "None"))
+	f.addProject(c, repo)
+
+	refs := []string{}
+	for _, u := range objects(t, f.board(c, repo), "untriaged") {
+		refs = append(refs, u["ref"].(string))
+	}
+
+	if got := strings.Join(refs, ","); got != ".scratch/x/issues/01-a.md" {
+		t.Errorf("untriaged refs = %s, want only the open 01-a.md", got)
+	}
+}
+
+func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "First", "needs-triage", "None"))
+	scratch(t, repo, "x/issues/03-c.md", ticket("03", "Third", "needs-info", "None"))
+	scratch(t, repo, "y/issues/02-b.md", ticket("02", "Second", "", "None"))
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	refs := []string{}
+	for _, u := range objects(t, b, "untriaged") {
+		refs = append(refs, u["ref"].(string))
+	}
+	want := ".scratch/x/issues/03-c.md,.scratch/y/issues/02-b.md,.scratch/x/issues/01-a.md"
+	if got := strings.Join(refs, ","); got != want {
+		t.Errorf("untriaged refs = %s\nwant %s", got, want)
+	}
+	if note := b["note"]; note != "No Specs yet; 3 issues need triage" {
+		t.Errorf("note = %q, want %q", note, "No Specs yet; 3 issues need triage")
+	}
+}

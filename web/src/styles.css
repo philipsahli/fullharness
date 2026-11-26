@@ -1320,6 +1320,10 @@ span.agent i {
   font-family: var(--f-mono);
   font-size: 12px;
   color: var(--muted);
+  /* A local row's ref is a file path with no spaces: break it anywhere
+     rather than overflow the column (#182). */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .triage .t {
   flex-basis: 100%;

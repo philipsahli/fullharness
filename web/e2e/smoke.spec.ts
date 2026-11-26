@@ -733,6 +733,35 @@ test("a Needs triage group of 5 or fewer starts open", async ({ page }) => {
   }
 });
 
+test("Triage on a local issue file opens the Start dialog on its path", async ({ page, fh }) => {
+  // A .scratch folder without spec.md: its issue files are Untriaged issues.
+  const repo = tempRepoWith("shop", {
+    ".scratch/x/issues/01-a.md": "# 01: Crash on start\n\n**Status:** needs-triage\n",
+    ".scratch/x/issues/02-b.md": "# 02: Slow search\n\n**Status:** needs-info\n",
+  });
+  await page.goto(fh.launchURL);
+  await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects.getByLabel("Path to a git repository").fill(repo);
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+
+  await page.getByRole("tab", { name: "Software factory" }).click();
+  const board = page.getByRole("region", { name: "Software factory" });
+  await expect(board.locator(".notice")).toHaveText("No Specs yet; 2 issues need triage");
+  const rows = board.getByRole("region", { name: "Needs triage" }).getByRole("listitem");
+  await expect(rows).toHaveText([/Slow search/, /Crash on start/]);
+  const crash = rows.filter({ hasText: "Crash on start" });
+  await expect(crash).toContainText(".scratch/x/issues/01-a.md");
+  await expect(crash.getByText("needs-triage", { exact: true })).toBeVisible();
+  await crash.getByRole("button", { name: "Triage" }).click();
+  const form = page.getByRole("form", { name: "Triage .scratch/x/issues/01-a.md" });
+  await expect(form.getByRole("textbox", { name: /Starting prompt/ })).toHaveValue(
+    "/triage .scratch/x/issues/01-a.md",
+  );
+});
+
 test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {
   const pr = (number: number, branch: string, state: string, conclusion: string) => ({
     number,
