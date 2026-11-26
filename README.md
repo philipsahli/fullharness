@@ -535,6 +535,7 @@ Before each release, on your Mac:
 | 6 claude adapter | Check 1 passes through the pinned Claude Code ACP adapter. |
 | 7 `.claude/skills/` loading | The skill in the scratch repo's `.claude/skills/` runs. |
 | 8 `OPENCODE_PERMISSION` | OpenCode sends a permission request with only that variable telling it to ask. |
+| 9 cancel and resend | A long turn, cancelled and the cancel resent every 200 ms as fh does, stops with `cancelled`, and the next prompt still runs. |
 
 It spends real tokens and needs your logins, so CI never runs it ([ADR 0007](docs/adr/0007-quality-gates.md)). Run one Agent with `go run ./scripts/smoke -agent opencode`. If a check fails after an Agent update, don't tag: file an issue with the output, and keep the Agent's stderr log, whose folder the last lines print.
 
