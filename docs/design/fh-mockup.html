@@ -202,7 +202,7 @@ tr:last-child td { border-bottom: 0; }
 .triage ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .triage li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; border-top: 1px solid var(--line); padding-top: 6px; }
 .triage li .t { flex-basis: 100%; order: -1; font-size: 13px; }
-.triage li .mono { font-size: 12px; color: var(--muted); }
+.triage li .mono { font-size: 12px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; } /* a local file path (#182) breaks anywhere */
 .triage li .btn { margin-left: auto; }
 .notice.board-note { margin: 12px 18px 0; }
 .setup { margin: 24px 18px; border: 1px dashed var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 10px; max-width: 60ch; }
@@ -781,6 +781,11 @@ const untriaged = {
     { n: 58, t: "Copilot CLI asks for permission twice", labels: ["needs-info"] },
     { n: 52, t: "Inbox contrast in dark mode", labels: ["ready-for-human"] },
   ],
+  /* Local markdown (#182): open issue files in a .scratch folder without spec.md. The ref is the file path; Status is the one tag. Newest first by file name. */
+  hf: [
+    { ref: ".scratch/bugs/issues/02-avatar-upload-fails.md", t: "Avatar upload fails on large images", labels: ["needs-triage"] },
+    { ref: ".scratch/bugs/issues/01-dark-mode-flicker.md", t: "Dark mode flickers on load", labels: ["needs-info"] },
+  ],
 };
 /* The "No Specs, 7 issues need triage" state: more than 5 rows, so the group starts collapsed. */
 const UNTRIAGED_MANY = [
@@ -1004,26 +1009,27 @@ function featCard(f) {
     <span class="n">${esc(f.name)}</span><span class="ref">${f.ref}${f.trackerIdea && !featSessions(f.id).length ? " · not grilled yet" : ""}</span>${apCardBlock(pid, f, ap)}${rdBadge(f.id)}${bar(bd(f))}${sessSummary(f.id)}${ci}${early}
     <span class="next">${f.allClosed ? "Close Spec to ship" : f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>${apOffLink(pid, f, ap)}</div>`;
 }
-/* Needs triage (#180): count always shows; collapsed above 5 rows until toggled. Triage opens the Start dialog; Autopilot never triages. */
+/* Needs triage (#180): count always shows; collapsed above 5 rows until toggled. Triage opens the Start dialog; Autopilot never triages.
+   A GitHub row has a number (#N link); a local markdown row (#182) has only a ref, the file path, shown as text. */
 function triageGroup(p, unt) {
   if (!unt.length) return "";
   const key = p.id + ":" + ui.demo, open = ui.triageOpen[key] ?? unt.length <= 5;
-  const rows = unt.map(u => `<li><span class="mono">${issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}<button class="btn small" data-triage="${p.id}:${u.n}">Triage</button></li>`).join("");
+  const rows = unt.map(u => `<li><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
   return `<section class="triage" aria-label="Needs triage"><button class="triage-head" aria-expanded="${open}" data-triagetoggle="${key}"><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>Needs triage<span class="count">${unt.length}</span></button>${open ? `<ul>${rows}</ul>` : ""}</section>`;
 }
-function openTriage(pid, n) {
+function openTriage(pid, ref) {
   const p = proj(pid), main = p.worktrees[0].path;
-  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="Triage #${n}">
-    <form id="triage-form"><h3>Triage #${n}</h3><p class="crumb" style="margin:-8px 0 0">Runs the triage skill on the issue, in ${p.name}'s main tree.</p>
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="Triage ${esc(ref)}">
+    <form id="triage-form"><h3>Triage ${esc(ref)}</h3><p class="crumb" style="margin:-8px 0 0">Runs the triage skill on the issue, in ${p.name}'s main tree.</p>
       <div class="field"><span>Agent</span><div class="radios">${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}</div></div>
       <div class="field"><span>Worktree</span><input type="text" value="${main} (main tree)" readonly></div>
-      <div class="field"><span>Starting prompt</span><input type="text" id="tr-prompt" value="/triage #${n}"></div>
+      <div class="field"><span>Starting prompt</span><input type="text" id="tr-prompt" value="/triage ${esc(ref)}"></div>
       <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
     </form></div></div>`;
   $("#triage-form").addEventListener("submit", e => {
     e.preventDefault();
     const agent = new FormData(e.target).get("agent"), id = "tr" + Date.now();
-    sessions.push({ id, title: `Triage #${n}`, project: pid, wt: main, agent, state: "starting", acp: "—", started: "just now",
+    sessions.push({ id, title: `Triage ${ref}`, project: pid, wt: main, agent, state: "starting", acp: "—", started: "just now",
       git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: $("#tr-prompt").value }] });
     closeOverlay(); toast(`Session started in ${main}`); go(id);
   });
@@ -1479,7 +1485,7 @@ document.addEventListener("click", e => {
   if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }
   if (d.start) { const [fid, n] = d.start.split(":"); return openStart(fid, +n); }
   if (d.triagetoggle) { ui.triageOpen[d.triagetoggle] = b.getAttribute("aria-expanded") !== "true"; return render(); }
-  if (d.triage) { const [pid, n] = d.triage.split(":"); return openTriage(pid, +n); }
+  if (d.triage) return openTriage(d.triage, d.triageref);
   if (d.merge) { const { f, t } = ticketOf(d.merge); const pr = t.pr;
     return confirmModal(`Merge PR #${pr.n}?`, `<p style="margin:0">fh runs <code>gh pr merge ${pr.n}</code> with the repo's default merge method. Checks: ${pr.checks}. Review: ${pr.review}. Merging closes #${t.n}.</p>`, "Merge",
       () => { pr.state = "merged"; t.stage = "Shipped"; const s = t.sid && sess(t.sid); if (s) s.git.pr.state = "merged";

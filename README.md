@@ -280,6 +280,7 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 - No skill writes that line yet: add it yourself when a Ticket is done.
 - A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
 - `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
+- A folder without `spec.md` isn't a Feature. Each open issue file in its `issues/` is an Untriaged issue, under **Needs triage**. A closed one is left off the board.
 
 A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
@@ -303,14 +304,15 @@ A local markdown Project with a GitHub remote gets its PRs the same way, matched
 
 A board with no Specs says so, with a hint to run `/to-spec` in a Session. When it has Untriaged issues, the note reads "No Specs yet; N issues need triage" instead.
 
-The **Needs triage** group at the top of the Idea column lists the Project's Untriaged issues on GitHub:
+The **Needs triage** group at the top of the Idea column lists the Project's Untriaged issues:
 
-- Each row shows the issue's `#N` link, its title, and its labels as tags (`needs-triage`, `needs-info`, or none).
+- On GitHub, each row shows the issue's `#N` link, its title, and its labels as tags (`needs-triage`, `needs-info`, or none).
+- On local markdown, each row shows the file's path, such as `.scratch/x/issues/01-a.md`, its title, and its `**Status:**` as a tag.
 - `Idea: …` issues are listed here too.
-- Rows are newest first, by issue number.
+- Rows are newest first: by issue number on GitHub, by file name on local markdown.
 - The heading shows how many there are, even while the group is collapsed.
 - The group starts collapsed when it has more than 5 rows. Once you open or close it, it stays that way across board refreshes, until you reload the page.
-- **Triage** on a row opens New Session with the `triage` skill on that issue. You start triage yourself: Autopilot never does.
+- **Triage** on a row opens New Session with the `triage` skill on that issue: `#N`, or the file's path. You start triage yourself: Autopilot never does.
 
 Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
 
