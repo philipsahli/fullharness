@@ -15,6 +15,7 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | `make test` | Runs the Go tests with the race detector. |
 | `make e2e` | Builds `bin/fh` and runs the Playwright smoke tests in Chromium. The first run downloads Chromium (about 150 MB). |
 | `make check` | Runs `lint`, `test` and `e2e`, the same as CI. Run it before you open a PR. |
+| `make stress` | Runs the Go tests that depend on what you changed against `origin/main`, 20 times each at `-cpu 1,2` with the race detector, to catch tests that fail on timing. A change outside `internal/` runs every package; `STRESS_PKGS=./...` does too. CI runs it nightly on `main` and opens a `needs-triage` issue when a test fails. |
 | `make e2e-visual` | Takes screenshots of four screens in light and dark and compares them with your last baselines. Mac only; CI never runs it. |
 | `make e2e-visual-update` | Takes new baselines in `web/e2e/__visual__/`, which git ignores. |
 | `make smoke` | Runs the release smoke test against the real Claude Code, Copilot CLI and OpenCode. It needs all three installed and logged in, and spends real tokens, so CI never runs it. See [Releasing](README.md#releasing). |
@@ -40,7 +41,7 @@ We triage new issues with these labels:
 ## Opening a pull request
 
 - Branch from `main` and open a PR against it.
-- Run `make check` before you open it.
+- Run `make check` before you open it. If it changes Go code under `internal/`, run `make stress` too and say in the PR what it ran and whether anything failed.
 - Merge only when the PR's checks are green (`gh pr checks <number>`). GitHub blocks the merge only on the ubuntu job; the macOS job isn't required yet (#37).
 - If the PR's branch is checked out in an fh Worktree, merge with `gh pr merge <number> --squash`, then run `git push origin --delete <branch>`. `--delete-branch` also deletes the Worktree, along with its ignored files, and its Sessions can no longer reopen. Remove the Worktree in fh instead.
 - Link the issue the PR closes, for example `Closes #42`.

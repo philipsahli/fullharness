@@ -14,6 +14,12 @@
 #             dark against your own last baseline. Mac only, never in CI.
 # make e2e-visual-update: take new baselines after a deliberate look change.
 # make check: everything CI runs. Run it before opening a PR.
+# make stress: the Go tests that depend on what you changed against
+#             origin/main, under -race -count=20 -cpu 1,2, to catch tests that
+#             fail on timing (#134, #153). Run it before pushing a change to
+#             Session, cancel, Worktree or server code. Not part of make check;
+#             CI runs it nightly on main (.github/workflows/stress.yml).
+#             STRESS_PKGS=./... runs everything.
 # make smoke: the release smoke test against the real Claude Code, Copilot CLI
 #             and OpenCode (scripts/smoke). Needs them installed and logged in,
 #             spends real tokens, never runs in CI (ADR 0007). Run before tagging.
@@ -28,8 +34,10 @@ DEV_DIR  ?= $(CURDIR)/.dev
 TOOLS_HASH := $(shell cat tools/go.mod tools/go.sum | shasum -a 256 | cut -c1-12)
 TOOLS      := bin/tools/$(TOOLS_HASH)
 PLAYWRIGHT_INSTALL_FLAGS ?=
+STRESS_COUNT ?= 20
+STRESS_CPU   ?= 1,2
 
-.PHONY: ui build dev lint test e2e e2e-bins e2e-visual e2e-visual-update check smoke web-deps install
+.PHONY: ui build dev lint test stress e2e e2e-bins e2e-visual e2e-visual-update check smoke web-deps install
 
 web/node_modules: web/package-lock.json
 	cd web && npm ci
@@ -72,6 +80,12 @@ test:
 	go test -race ./...
 	# The load test is built only without -race (see internal/app/load_test.go).
 	go test -count=1 -v -run TestTenStreamingSessions ./internal/app/
+
+stress:
+	@pkgs="$${STRESS_PKGS:-$$(scripts/stress-packages.sh)}"; \
+	if [ -z "$$pkgs" ]; then echo "stress: no Go package changed against origin/main"; exit 0; fi; \
+	echo "stress:" $$pkgs; \
+	go test -race -count=$(STRESS_COUNT) -cpu $(STRESS_CPU) -timeout 3h $$pkgs
 
 e2e-bins: build
 	go build -o bin/fakeagent ./internal/acp/fakeagent  # the Agent the e2e Sessions talk to

@@ -1,0 +1,54 @@
+# Nightly make stress on main (#134): every Go package under -race
+# -count=20 -cpu 1,2, on ubuntu and macOS. A test that fails on timing
+# shows here before it shows as a red PR. A failure opens a needs-triage
+# issue per OS, or comments on the one that is still open, so a flaky test
+# is never only re-run (#153).
+name: Stress
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC, off the hour to avoid the busy top
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  stress:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - run: make stress STRESS_PKGS=./... 2>&1 | tee stress.log; exit "${PIPESTATUS[0]}"
+        shell: bash
+      - name: Open or update the issue
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Nightly stress test failed on ${{ runner.os }}"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "Run: $RUN (commit ${GITHUB_SHA::7})"
+            echo
+            echo '```'
+            grep -E -A3 -- '^\s*--- FAIL|^panic|^FAIL|DATA RACE' stress.log | head -80 || true
+            echo '```'
+          } > body.md
+          n=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -1)
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body-file body.md
+          else
+            gh issue create --title "$TITLE" --label needs-triage --body-file body.md
+          fi
