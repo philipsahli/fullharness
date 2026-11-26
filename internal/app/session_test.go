@@ -80,7 +80,14 @@ func waitFor(t *testing.T, tab *websocket.Conn, id, what string, ok func(map[str
 			return s
 		}
 	}
-	t.Fatalf("session %s never reached %s", id, what)
+	t.Fatalf("session %s never reached %s%s", id, what, lateTab(tab, func(snap map[string]any) bool {
+		for _, s := range objects(t, snap, "sessions") {
+			if s["id"] == id && ok(s) {
+				return true
+			}
+		}
+		return false
+	}))
 	return nil
 }
 

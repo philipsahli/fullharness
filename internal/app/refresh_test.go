@@ -3,6 +3,7 @@ package app_test
 import (
 	"net/http"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,10 +19,28 @@ func (f *fh) connectTab(c *http.Client) *websocket.Conn {
 	if err != nil {
 		f.t.Fatalf("dial: status %d: %v", status, err)
 	}
-	if ev := readEvent(f.t, conn); ev["type"] != "snapshot" {
+	ev := readEvent(f.t, conn)
+	if ev["type"] != "snapshot" {
 		f.t.Fatalf("first event %v, want snapshot", ev["type"])
 	}
+	snapshots.Store(conn, ev)
 	return conn
+}
+
+// snapshots holds the snapshot connectTab read for each tab, so a wait that
+// times out can say when the tab connected too late (see lateTab).
+var snapshots sync.Map // *websocket.Conn → map[string]any
+
+// lateTab explains a wait on tab that timed out when the tab's snapshot
+// already showed what the wait wanted: the event happened before the tab
+// connected, and a tab sees only events after its snapshot (#151). ok
+// gets the snapshot. It returns "" otherwise.
+func lateTab(tab *websocket.Conn, ok func(snap map[string]any) bool) string {
+	snap, found := snapshots.Load(tab)
+	if !found || !ok(snap.(map[string]any)) {
+		return ""
+	}
+	return "; the tab's snapshot already showed it, so it happened before the tab connected: connect the tab before the step that gets it there (#151)"
 }
 
 func uncommittedIn(t *testing.T, ev map[string]any, repo string) any {

@@ -37,7 +37,9 @@ func waitInbox(t *testing.T, tab *websocket.Conn, n int) []map[string]any {
 			}
 		}
 	}
-	t.Fatalf("Inbox never had %d requests", n)
+	t.Fatalf("Inbox never had %d requests%s", n, lateTab(tab, func(snap map[string]any) bool {
+		return len(objects(t, snap, "inbox")) == n
+	}))
 	return nil
 }
 
