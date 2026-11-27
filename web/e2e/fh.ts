@@ -27,12 +27,15 @@ export class Fh {
   // env is added to fh's environment, e.g. a PATH with a fake gh first, and
   // ghPRs puts a logged-in fake gh on fh's PATH whose `gh pr list`
   // answers with those PRs (as `gh pr list --json` gives them); any other gh
-  // command fails.
+  // command fails. verdict sets a fake turn-end classifier that answers
+  // it for every turn (asking, done, stuck), so Autopilot never calls the
+  // real Claude Code.
   static async start({
     dev = false,
     agentScript = undefined as object | undefined,
     ghPRs = undefined as object[] | undefined,
     env = {} as Record<string, string>,
+    verdict = undefined as string | undefined,
   } = {}): Promise<Fh> {
     const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev, env);
     if (ghPRs) {
@@ -46,12 +49,20 @@ export class Fh {
       chmodSync(path.join(bin, "gh"), 0o755);
       fh.env = { ...fh.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` };
     }
+    let config = "";
     if (agentScript) {
-      writeFileSync(
-        path.join(fh.dir, "config.toml"),
-        `[agents.claude]\ncommand = [${JSON.stringify(fakeAgent)}]\nenv = { FH_FAKE_SCRIPT = ${JSON.stringify(JSON.stringify(agentScript))} }\n`,
-      );
+      config += `[agents.claude]\ncommand = [${JSON.stringify(fakeAgent)}]\nenv = { FH_FAKE_SCRIPT = ${JSON.stringify(JSON.stringify(agentScript))} }\n`;
     }
+    if (verdict) {
+      const classifier = path.join(fh.dir, "classifier");
+      writeFileSync(
+        classifier,
+        `#!/bin/sh\ncat >/dev/null\necho '{"is_error":false,"result":"${verdict}","total_cost_usd":0,"usage":{}}'\n`,
+      );
+      chmodSync(classifier, 0o755);
+      config += `\n[classifier]\nname = "fake"\ncommand = [${JSON.stringify(classifier)}]\n`;
+    }
+    if (config) writeFileSync(path.join(fh.dir, "config.toml"), config);
     await fh.launch();
     return fh;
   }

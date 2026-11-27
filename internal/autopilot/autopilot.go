@@ -59,7 +59,10 @@ type Deps struct {
 	// survives a restart.
 	Load func(*Record) error
 	Save func(Record) error
-	Log  *slog.Logger
+	// Changed, if set, runs after the history changed, with the Runner's
+	// lock held: it must not block or call back into the Runner.
+	Changed func()
+	Log     *slog.Logger
 }
 
 // Step names one step: a skill on a Feature, or on one of its Tickets.
@@ -464,6 +467,9 @@ func (r *Runner) record(step Step, id string) {
 func (r *Runner) save() {
 	if err := r.d.Save(r.rec); err != nil {
 		r.d.Log.Info("save autopilot record failed", "err", err)
+	}
+	if r.d.Changed != nil {
+		r.d.Changed()
 	}
 }
 

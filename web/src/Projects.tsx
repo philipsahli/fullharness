@@ -74,6 +74,7 @@ function ProjectItem({ project, sessions }: { project: Project; sessions: Sessio
             <input
               type="checkbox"
               checked={project.autopilot}
+              data-autopilot-switch={project.path}
               onChange={(e) => void setAutopilot(e.target.checked)}
             />
             Autopilot

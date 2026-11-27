@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
 
-// Local pixel tests (ADR 0012): four screens in light and dark, compared with
+// Local pixel tests (ADR 0012): five screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -52,6 +52,55 @@ for (const scheme of ["light", "dark"] as const) {
         await page.getByRole("tab", { name: "Software factory" }).click();
         await expect(page.locator('.column[aria-label="Tickets"]')).toContainText("2 tickets");
         await expect(page).toHaveScreenshot(`board-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    // Autopilot status badges (#203): first with Autopilot off, then one
+    // Feature running, one waiting at Spec approval, one outside Now
+    // without a badge.
+    test("Software factory board with Autopilot badges", async ({ page }) => {
+      const fh = await Fh.start({
+        ghPRs: [],
+        agentScript: { default: [{ sleepMs: 60_000 }] },
+        verdict: "done",
+      });
+      try {
+        const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+        const repo = tempRepoWith(
+          "shop",
+          {
+            ".scratch/login/spec.md":
+              "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+            ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
+            ".scratch/search/spec.md": "# Search\n\n**Roadmap:** now\n\n**Status:** needs-triage\n",
+            ".scratch/billing/spec.md": "# Billing\n\n**Roadmap:** next\n",
+          },
+          path.join(tmpdir(), "fh-visual", slug),
+        );
+        await open(page, fh, repo);
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        // Autopilot off: the Features in Now link to the switch.
+        await expect(page.getByRole("button", { name: /Turn on/ })).toHaveCount(2);
+        await expect(page).toHaveScreenshot(`board-autopilot-off-${scheme}.png`, {
+          mask: dynamic(page),
+        });
+        await page
+          .getByRole("region", { name: "Projects" })
+          .getByRole("checkbox", { name: "Autopilot" })
+          .click();
+        const badges = page.getByRole("img", { name: /^Autopilot status/ });
+        await expect(badges).toHaveCount(2);
+        await expect(badges.first()).toHaveAccessibleName(
+          "Autopilot status: Waiting at Approve spec",
+        );
+        await expect(badges.last()).toHaveAccessibleName(
+          "Autopilot status: Running /implement on #01",
+        );
+        await expect(page).toHaveScreenshot(`board-autopilot-${scheme}.png`, {
+          mask: dynamic(page),
+        });
       } finally {
         await fh.dispose();
       }
