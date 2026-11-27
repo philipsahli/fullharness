@@ -99,22 +99,30 @@ type Action struct {
 type Record struct {
 	Actions []Action `json:"actions"`
 	History []Event  `json:"history,omitempty"`
-	// Revisions are Specs the user rejected, waiting for their revision
-	// turn, oldest first: it starts once the Project isn't held, so a
-	// Project still never runs two Autopilot turns at once.
+	// Revisions are the user's notes waiting for their turn, oldest first:
+	// a Spec they rejected, or a PR they asked to change at Screenshot
+	// review. A revision starts once the Project isn't held, so a Project
+	// still never runs two Autopilot turns at once.
 	Revisions []Revision `json:"revisions,omitempty"`
 }
 
-// Revision is a rejected Spec's revision: its Step runs SkillRevise on
-// the Spec named by Ref, with the user's Note.
+// Revision is a turn the user asked for with a Note: its Step runs
+// SkillRevise on a rejected Spec, or SkillFix on a Ticket whose screens
+// the user asked to change. Ref names the Spec or Ticket, Branch is the
+// Ticket's (empty for a Spec).
 type Revision struct {
 	Step
-	Ref  string `json:"ref"`
-	Note string `json:"note"`
+	Ref    string `json:"ref"`
+	Branch string `json:"branch,omitempty"`
+	Note   string `json:"note"`
 }
 
 // SkillRevise is the skill that revises a rejected Spec.
 const SkillRevise = "to-spec"
+
+// SkillFix is the skill that changes a Ticket's screens after Request
+// changes at Screenshot review (#227).
+const SkillFix = "implement"
 
 // EventKind says what Autopilot did.
 type EventKind string
@@ -132,6 +140,8 @@ const (
 	AnswerApprove   = "approve"    // Approve spec: the Spec is ready-for-agent
 	AnswerLooksGood = "looks-good" // Screenshot review: the screens are right
 	AnswerReject    = "reject"     // Approve spec: the Spec goes back for a revision with the user's note
+	// Screenshot review: the PR goes back to its Session with the user's note.
+	AnswerRequestChanges = "request-changes"
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
@@ -366,7 +376,9 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 			// Autopilot's review ended done: the PR waits for the user's
 			// Screenshot review if it changes a screen, then for the merge.
 			// A review that ended any other way is its own Stop point.
-			if r.finished(step) {
+			// A fix the user asked for that hasn't started yet answers the
+			// Stop point already.
+			if r.finished(step) && !r.revising(p.Path, f.ID, t.Number) {
 				if reason := r.reviewedStop(p, step, t); reason != "" {
 					r.recordUnlessRepeated(Event{Step: step, Kind: KindStop, Reason: reason})
 				}
@@ -620,10 +632,62 @@ func (r *Runner) Rejected(project, feature, ref, note string) {
 	r.save()
 }
 
+// RequestedChanges records the user's Request changes at a Screenshot
+// review Stop point that waited before step, and the fix it asks for:
+// SkillFix on the Ticket ref, in its Worktree on branch, with note. The
+// caller has already posted the note on the PR (ADR-0014) and steps the
+// Project next, which starts the fix (#227).
+func (r *Runner) RequestedChanges(step Step, ref, branch, note string) {
+	fix := Step{Project: step.Project, Feature: step.Feature, Ticket: step.Ticket, Skill: SkillFix}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: AnswerRequestChanges})
+	r.rec.Revisions = append(r.rec.Revisions, Revision{Step: fix, Ref: ref, Branch: branch, Note: note})
+	r.save()
+}
+
+// AnsweredAt is when the user last gave answer at a Stop point of a
+// Feature's Ticket ("" for the Feature itself); ok is false when they
+// never did.
+func (r *Runner) AnsweredAt(project, feature, ticket, answer string) (at time.Time, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		if e := r.rec.History[i]; e.Kind == KindUser && e.Answer == answer &&
+			e.Project == project && e.Feature == feature && e.Ticket == ticket {
+			return e.Time, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// revising reports whether a revision of a Feature's Ticket waits to
+// start: its Stop point is answered, so Autopilot doesn't record it again.
+func (r *Runner) revising(project, feature, ticket string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.ContainsFunc(r.rec.Revisions, func(v Revision) bool {
+		return v.Project == project && v.Feature == feature && v.Ticket == ticket
+	})
+}
+
+// ticketSession is the Ticket's own Autopilot Session, if it hasn't
+// exited: where its change was made, as for its review.
+func (r *Runner) ticketSession(step Step) string {
+	for _, s := range r.d.Sessions.List() {
+		if s.Autopilot && s.Project == step.Project && s.State != session.Exited &&
+			s.Link != nil && s.Link.Feature == step.Feature && s.Link.Ticket == step.Ticket {
+			return s.ID
+		}
+	}
+	return ""
+}
+
 // revise starts p's oldest waiting revision, and reports whether it did:
-// as the next turn of the Autopilot Session that wrote the Spec, or in a
-// new Session when that one is gone or exited. A revision that fails to
-// start stays, and the next look tries again.
+// as the next turn of the Autopilot Session that wrote the Spec, or the
+// Ticket's own Session for a fix, or in a new Session when that one is
+// gone or exited. A revision that fails to start stays, and the next look
+// tries again.
 func (r *Runner) revise(p Project) bool {
 	r.mu.Lock()
 	i := slices.IndexFunc(r.rec.Revisions, func(v Revision) bool { return v.Project == p.Path })
@@ -635,12 +699,15 @@ func (r *Runner) revise(p Project) bool {
 	r.mu.Unlock()
 
 	id := r.specWriter(rev.Step)
+	if rev.Ticket != "" {
+		id = r.ticketSession(rev.Step)
+	}
 	var err error
 	if id != "" {
 		err = r.d.FollowUp(id, rev.Skill, rev.Ref, rev.Note)
 	} else {
 		id, err = r.d.Start(Start{Project: p.Path, Agent: p.Agent, Skill: rev.Skill, Ref: rev.Ref, Note: rev.Note,
-			Link: tracker.Link{Feature: rev.Feature}})
+			Branch: rev.Branch, Link: tracker.Link{Feature: rev.Feature, Ticket: rev.Ticket}})
 	}
 	if err != nil {
 		r.d.Log.Info("autopilot revision failed", "project", p.Path, "feature", rev.Feature, "err", err)

@@ -50,7 +50,7 @@ func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifi
 			if strings.HasPrefix(s.Skill, "implement") {
 				prompt += screenshotNote
 			}
-			prompt = withReviewNote(prompt, s.Note)
+			prompt = withReviewNote(prompt, s.Skill, s.Note)
 			link := s.Link
 			req := newSession{Project: s.Project, Agent: s.Agent, Prompt: prompt, Link: &link, autopilot: true}
 			req.Worktree, req.Branch = d.worktreeFor(s.Project, s.Branch)
@@ -66,7 +66,7 @@ func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifi
 			if err != nil {
 				return err
 			}
-			return d.sessions.Prompt(id, withReviewNote(prompt, note))
+			return d.sessions.Prompt(id, withReviewNote(prompt, skill, note))
 		},
 		Classify: c.Classify,
 		Load:     func(r *autopilot.Record) error { return d.state.Autopilot(r) },
@@ -90,14 +90,21 @@ func (d sessionDeps) skillPrompt(agentID, skill, ref string) (string, error) {
 	return cmd + " " + ref, nil
 }
 
-// withReviewNote adds the user's Reject note to a revision's prompt
-// (ADR-0014), so the Agent knows what to change; no note leaves the
-// prompt as the board's buttons write it.
-func withReviewNote(prompt, note string) string {
-	if note == "" {
+// withReviewNote adds the user's note to a revision's prompt (ADR-0014),
+// so the Agent knows what to change: a Reject at Approve spec for
+// SkillRevise, Request changes at Screenshot review for SkillFix (#227).
+// No note leaves the prompt as the board's buttons write it.
+func withReviewNote(prompt, skill, note string) string {
+	switch {
+	case note == "":
 		return prompt
+	case skill == autopilot.SkillFix:
+		return prompt + "\n\nThe user looked at this Ticket's screens at Screenshot review and asked for changes. " +
+			"Change them as their note says, push to the same PR, and save a new PNG screenshot of each changed screen under " +
+			screenshotDir + "/ in this Worktree:\n\n" + note
+	default:
+		return prompt + "\n\nThe user rejected this Spec at Approve spec. Revise it with their note:\n\n" + note
 	}
-	return prompt + "\n\nThe user rejected this Spec at Approve spec. Revise it with their note:\n\n" + note
 }
 
 // worktreeFor picks where a step runs: the main tree for no branch, the

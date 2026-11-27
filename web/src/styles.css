@@ -2716,3 +2716,16 @@ svg.flow .fl-node[role="button"]:hover circle {
     animation: none;
   }
 }
+
+/* Request changes (#227): a screenshot saved since the user's request
+   carries a "new" mark, in the waiting colour like the item. */
+.shot span .new {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-family: var(--f-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ap-waiting);
+  background: var(--ap-waiting-tint);
+}
