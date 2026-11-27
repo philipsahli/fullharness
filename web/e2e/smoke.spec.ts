@@ -28,6 +28,15 @@ test("the token URL opens the empty app shell", async ({ page, fh }) => {
   await expect(page.getByText("No Sessions yet.")).toBeVisible();
 });
 
+// fetchSvg fetches the icon at href from fh and returns its SVG source,
+// failing the test unless fh serves it as SVG.
+async function fetchSvg(page: Page, fh: Fh, href: string): Promise<string> {
+  const res = await page.request.get(new URL(href, fh.origin).toString());
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("image/svg+xml");
+  return res.text();
+}
+
 test("the page links an SVG favicon with a dark variant", async ({ page, fh }) => {
   await page.goto(fh.launchURL);
 
@@ -37,10 +46,7 @@ test("the page links an SVG favicon with a dark variant", async ({ page, fh }) =
   const href = await icon.getAttribute("href");
   expect(href).toBeTruthy();
 
-  const res = await page.request.get(new URL(href!, fh.origin).toString());
-  expect(res.status()).toBe(200);
-  expect(res.headers()["content-type"]).toContain("image/svg+xml");
-  const svg = await res.text();
+  const svg = await fetchSvg(page, fh, href!);
   expect(svg).toContain("#0d6b5f"); // accent
   expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)[^}]*\{[^}]*#3fb8a5/);
 
@@ -97,9 +103,7 @@ test("the tab shows the Waiting indicator and count while Sessions are Waiting",
 
     await expect(page).toHaveTitle("(2) fullharness");
     await expect(icon).toHaveAttribute("href", "/favicon-waiting.svg");
-    const res = await page.request.get(new URL("/favicon-waiting.svg", fh.origin).toString());
-    expect(res.status()).toBe(200);
-    const svg = await res.text();
+    const svg = await fetchSvg(page, fh, "/favicon-waiting.svg");
     expect(svg).toContain("#ab4f09"); // Waiting colour
     expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*#f2a541/); // dark Waiting colour
 
@@ -116,6 +120,18 @@ test("the tab shows the Waiting indicator and count while Sessions are Waiting",
       await expect(page).toHaveTitle(title);
     }
     await expect(icon).toHaveAttribute("href", "/favicon.svg");
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("an Exited Session leaves the tab without the Waiting indicator", async ({ page }) => {
+  const fh = await Fh.start({ agentScript: { default: [{ exit: 1 }] } });
+  try {
+    const conversation = await startSession(page, fh, "clean up");
+    await expect(conversation.locator(".mhead .state")).toHaveText("Exited");
+    await expect(page).toHaveTitle("fullharness");
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", "/favicon.svg");
   } finally {
     await fh.dispose();
   }
