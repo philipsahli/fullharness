@@ -76,6 +76,132 @@ test("⌘K finds a Ticket of the board's Project and opens its Feature at the ro
   }
 });
 
+// The Switcher works from the keyboard alone (#248), as the mockup's
+// openPalette does: the input is a combobox that names the highlighted
+// option, focus stays in the dialog, Escape closes it from anywhere in it,
+// and the highlight scrolls into view in a long list.
+test("⌘K is a combobox that names the highlighted option and keeps focus", async ({ page }) => {
+  // Twenty open Tickets, more rows than the list shows at once.
+  const tickets = Array.from({ length: 20 }, (_, i) => ({
+    number: 11 + i,
+    title: `Shop task ${i + 1}`,
+    labels: ["ready-for-agent"],
+    parent: 10,
+  }));
+  const PATH = fakeGhPath([
+    {
+      number: 10,
+      title: "Login",
+      labels: ["ready-for-agent"],
+      subIssues: tickets.map((t) => t.number),
+    },
+    ...tickets,
+  ]);
+  const fh = await Fh.start({ env: { PATH }, agentScript: { default: [{ say: "hello" }] } });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    // The board has read the Tickets before ⌘K looks for them.
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await expect(page.getByRole("button", { name: /^Login/ })).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session, Ticket or number" });
+    const options = dialog.getByRole("option");
+    // Modal, as the mockup's openPalette: the page behind is inert to a
+    // screen reader while the Switcher is open.
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+    await search.fill("shop task");
+    await expect(options).toHaveCount(20);
+
+    // aria-activedescendant follows the highlight.
+    const selected = dialog.locator('[role="option"][aria-selected="true"]');
+    const named = async () =>
+      expect(search).toHaveAttribute(
+        "aria-activedescendant",
+        (await selected.getAttribute("id")) ?? "no id",
+      );
+    await expect(selected).toContainText("Shop task 1");
+    await named();
+    await page.keyboard.press("ArrowDown");
+    await expect(selected).toContainText("Shop task 2");
+    await named();
+
+    // The last row starts below the list's edge; walking the highlight down
+    // to it scrolls it into view.
+    const last = options.filter({ hasText: "Shop task 20" });
+    await expect(last).not.toBeInViewport();
+    for (let i = 0; i < 18; i++) await page.keyboard.press("ArrowDown");
+    await expect(selected).toContainText("Shop task 20");
+    await named();
+    await expect(last).toBeInViewport();
+
+    // Tab and Shift+Tab leave focus on the input, the dialog's one control
+    // (Chrome would otherwise focus the scrolling list, then the page);
+    // Escape still closes it.
+    await page.keyboard.press("Tab");
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// A local board's Feature id is its folder name, which may hold a space.
+// Each option id is still one valid ID reference with no whitespace, and
+// "dark mode" and "dark-mode" don't collapse to the same id.
+test("⌘K option ids hold no whitespace and stay unique when a Feature id has a space", async ({
+  page,
+}) => {
+  const shop = tempRepoWith("shop", {
+    ".scratch/dark mode/spec.md": "# Dark mode\n",
+    ".scratch/dark mode/issues/01-toggle.md": "# Toggle dark\n\n**Status:** ready-for-agent\n",
+    ".scratch/dark-mode/spec.md": "# Dark mode too\n",
+    ".scratch/dark-mode/issues/01-toggle.md":
+      "# Toggle dark again\n\n**Status:** ready-for-agent\n",
+  });
+  const fh = await Fh.start({ ghPRs: [] });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(shop);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await expect(page.getByRole("button", { name: /^Dark mode too/ })).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session, Ticket or number" });
+    const options = dialog.getByRole("option");
+    await search.fill("toggle");
+    await expect(options).toHaveCount(2);
+
+    const ids = await options.evaluateAll((els) => els.map((el) => el.id));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).toMatch(/^\S+$/);
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
+    await page.keyboard.press("ArrowDown");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[1]);
+  } finally {
+    await fh.dispose();
+  }
+});
+
 // A number finds every open Spec, Ticket, PR and issue with that number in
 // all Projects, the board's Project first, each with a grey type tag
 // (#254). A pick opens it where fh shows it.
@@ -128,6 +254,16 @@ test("⌘K finds anything by number across Projects and opens it where fh shows 
     await expect(options.nth(0)).toContainText("Issue#2Drift alert fires twice");
     await expect(options.nth(0)).toContainText("→ Needs triage");
     await expect(options.nth(1)).toContainText("Ticket#02Tag colour · Tags");
+    // By-number rows take part in the highlight (#248): each has its own id,
+    // which aria-activedescendant names as the keys move.
+    const ids = await options.evaluateAll((els) => els.map((el) => el.id));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).toMatch(/^\S+$/);
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
+    await page.keyboard.press("ArrowDown");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[1]);
+    await page.keyboard.press("ArrowUp");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
     await page.keyboard.press("Enter");
     await expect(
       page

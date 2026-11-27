@@ -438,6 +438,81 @@ test("typing / lists the Agent's slash commands; the model and usage show in the
   }
 });
 
+test("the composer's aria-activedescendant names the picked slash command while the list shows", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: { onStart: [{ commands: ["grill-me", "review", "tdd"] }] },
+  });
+  try {
+    const conversation = await startSession(page, fh);
+
+    const message = conversation.getByLabel("Message");
+    const list = conversation.getByRole("listbox", { name: "Slash commands" });
+    const options = list.getByRole("option");
+    await expect(message).not.toHaveAttribute("aria-activedescendant");
+    await message.fill("/");
+    await expect(options).toHaveCount(3);
+
+    // The picked option is the one the textarea points at.
+    const pointsAt = async (n: number) => {
+      await expect(options.nth(n)).toHaveAttribute("aria-selected", "true");
+      const id = await options.nth(n).getAttribute("id");
+      expect(id).toBeTruthy();
+      await expect(message).toHaveAttribute("aria-activedescendant", id!);
+    };
+    await pointsAt(0);
+    await message.press("ArrowDown");
+    await pointsAt(1);
+    await message.press("ArrowDown");
+    await pointsAt(2);
+    await message.press("ArrowDown"); // wraps
+    await pointsAt(0);
+    await message.press("ArrowUp"); // wraps back
+    await pointsAt(2);
+
+    await message.press("Escape");
+    await expect(list).toHaveCount(0);
+    await expect(message).not.toHaveAttribute("aria-activedescendant");
+
+    await message.fill("/re");
+    await pointsAt(0);
+    await message.press("Enter"); // picking a command hides the list
+    await expect(message).toHaveValue("/review ");
+    await expect(list).toHaveCount(0);
+    await expect(message).not.toHaveAttribute("aria-activedescendant");
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// An Agent may list a command name twice; each option still gets its own id,
+// a valid ID reference with no whitespace, so aria-activedescendant names
+// one row.
+test("slash command options have unique ids without whitespace when a name repeats", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: { onStart: [{ commands: ["review", "review", "tdd"] }] },
+  });
+  try {
+    const conversation = await startSession(page, fh);
+    const message = conversation.getByLabel("Message");
+    const options = conversation
+      .getByRole("listbox", { name: "Slash commands" })
+      .getByRole("option");
+    await message.fill("/");
+    await expect(options).toHaveCount(3);
+    const ids = await options.evaluateAll((els) => els.map((el) => el.id));
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) expect(id).toMatch(/^\S+$/);
+    await message.press("ArrowDown");
+    await expect(message).toHaveAttribute("aria-activedescendant", ids[1]);
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a permission request answered in the Inbox is answered in its Session too", async ({
   page,
 }) => {
@@ -1247,8 +1322,8 @@ test("Grill new idea starts a named Session, and its Spec links in one click", a
 });
 
 // startSession adds a repo as a Project and starts a Session in its main
-// tree with prompt, returning the Session's conversation region.
-async function startSession(page: Page, fh: Fh, prompt: string): Promise<Locator> {
+// tree, with prompt when given, returning the Session's conversation region.
+async function startSession(page: Page, fh: Fh, prompt?: string): Promise<Locator> {
   await page.goto(fh.launchURL);
   await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
   const projects = page.getByRole("region", { name: "Projects" });
@@ -1259,7 +1334,7 @@ async function startSession(page: Page, fh: Fh, prompt: string): Promise<Locator
   await page.getByRole("button", { name: "+ New Session" }).click();
   const form = page.getByRole("form", { name: "New Session" });
   await form.getByRole("radio", { name: /main/ }).check();
-  await form.getByLabel("Starting prompt (optional)").fill(prompt);
+  if (prompt !== undefined) await form.getByLabel("Starting prompt (optional)").fill(prompt);
   await form.getByRole("button", { name: "Start Session" }).click();
   return page.getByRole("region", { name: /^Session / });
 }
