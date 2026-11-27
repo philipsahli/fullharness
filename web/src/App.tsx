@@ -59,6 +59,8 @@ export function App() {
   }, []);
   const snapshot = conn.status === "open" ? conn.snapshot : undefined;
   const inboxCount = (snapshot?.inbox.length ?? 0) + awaitingUser(snapshot?.autopilot ?? []).length;
+  const waitingCount = snapshot?.sessions.filter((s) => s.state === "waiting").length ?? 0;
+  useWaitingIndicator(waitingCount);
 
   return (
     <div className="app" data-connection={conn.status}>
@@ -193,6 +195,19 @@ export function App() {
       <Empty title="Sessions" text="Start one with + New Session, or open one from the list." />
     );
   }
+}
+
+// useWaitingIndicator puts the Waiting count in the page title and swaps
+// the favicon for the variant with the Waiting indicator (#251), so the tab
+// alone tells you a Session needs you. It is not a Notification: those are
+// the desktop alerts. Both icons are in web/public; index.html links the
+// plain one, which is what a tab shows before the event channel opens.
+function useWaitingIndicator(waiting: number) {
+  useEffect(() => {
+    document.title = waiting > 0 ? `(${waiting}) fullharness` : "fullharness";
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    icon?.setAttribute("href", waiting > 0 ? "/favicon-waiting.svg" : "/favicon.svg");
+  }, [waiting]);
 }
 
 function Tab(props: {
