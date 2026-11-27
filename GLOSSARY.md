@@ -50,6 +50,10 @@ _Avoid_: stop, abort, kill
 A desktop alert that a Session started Waiting while nobody was looking at it: shown by an fh tab, or natively by macOS when no tab can. It points to the Session; answering happens there or in the Inbox.
 _Avoid_: alert, ping; and never "notifications" for the Inbox
 
+**Waiting indicator**:
+The dot on the fh tab's favicon while any Session is Waiting, together with the Waiting count in the page title: "(N) fullharness" for N Waiting Sessions. With no Waiting Session the title is "fullharness" and the icon has no dot. It shows in the tab only; it is not a Notification.
+_Avoid_: badge, unread count, notification dot
+
 **Close (a Session)**:
 Remove a Session from fullharness and free its Worktree; a live Session's Agent is stopped first. The Agent keeps its own history.
 _Avoid_: delete, kill, end

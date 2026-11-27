@@ -1,4 +1,6 @@
 <title>fullharness UI</title>
+<!-- The app's favicon (#250), linked from its source so the two can't drift. -->
+<link rel="icon" type="image/svg+xml" href="../../web/public/favicon.svg">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -49,6 +51,9 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 
 .mock-note { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 0 auto 12px; max-width: 1400px; color: var(--muted); font-size: 12.5px; }
 .mock-note strong { color: var(--fg); font-weight: 600; }
+/* A stand-in for the browser tab (#251): a screenshot of the page can't show the real one. */
+.browser-tab { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px 5px 9px; border: 1px solid var(--line); border-bottom: 0; border-radius: 9px 9px 0 0; background: var(--surface); color: var(--fg); font-size: 12.5px; align-self: end; }
+.browser-tab img { width: 16px; height: 16px; display: block; }
 
 .app { max-width: 1400px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-height: 760px; }
 
@@ -636,7 +641,8 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
     <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option><option value="sp-reject">Inbox: Reject a Spec, note open</option><option value="sp-changes">Inbox: Request changes, note open</option><option value="sp-shot">Inbox: a screenshot at full size</option><option value="sp-approved">Inbox: after Approve and Looks good</option><option value="sp-rejected">Inbox: after Reject and Request changes</option><option value="sp-back">Inbox: Screenshot review back with a new screenshot</option><option value="sp-paths">Projects: edit UI paths</option>
-  </select></label></p>
+  </select></label>
+  <span class="browser-tab" id="browser-tab" title="The browser tab: the Waiting indicator and the Waiting count (#251). Answer a Waiting Session to see them change."><img id="browser-tab-icon" alt="" src="../../web/public/favicon.svg"><span id="browser-tab-title">fullharness</span></span></p>
 
 <div class="app">
   <header class="top">
@@ -966,6 +972,15 @@ const sTree = list => sorted(list.filter(s => !s.parent)).map(s => sRow(s) + sor
 function renderRail() {
   const waiting = sessions.filter(s => s.state === "waiting").length;
   $("#sess-sum").textContent = `${sessions.length} Sessions · ${waiting} waiting`;
+  // The Waiting indicator and the Waiting count in the tab (#251): the app
+  // sets both from the Sessions in the snapshot. Exited, Idle, Working and
+  // Starting Sessions don't count. The dot is not a Notification.
+  const title = waiting ? `(${waiting}) fullharness` : "fullharness";
+  const icon = `../../web/public/${waiting ? "favicon-waiting.svg" : "favicon.svg"}`;
+  document.title = title;
+  document.querySelector('link[rel="icon"]').setAttribute("href", icon);
+  $("#browser-tab-title").textContent = title;
+  $("#browser-tab-icon").setAttribute("src", icon);
   const fids = [...new Set(sorted(sessions).filter(s => s.fid).map(s => s.fid))];
   $("#rfeats").innerHTML = fids.map(fid => { const { pid, f } = feat(fid);
     return `<div class="rgroup"><button class="rfeat" data-feat="${fid}" aria-current="${ui.view === "feature" && ui.feature === fid}">${esc(f.name)}<small>${proj(pid).name} · ${f.stage}</small></button>

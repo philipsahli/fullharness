@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Interim "fh" monogram (#250) until the final logo (#35). The browser
+       renders a favicon without the page's CSS, so the dark variant has to
+       live in here. Colours are the accent and background variables from
+       web/src/styles.css. XML comments can't hold two dashes in a row. -->
+  <style>
+    .tile { fill: #0d6b5f; }
+    .mark { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #3fb8a5; }
+      .mark { fill: #111816; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32" rx="7" />
+  <text class="mark" x="16" y="22.5" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="19" font-weight="700" letter-spacing="-1">fh</text>
+</svg>
