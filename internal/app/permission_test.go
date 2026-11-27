@@ -25,7 +25,7 @@ func askScript(extra map[string]any) script {
 // waitInbox reads events until the Inbox has n requests and returns them.
 func waitInbox(t *testing.T, tab *websocket.Conn, n int) []map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {
@@ -52,7 +52,7 @@ func waitClearedAndEnded(t *testing.T, tab *websocket.Conn, id string) {
 	t.Helper()
 	cleared, ended := false, false
 	var last map[string]any
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) && (!cleared || !ended) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {

@@ -25,17 +25,11 @@ func statusIn(t *testing.T, ev map[string]any, key, id string) map[string]any {
 	return nil
 }
 
-// statusWait is how long a test waits for an Autopilot status. A status
-// that follows a turn's end waits for the turn and the classifier, which
-// under make stress on a busy machine took more than readEvent's 5
-// seconds; a long wait doesn't slow a test that passes.
-const statusWait = 20 * time.Second
-
 // waitStatus reads events from tab until an "autopilot" event gives
 // Feature id the Autopilot status kind, and returns that status.
 func waitStatus(t *testing.T, tab *websocket.Conn, id, kind string) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(statusWait)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {
@@ -98,7 +92,7 @@ func TestAutopilotStatusFollowsTheFeatureThroughApproveSpec(t *testing.T) {
 // id a running Autopilot status on tool call tool.
 func waitTool(t *testing.T, tab *websocket.Conn, id, tool string) {
 	t.Helper()
-	deadline := time.Now().Add(statusWait)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {

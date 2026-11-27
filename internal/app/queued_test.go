@@ -35,8 +35,11 @@ func userTexts(items []map[string]any) []string {
 
 func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testing.T) {
 	t.Parallel()
+	// The first turn holds until the message is queued, however slow the
+	// machine (#220).
+	gate, openGate := turnGate(t)
 	f := startFhWithAgent(t, script{"prompts": map[string]any{
-		"long": []any{map[string]any{"sleepMs": 600}, map[string]any{"say": "first"}},
+		"long": []any{map[string]any{"waitFile": gate}, map[string]any{"say": "first"}},
 		"more": []any{map[string]any{"say": "second"}},
 	}})
 	c, tab, id, _ := newSessionIn(t, f, "long")
@@ -48,6 +51,7 @@ func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testi
 	if q := f.sessionDetail(c, id)["queued"]; q != "more" {
 		t.Errorf("queued = %v, want %q", q, "more")
 	}
+	openGate()
 
 	// Between the two turns the Session never stops at "finished a turn".
 	var states []string
@@ -158,8 +162,11 @@ func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
 
 func TestAMessageSentWhileStartingIsSentOnceTheAgentIsReady(t *testing.T) {
 	t.Parallel()
+	// The Agent's start holds until the message is sent, so the Session is
+	// still Starting when it arrives, however slow the machine (#220).
+	gate, openGate := turnGate(t)
 	f := startFhWithAgent(t, script{
-		"onStart": []any{map[string]any{"sleepMs": 400}},
+		"onStart": []any{map[string]any{"waitFile": gate}},
 		"prompts": map[string]any{"early": []any{map[string]any{"say": "hi"}}},
 	})
 	c := f.authorisedClient()
@@ -171,6 +178,7 @@ func TestAMessageSentWhileStartingIsSentOnceTheAgentIsReady(t *testing.T) {
 	if status, body := f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "early"}); status != http.StatusAccepted {
 		t.Fatalf("prompt while starting: status %d (%v), want 202", status, body)
 	}
+	openGate()
 	waitEnded(t, tab, id)
 
 	if got := userTexts(f.transcript(c, id)); !slices.Equal(got, []string{"early"}) {
@@ -211,7 +219,11 @@ func TestTheComposerClearsUnsentOnceItTookIt(t *testing.T) {
 
 func TestSendNowNeedsARunningTurn(t *testing.T) {
 	t.Parallel()
-	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"sleepMs": 400}}})
+	// The Agent's start holds until the test is done, so the Session is
+	// still Starting at send-now, however slow the machine (#220).
+	gate, openGate := turnGate(t)
+	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"waitFile": gate}}})
+	t.Cleanup(openGate)
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 	f.addProject(c, repo)

@@ -53,7 +53,7 @@ func eventsOf(t *testing.T, features []map[string]any, id string, keys ...string
 // waitEvents waits until Feature id has n events.
 func (f *fh) waitEvents(c *http.Client, project, id string, n int) []map[string]any {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	var features []map[string]any
 	for time.Now().Before(deadline) {
 		features = f.autopilotFeatures(c, project)
@@ -128,7 +128,9 @@ func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
 		{Number: 10, Title: "Login", State: "OPEN", Labels: []string{"roadmap:now", "ready-for-agent"}, SubIssues: []int{11}},
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
 	}, nil, true)
-	f := startAutopilotFh(t, script{"default": []any{map[string]any{"sleepMs": 300}, map[string]any{"say": "Opened PR #5."}}}, "done")
+	// The implement turn holds until the PR is set, as when the skill opens it.
+	gate, openGate := turnGate(t)
+	f := startAutopilotFh(t, script{"default": []any{map[string]any{"waitFile": gate}, map[string]any{"say": "Opened PR #5."}}}, "done")
 	c := f.authorisedClient()
 	repo := githubRepo(t)
 	f.addProject(c, repo)
@@ -136,6 +138,7 @@ func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
 	s := f.waitAutopilotSessions(c, 1)[0]
 	// The implement skill opens the Ticket's PR during its turn.
 	setPRs([]map[string]any{{"number": 5, "headRefName": s["title"], "state": "OPEN"}})
+	openGate()
 
 	keys := []string{"kind", "ticket", "skill", "verdict", "reason"}
 	want := []map[string]any{
@@ -186,7 +189,9 @@ func TestAReviewThatEndedStuckIsNoMergeWaitOnceItsSessionIsClosed(t *testing.T) 
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
 	}, nil, true)
 	// implement ends done, code-review ends stuck.
-	f := startAutopilotFh(t, script{"default": []any{map[string]any{"sleepMs": 300}, map[string]any{"say": "Opened PR #5."}}}, "done", "stuck")
+	// The implement turn holds until the PR is set, as when the skill opens it.
+	gate, openGate := turnGate(t)
+	f := startAutopilotFh(t, script{"default": []any{map[string]any{"waitFile": gate}, map[string]any{"say": "Opened PR #5."}}}, "done", "stuck")
 	c := f.authorisedClient()
 	repo := githubRepo(t)
 	f.addProject(c, repo)
@@ -194,6 +199,7 @@ func TestAReviewThatEndedStuckIsNoMergeWaitOnceItsSessionIsClosed(t *testing.T) 
 	s := f.waitAutopilotSessions(c, 1)[0]
 	id := s["id"].(string)
 	setPRs([]map[string]any{{"number": 5, "headRefName": s["title"], "state": "OPEN"}})
+	openGate()
 	f.waitEvents(c, repo, "10", 5) // …, skill code-review, classified stuck, stop stuck
 
 	// The user takes the stuck review over: the Project is free again, but
