@@ -243,9 +243,20 @@ tr:last-child td { border-bottom: 0; }
 .roadmap { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; padding: 16px 18px; }
 .rcol h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .rlist { list-style: none; margin: 0; padding: 6px; background: var(--sunken); border-radius: 9px; min-height: 180px; display: flex; flex-direction: column; gap: 6px; }
-.rcol.over .rlist { box-shadow: inset 0 0 0 2px var(--accent); }
-.rcard { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; display: grid; gap: 6px; cursor: grab; }
-.rcard.dragging { opacity: .5; }
+.rcard { position: relative; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px 9px 12px; display: grid; gap: 6px; min-width: 0; }
+.rcard > * { min-width: 0; }
+.rcard .rap { display: grid; gap: 4px; justify-items: start; }
+.rcard .rap .ap-outside { white-space: normal; }
+.rcard .rnog { color: var(--waiting); }
+.rcard.rfail { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.rerr { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 8px; align-items: center; color: var(--bad); font-size: 12px; background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border-radius: 6px; padding: 6px 8px; }
+.rerr b { font-weight: 600; }
+.rerr .mono { grid-column: 1 / -1; font-size: 11px; overflow-wrap: anywhere; color: var(--fg); }
+.rofflink { list-style: none; margin-top: -7px; display: grid; }
+.rlist > li.rcard:has(+ .rofflink) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.rempty { list-style: none; color: var(--muted); font-size: 12px; padding: 14px 8px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+.rhint { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ap-running); }
+.rarrow { min-width: 30px; }
 .rcard .n { font-weight: 600; }
 .rcard .ref { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
 .rtop { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
@@ -445,6 +456,15 @@ td .btn { white-space: nowrap; }
 .fcard[data-ap="off"]::before { display: none; }
 .fcard[data-ap="running"] { box-shadow: 0 6px 22px -14px var(--g); }
 .fcard-wrap { display: grid; }
+/* the Roadmap card takes the same lit edge */
+.rcard[data-ap]::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--c); box-shadow: 0 0 10px 1px var(--g); }
+.rcard[data-ap="off"]::before { display: none; }
+.rcard[data-ap="running"] { box-shadow: 0 6px 22px -14px var(--g); }
+/* a moved card lands with a glow in its status colour; a card whose write failed shakes once as it goes back */
+.rcard.moved { animation: rm-land 1s ease-out; }
+.rcard.bounced { animation: rm-shake .45s cubic-bezier(.3,.7,.4,1); }
+@keyframes rm-land { 0% { box-shadow: 0 0 0 2px var(--c, var(--accent)), 0 0 24px 3px var(--g, transparent); } 100% { box-shadow: none; } }
+@keyframes rm-shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 .fcard-wrap:has(.ap-offlink) .fcard { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .ap-offlink { border: 1px solid var(--line); border-top: 1px dashed var(--line); background: var(--ap-off-tint); color: var(--ap-off); border-radius: 0 0 8px 8px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; text-align: left; }
 .ap-offlink u { text-underline-offset: 2px; }
@@ -529,7 +549,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 @keyframes fl-breathe { 50% { transform: scale(1.25); opacity: .6; } }
 /* Reduced motion: every Autopilot animation stops; the status still shows by colour, mark and words. */
 @media (prefers-reduced-motion: reduce) {
-  .ap, .ap::before, .ap *, .ap *::before, .ap *::after, .ap-live *, .fcard[data-ap]::before, .ap-panel-glow, .apsw, .apsw i, .apsw i::after, svg.flow * { animation: none !important; transition: none !important; }
+  .ap, .ap::before, .ap *, .ap *::before, .ap *::after, .ap-live *, .fcard[data-ap]::before, .rcard.moved, .rcard.bounced, .ap-panel-glow, .apsw, .apsw i, .apsw i::after, svg.flow * { animation: none !important; transition: none !important; }
   .ap[data-ap="running"]::before { background: color-mix(in srgb, var(--c) 45%, transparent); }
   .ap-live .ap-eq span { height: 6px; }
 }
@@ -538,7 +558,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
-    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="nospecs">No Specs, 7 issues need triage</option>
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option>
   </select></label></p>
 
 <div class="app">
@@ -768,11 +788,12 @@ function rdBadge(id) {
   const v = verdict(id), n = failing(id).length;
   return `<span class="badges"><span class="rdy ${v === "Ready" ? "ready" : "notready"}">${v}${n ? ` · ${n} failing` : ""}</span>${r.assess === "Stale" ? '<span class="rdy stale">Assessment stale</span>' : ""}</span>`;
 }
-/* Roadmap group lives on the Spec or Idea issue (roadmap:* label, ADR 0005/0008); order inside a group is fh-local. Shipped Features drop off. */
+/* Roadmap group lives on the Spec (roadmap:* label, or the Roadmap: line in spec.md; ADR 0005/0008). v1 (#197): Features with a Spec only, no Ideas, no order inside a group.
+   A Feature with a Spec and no group reads as Later (inventory-operator's Backoff here). Shipped Features drop off. */
 const roadmap = {
   now:   [["fh","f-acp"],["fh","f-wt"],["fh","f-clean"],["io","f-io1"]],
-  next:  [["fh","f-board"],["hf","f-hf2"],["fh","f-diff"]],
-  later: [["io","f-io2"],["fh","f-inbox"],["hf","f-hf1"]],
+  next:  [["fh","f-board"],["hf","f-hf2"]],
+  later: [],
 };
 /* Untriaged issues (#180): open, no parent, no Tickets, not ready-for-agent.
    Or a Ticket whose parent isn't on the board, whatever its labels, with a note (#181). Newest first. */
@@ -1097,39 +1118,66 @@ function renderFeature() {
 }
 
 /* ---------- Roadmap ---------- */
+// Every Feature with a Spec, in every Project with a tracker. One with no group reads as Later; Ideas and Shipped Features are not on the Roadmap (v1, #197).
+function rmGroups() {
+  const out = { now: [...roadmap.now], next: [...roadmap.next], later: [...roadmap.later] };
+  projects.filter(p => p.tracker && factory[p.id]).forEach(p => factory[p.id].forEach(f => {
+    if (f.trackerIdea || f.stage === "Idea" || f.stage === "Shipped" || GROUPS.some(g => roadmap[g].some(([, y]) => y === f.id))) return;
+    out.later.push([p.id, f.id, "nogroup"]);
+  }));
+  return out;
+}
+const rmErr = {}; // a move whose write failed: fid -> gh's error, shown on the card that went back
 function renderRoadmap() {
-  const groups = [["now","Now"],["next","Next"],["later","Later"]], filt = ui.rmProject;
+  const groups = [["now","Now","Autopilot works here"],["next","Next",""],["later","Later",""]], filt = ui.rmProject, all = rmGroups();
   const chips = `<button class="pchip" data-rmproj="" aria-pressed="${!filt}">All Projects</button>` +
     projects.filter(p => p.tracker).map(p => `<button class="pchip" data-rmproj="${p.id}" aria-pressed="${filt === p.id}">${p.name}<small>${p.tracker}</small></button>`).join("");
-  $("#main").innerHTML = `<div class="mhead"><h2>Roadmap</h2><span class="crumb">Rank Features and Ideas across all Projects. Drag between groups; the group is saved on the Spec or Idea issue as a roadmap:* label. Shipped Features drop off.</span></div>
-    <div class="fhead">${chips}<button class="btn" data-fileidea="1" style="margin-left:auto">File an Idea</button></div>
-    <div class="roadmap">${groups.map(([g, label], gi) => {
-      const items = roadmap[g].filter(([p]) => !filt || p === filt);
-      return `<section class="rcol" data-group="${g}"><h4><span>${label}</span><span class="bd">${items.length}</span></h4><ol class="rlist">${items.map(([p, f]) => rCard(p, f, g, gi)).join("")}</ol></section>`;
+  $("#main").innerHTML = `<div class="mhead"><h2>Roadmap</h2><span class="crumb">Every Feature with a Spec, across all Projects. ← and → move a Feature to another Roadmap group and save it on the Spec at once: a roadmap:* label on GitHub, the Roadmap: line in spec.md on local markdown. Autopilot works only on Features in Now.</span></div>
+    <div class="fhead">${chips}</div>
+    <div class="roadmap">${groups.map(([g, label, hint], gi) => {
+      const items = all[g].filter(([p]) => !filt || p === filt);
+      return `<section class="rcol" data-group="${g}" aria-label="${label}"><h4><span>${label}${hint ? ` <small class="rhint">· ${hint}</small>` : ""}</span><span class="bd">${items.length}</span></h4><ol class="rlist">${items.map(([p, f, ng]) => rCard(p, f, g, gi, ng)).join("") || `<li class="rempty">No Features in ${label}</li>`}</ol></section>`;
     }).join("")}</div>`;
+  rmFlip();
 }
-function rCard(pid, fid, g, gi) {
-  const f = factory[pid].find(x => x.id === fid);
-  const live = featSessions(fid).find(s => s.state !== "exited");
-  const warn = live && g !== "now" ? `<span class="warn">Session running outside Now</span>` : "";
-  const grill = f.trackerIdea && !featSessions(fid).length ? `<button class="btn small" data-grillidea="${fid}">Grill</button>` : "";
-  return `<li class="rcard" draggable="true" data-rm="${pid}:${fid}">
-    <div class="rtop"><span class="n">${esc(f.name)}</span><span class="stage">${f.stage}</span></div>
-    <span class="ref">${proj(pid).name} · ${f.ref}</span>
-    <div class="rmeta">${rdBadge(fid) || '<span class="bd">Idea · no readiness yet</span>'}${warn}</div>
-    <div class="rmove">${grill}<button class="btn small" data-feat="${fid}">Open</button><button class="btn small" data-mv="${pid}:${fid}:-1" ${gi === 0 ? "disabled" : ""} aria-label="Move ${f.name} to the previous group">←</button><button class="btn small" data-mv="${pid}:${fid}:1" ${gi === 2 ? "disabled" : ""} aria-label="Move ${f.name} to the next group">→</button></div>
-  </li>`;
+function rCard(pid, fid, g, gi, nogroup) {
+  const f = factory[pid].find(x => x.id === fid), ap = apStatus(pid, f), err = rmErr[fid], block = apCardBlock(pid, f, ap), off = apOffLink(pid, f, ap);
+  return `<li class="rcard${err ? " rfail" : ""}" data-rm="${pid}:${fid}"${ap.st !== "off" || ap.why === "project" ? ` data-ap="${ap.st}"` : ""}>
+    <div class="rtop"><span class="n">${esc(f.name)}</span><span class="stage ${f.stage.toLowerCase()}">${f.stage}</span></div>
+    <span class="ref">${proj(pid).name} · ${f.ref}${nogroup ? ` · <span class="rnog" title="The Spec has no roadmap:* label">no Roadmap group</span>` : ""}</span>
+    ${block ? `<div class="rap">${block}</div>` : ""}
+    <div class="rmeta">${rdBadge(fid)}</div>
+    ${err ? `<div class="rerr" role="alert"><b>Not moved to ${GROUP_LABEL[err.to]}.</b><button class="btn small" data-rmdismiss="${fid}" aria-label="Dismiss the error">✕</button><span class="mono">${esc(err.msg)}</span></div>` : ""}
+    <div class="rmove"><button class="btn small" data-feat="${fid}">Open</button><button class="btn small rarrow" data-mv="${pid}:${fid}:-1" ${gi === 0 ? "disabled" : ""} aria-label="Move ${f.name} to ${gi ? GROUP_LABEL[GROUPS[gi - 1]] : "the previous group"}">←</button><button class="btn small rarrow" data-mv="${pid}:${fid}:1" ${gi === 2 ? "disabled" : ""} aria-label="Move ${f.name} to ${gi < 2 ? GROUP_LABEL[GROUPS[gi + 1]] : "the next group"}">→</button></div>
+  </li>${off ? `<li class="rofflink">${off}</li>` : ""}`;
+}
+/* Motion: a moved card slides from where it was to its new group (FLIP), then lights up. */
+let rmBefore = null, rmMoved = null;
+function rmSnap() { rmBefore = {}; document.querySelectorAll(".rcard").forEach(c => rmBefore[c.dataset.rm] = c.getBoundingClientRect()); }
+function rmFlip() {
+  if (!rmBefore || !rmMoved) return;
+  const c = document.querySelector(`.rcard[data-rm="${rmMoved.key}"]`), was = rmBefore[rmMoved.key], cls = rmMoved.cls; rmBefore = rmMoved = null;
+  if (!c) return;
+  if (was && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const now = c.getBoundingClientRect();
+    c.animate([{ transform: `translate(${was.left - now.left}px, ${was.top - now.top}px)`, boxShadow: "0 14px 30px -12px rgba(0,0,0,.35)", zIndex: 2 }, { transform: "none", zIndex: 2 }], { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+  c.classList.add(cls);
 }
 const GROUPS = ["now", "next", "later"], GROUP_LABEL = { now: "Now", next: "Next", later: "Later" };
-function moveFeature(key, toGroup, beforeKey) {
+// A move writes at once, with no confirm step; the opposite arrow undoes it. A failed write puts the card back with gh's error.
+function moveFeature(key, toGroup) {
   const [pid, fid] = key.split(":");
-  const from = GROUPS.find(g => roadmap[g].some(([p, f]) => p === pid && f === fid));
-  roadmap[from] = roadmap[from].filter(([p, f]) => !(p === pid && f === fid));
-  const list = roadmap[toGroup], idx = beforeKey ? list.findIndex(([p, f]) => `${p}:${f}` === beforeKey) : -1;
-  idx >= 0 ? list.splice(idx, 0, [pid, fid]) : list.push([pid, fid]);
-  const f = factory[pid].find(x => x.id === fid);
-  if (from !== toGroup) toast(`${f.name} moved to ${GROUP_LABEL[toGroup]} · label roadmap:${toGroup} set on ${f.ref}`);
-  render();
+  const from = GROUPS.find(g => roadmap[g].some(([p, f]) => p === pid && f === fid)) || "later";
+  const place = g => { GROUPS.forEach(x => roadmap[x] = roadmap[x].filter(([p, f]) => !(p === pid && f === fid))); roadmap[g].push([pid, fid]); };
+  const f = factory[pid].find(x => x.id === fid), local = proj(pid).tracker !== "GitHub";
+  delete rmErr[fid];
+  rmSnap(); rmMoved = { key, cls: "moved" }; place(toGroup); render();
+  if (ui.demo === "rmfail") {
+    // The card moves first; when gh refuses the write, it slides back and says why.
+    return setTimeout(() => { rmErr[fid] = { to: toGroup, msg: "gh: HTTP 403: Resource not accessible by personal access token (addLabelsToLabelable)" }; rmSnap(); rmMoved = { key, cls: "bounced" }; place(from); render(); }, 900);
+  }
+  toast(`${f.name} moved to ${GROUP_LABEL[toGroup]} · ${local ? `Roadmap: ${toGroup} written to spec.md` : `roadmap:${toGroup} set on ${f.ref}`}${toGroup === "now" && !AP_ON[pid] ? ` · Autopilot is off for ${proj(pid).name}` : ""}`);
 }
 
 /* ---------- Inbox ---------- */
@@ -1506,7 +1554,8 @@ document.addEventListener("click", e => {
   if (d.fileidea) return confirmModal("File an Idea", `<label class="field"><span>Project</span><select>${projects.filter(p => p.tracker).map(p => `<option>${p.name}</option>`).join("")}</select></label><label class="field"><span>Title</span><input type="text" value="Idea: " aria-label="Title"></label><p class="hint" style="margin:0">Creates an issue labelled idea. Grill it later from the board or the Roadmap.</p>`, "File Idea", () => toast("Issue #67 created · label idea"));
   if (d.grill) return toast("New Worktree idea/… created; Session started with /grill-with-docs");
   if (d.rmproj !== undefined) { ui.rmProject = d.rmproj; return render(); }
-  if (d.mv) { const [p, f, dir] = d.mv.split(":"); const from = GROUPS.find(g => roadmap[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
+  if (d.mv) { const [p, f, dir] = d.mv.split(":"); const all = rmGroups(), from = GROUPS.find(g => all[g].some(([x, y]) => x === p && y === f)); return moveFeature(`${p}:${f}`, GROUPS[GROUPS.indexOf(from) + (+dir)]); }
+  if (d.rmdismiss) { delete rmErr[d.rmdismiss]; return render(); }
   if (d.demoClear) { ui.demo = ""; $("#demo").value = ""; return render(); }
   if (d.new) return openNew();
   if (d.toast) return toast(d.toast);
@@ -1527,11 +1576,6 @@ document.addEventListener("keydown", e => {
     ui.view = n.dataset.view; render(); n.focus(); e.preventDefault();
   }
 });
-$("#demo").addEventListener("change", e => { ui.demo = e.target.value; if (ui.demo === "loading" || ui.demo === "error" || ui.demo === "nospecs") ui.view = "factory"; render(); });
-let dragKey = null;
-document.addEventListener("dragstart", e => { const c = e.target.closest?.(".rcard"); if (!c) return; dragKey = c.dataset.rm; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragKey); } catch (_) {} });
-document.addEventListener("dragend", () => { dragKey = null; document.querySelectorAll(".dragging, .over").forEach(el => el.classList.remove("dragging", "over")); });
-document.addEventListener("dragover", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); document.querySelectorAll(".rcol.over").forEach(el => el !== col && el.classList.remove("over")); col.classList.add("over"); });
-document.addEventListener("drop", e => { const col = e.target.closest?.(".rcol"); if (!col || !dragKey) return; e.preventDefault(); const before = e.target.closest(".rcard"); const k = dragKey; dragKey = null; moveFeature(k, col.dataset.group, before && before.dataset.rm !== k ? before.dataset.rm : null); });
+$("#demo").addEventListener("change", e => { ui.demo = e.target.value; if (ui.demo === "loading" || ui.demo === "error" || ui.demo === "nospecs") ui.view = "factory"; if (ui.demo === "rmfail") ui.view = "roadmap"; render(); });
 render();
 </script>
