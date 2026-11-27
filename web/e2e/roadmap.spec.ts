@@ -69,3 +69,85 @@ test("the Roadmap shows every Project's Features in their groups, and a chip fil
     await fh.dispose();
   }
 });
+
+// Autopilot status on Roadmap cards (#216, ADR 0013): the same badge as the
+// Feature card, from the snapshot and the autopilot event, so no request of
+// its own.
+test("a Roadmap card in Now whose Project has Autopilot off links to the switch", async ({
+  page,
+}) => {
+  const shop = tempRepoWith("shop", {
+    ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+    ".scratch/search/spec.md": "# Search\n\n**Roadmap:** next\n",
+  });
+  const fh = await Fh.start({ ghPRs: [] });
+  try {
+    await page.goto(fh.launchURL);
+    await addProject(page, shop);
+    await page.getByRole("tab", { name: "Roadmap" }).click();
+
+    const roadmap = page.getByRole("region", { name: "Roadmap" });
+    const now = roadmap.getByRole("region", { name: "Now", exact: true });
+    const login = now.getByRole("listitem").filter({ hasText: "Login" });
+    await expect(login.getByRole("img", { name: /^Autopilot status/ })).toHaveAccessibleName(
+      "Autopilot status: Autopilot off",
+    );
+    // A Feature outside Now that nothing runs for gets no badge: its group
+    // already says why.
+    await expect(
+      roadmap
+        .getByRole("region", { name: "Next", exact: true })
+        .getByRole("img", { name: /^Autopilot status/ }),
+    ).toHaveCount(0);
+
+    const toggle = page
+      .getByRole("region", { name: "Projects" })
+      .getByRole("checkbox", { name: "Autopilot" });
+    await login.getByRole("button", { name: "Autopilot off for shop · Turn on" }).click();
+    await expect(toggle).toBeFocused();
+    await expect(toggle).not.toBeChecked();
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a Roadmap card's Autopilot badge changes without a reload", async ({ page }) => {
+  const shop = tempRepoWith("shop", {
+    ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+  });
+  // Turning Autopilot on starts to-tickets for the approved Spec; the fake
+  // turn runs long enough to see, then ends asking.
+  const fh = await Fh.start({
+    ghPRs: [],
+    agentScript: { default: [{ sleepMs: 3000 }, { say: "Which labels should the tickets get?" }] },
+    verdict: "asking",
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    await addProject(page, shop);
+    await page.getByRole("tab", { name: "Roadmap" }).click();
+
+    const login = page
+      .getByRole("region", { name: "Roadmap" })
+      .getByRole("region", { name: "Now", exact: true })
+      .getByRole("listitem")
+      .filter({ hasText: "Login" });
+    const badge = login.getByRole("img", { name: /^Autopilot status/ });
+    await expect(badge).toHaveAccessibleName("Autopilot status: Autopilot off");
+
+    await page
+      .getByRole("region", { name: "Projects" })
+      .getByRole("checkbox", { name: "Autopilot" })
+      .click();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Running /to-tickets");
+    await expect(login).toHaveAttribute("data-ap", "running");
+    await expect(login.getByRole("button", { name: /Turn on/ })).toHaveCount(0);
+    await expect(badge).toHaveAccessibleName("Autopilot status: Waiting at Agent asking", {
+      timeout: 10_000,
+    });
+    await expect(login).toHaveAttribute("data-ap", "waiting");
+  } finally {
+    await fh.dispose();
+  }
+});
