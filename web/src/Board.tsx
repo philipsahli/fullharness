@@ -107,9 +107,11 @@ function mainTree(p: Project): string {
   return p.worktrees.find((w) => w.main)?.path ?? p.path;
 }
 
-// BoardFocus is a Feature the board opens on, as the Roadmap's Open asks;
-// ticket also marks that Ticket's row, as a Switcher pick asks (#195).
-export type BoardFocus = { project: string; feature: string; ticket?: string };
+// BoardFocus is what the board opens on: a Feature, as the Roadmap's Open
+// asks; with ticket, also that Ticket's row (#195); or, with triage, the
+// Ref of an Untriaged issue whose Needs triage row a Switcher pick marks
+// (#254).
+export type BoardFocus = { project: string; feature?: string; ticket?: string; triage?: string };
 
 // Board is the Software factory: one Project's Features by Stage. It reads
 // the board while it's shown, every 60 s and on Refresh; nothing is read
@@ -272,7 +274,10 @@ export function Board({
                 {board && board.untriaged.length > 0 && (
                   <NeedsTriage
                     issues={board.untriaged}
-                    open={triageOpen ?? board.untriaged.length <= triageOpenUpTo}
+                    open={
+                      triageOpen ?? (!!focus?.triage || board.untriaged.length <= triageOpenUpTo)
+                    }
+                    focusRef={focus?.triage}
                     onToggle={(o) => setTriageOpen(o)}
                     onTriage={(u) =>
                       onStart({
@@ -402,14 +407,21 @@ function IdeaCard({ idea, onLinked }: { idea: Idea; onLinked: () => void }) {
 function NeedsTriage({
   issues,
   open,
+  focusRef,
   onToggle,
   onTriage,
 }: {
   issues: Untriaged[];
   open: boolean;
+  focusRef?: string; // the issue a Switcher pick landed on: its row glows
   onToggle: (open: boolean) => void;
   onTriage: (u: Untriaged) => void;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  const hasFocusRow = issues.some((u) => u.ref === focusRef);
+  useEffect(() => {
+    if (hasFocusRow) list.current?.querySelector(".sw-flash")?.scrollIntoView({ block: "nearest" });
+  }, [hasFocusRow]);
   return (
     <section className="triage" aria-label="Needs triage">
       <button
@@ -424,9 +436,9 @@ function NeedsTriage({
         Needs triage <span className="count">{issues.length}</span>
       </button>
       {open && (
-        <ul>
+        <ul ref={list}>
           {issues.map((u) => (
-            <li key={u.ref}>
+            <li key={u.ref} className={u.ref === focusRef ? "sw-flash" : undefined}>
               <span className="num">
                 <LinkOrText url={u.url}>{u.ref}</LinkOrText>
               </span>
