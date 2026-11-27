@@ -2,13 +2,16 @@ package app_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -75,7 +78,7 @@ func (f *fh) autopilotSessions(c *http.Client) []map[string]any {
 // waitAutopilotSessions waits until Autopilot has started n Sessions.
 func (f *fh) waitAutopilotSessions(c *http.Client, n int) []map[string]any {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		if got := f.autopilotSessions(c); len(got) >= n {
 			return got
@@ -96,7 +99,7 @@ func (f *fh) waitTurnEnded(c *http.Client, id string) {
 // waitAutopilotState waits until Autopilot Session id is in one of states.
 func (f *fh) waitAutopilotState(c *http.Client, id string, states ...string) {
 	f.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		for _, s := range f.autopilotSessions(c) {
 			if st, _ := s["state"].(string); s["id"] == id && slices.Contains(states, st) {
@@ -313,7 +316,9 @@ func TestAutopilotReviewsATicketInItsOwnSessionOnceItsPRIsOpen(t *testing.T) {
 		{Number: 10, Title: "Login", State: "OPEN", Labels: []string{"roadmap:now", "ready-for-agent"}, SubIssues: []int{11}},
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
 	}, nil, true)
-	f := startAutopilotFh(t, script{"default": []any{map[string]any{"sleepMs": 300}, map[string]any{"say": "Opened PR #5."}}}, "done")
+	// The implement turn holds until the PR is set, as when the skill opens it.
+	gate, openGate := turnGate(t)
+	f := startAutopilotFh(t, script{"default": []any{map[string]any{"waitFile": gate}, map[string]any{"say": "Opened PR #5."}}}, "done")
 	c := f.authorisedClient()
 	repo := githubRepo(t)
 	f.addProject(c, repo)
@@ -323,8 +328,9 @@ func TestAutopilotReviewsATicketInItsOwnSessionOnceItsPRIsOpen(t *testing.T) {
 	id, _ := s["id"].(string)
 	// The implement skill opens the Ticket's PR during its turn.
 	setPRs([]map[string]any{{"number": 5, "headRefName": s["title"], "state": "OPEN"}})
+	openGate()
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	var got []string
 	for time.Now().Before(deadline) {
 		if got = userTexts(f.transcript(c, id)); len(got) == 2 {
@@ -450,9 +456,11 @@ func TestAutopilotStartsTheProjectsAgent(t *testing.T) {
 func TestClosingFhStopsAutopilotsTurnEndWorkBeforeItReturns(t *testing.T) {
 	t.Parallel()
 	started := filepath.Join(t.TempDir(), "classifying")
-	// Its output goes nowhere, so a killed sh leaves no pipe open behind it.
+	// The classifier writes its process ID, then takes a minute to answer.
+	// Its sleep's output goes nowhere, so a killed sh leaves no pipe open
+	// behind it.
 	f := startAutopilotFhClassifying(t, script{"default": []any{map[string]any{"say": "ok"}}},
-		fmt.Sprintf("touch %q\nsleep 3 >/dev/null 2>&1\necho '{\"is_error\":false,\"result\":\"done\"}'", started))
+		fmt.Sprintf("echo $$ > %q.tmp && mv %q.tmp %q\nsleep 60 >/dev/null 2>&1\necho '{\"is_error\":false,\"result\":\"done\"}'", started, started, started))
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 	scratch(t, repo, "login/spec.md", nowSpec("Login"))
@@ -460,8 +468,12 @@ func TestClosingFhStopsAutopilotsTurnEndWorkBeforeItReturns(t *testing.T) {
 	f.addProject(c, repo)
 	f.setAutopilot(c, repo, true)
 	f.waitAutopilotSessions(c, 1)
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if _, err := os.Stat(started); err == nil {
+	var pid int
+	for deadline := time.Now().Add(waitBudget); ; time.Sleep(10 * time.Millisecond) {
+		if b, err := os.ReadFile(started); err == nil {
+			if pid, err = strconv.Atoi(strings.TrimSpace(string(b))); err != nil {
+				t.Fatalf("classifier pid %q: %v", b, err)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -471,12 +483,19 @@ func TestClosingFhStopsAutopilotsTurnEndWorkBeforeItReturns(t *testing.T) {
 
 	begin := time.Now()
 	f.stop()
-	if took := time.Since(begin); took > 2*time.Second {
+	// A Close that waited for the classifier would take its whole minute.
+	// 20 s leaves room for a loaded machine, where a Close that cancels
+	// took up to 5 s (#220), and still tells the two apart.
+	if took := time.Since(begin); took > 20*time.Second {
 		t.Errorf("Close took %v: it waited for the classifier instead of cancelling it", took)
 	}
-	// Long enough for a classifier left running to finish and write.
+	// Close waits for the turn-end work, so the classifier is gone by now:
+	// left running, it would answer and fh would write after Close.
+	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("the classifier (pid %d) still runs after Close (kill -0: %v)", pid, err)
+	}
 	before := folderState(t, f.opts.Dir)
-	time.Sleep(3500 * time.Millisecond)
+	time.Sleep(time.Second) // for any turn-end work Close didn't wait for
 	if after := folderState(t, f.opts.Dir); !maps.Equal(before, after) {
 		t.Errorf("fh's folder changed after Close:\nbefore %v\nafter  %v", before, after)
 	}

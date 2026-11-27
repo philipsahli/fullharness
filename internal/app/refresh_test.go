@@ -60,7 +60,7 @@ func TestAddingAProjectReachesConnectedTabs(t *testing.T) {
 
 	f.post(c, "/api/projects", map[string]string{"path": repo})
 
-	ev := nextEvent(t, tab, 5*time.Second)
+	ev := nextEvent(t, tab, waitBudget)
 	if ev == nil || ev["type"] != "projects" || projects(t, ev)[0]["path"] != repo {
 		t.Fatalf("event = %v, want projects with %s", ev, repo)
 	}
@@ -77,7 +77,7 @@ func TestPeriodicRefreshPushesOnlyChanges(t *testing.T) {
 
 	writeFile(t, filepath.Join(repo, "new.txt"), "x\n")
 
-	if got := uncommittedIn(t, nextEvent(t, tab, 5*time.Second), repo); got != float64(1) {
+	if got := uncommittedIn(t, nextEvent(t, tab, waitBudget), repo); got != float64(1) {
 		t.Errorf("uncommitted after edit = %v, want 1", got)
 	}
 	if ev := nextEvent(t, tab, 10*interval); ev != nil {
@@ -99,7 +99,7 @@ func TestRefreshCommandPushesChangesAtOnce(t *testing.T) {
 	if status != http.StatusNoContent {
 		t.Fatalf("status %d, want 204", status)
 	}
-	if got := uncommittedIn(t, nextEvent(t, tab, 5*time.Second), repo); got != float64(1) {
+	if got := uncommittedIn(t, nextEvent(t, tab, waitBudget), repo); got != float64(1) {
 		t.Errorf("uncommitted = %v, want 1", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestATabConnectingAfterAQuietSpellGetsCurrentState(t *testing.T) {
 
 	tab := f.connectTab(c)
 
-	if got := uncommittedIn(t, nextEvent(t, tab, 5*time.Second), repo); got != float64(1) {
+	if got := uncommittedIn(t, nextEvent(t, tab, waitBudget), repo); got != float64(1) {
 		t.Errorf("uncommitted = %v, want 1", got)
 	}
 }

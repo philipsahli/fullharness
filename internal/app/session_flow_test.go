@@ -87,7 +87,7 @@ func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
 	_, tab, id, _ := newSessionIn(t, f, "go")
 
 	var streamed []string
-	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
+	for ev := nextEvent(t, tab, waitBudget); ev != nil; ev = nextEvent(t, tab, waitBudget) {
 		switch ev["type"] {
 		case "item":
 			if it := ev["item"].(map[string]any); it["type"] == "agent" {
@@ -352,7 +352,7 @@ func TestTheAgentsTitleReplacesTheBranchName(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"title": "Fix the login page"}}})
 	_, tab, id, _ := newSessionIn(t, f, "title please")
 
-	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
+	for ev := nextEvent(t, tab, waitBudget); ev != nil; ev = nextEvent(t, tab, waitBudget) {
 		if s, ok := ev["session"].(map[string]any); ok && s["id"] == id && s["title"] == "Fix the login page" {
 			return
 		}
@@ -365,7 +365,7 @@ func TestATurnEndRefreshesTheWorktrees(t *testing.T) {
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"writeFile": "made-by-agent.txt"}}})
 	_, tab, _, repo := newSessionIn(t, f, "write")
 
-	for ev := nextEvent(t, tab, 10*time.Second); ev != nil; ev = nextEvent(t, tab, 10*time.Second) {
+	for ev := nextEvent(t, tab, waitBudget); ev != nil; ev = nextEvent(t, tab, waitBudget) {
 		if ev["type"] == "projects" && worktreeAt(t, projects(t, ev)[0], repo)["uncommitted"] == float64(1) {
 			return // well before the 1 h refresh interval
 		}
@@ -431,7 +431,9 @@ func TestAnAgentThatFailsToStartEndsExitedNotStarting(t *testing.T) {
 	// it can use, while the process stays alive.
 	dir := t.TempDir()
 	writeConfig(t, dir, "[agents.claude]\ncommand = [\"cat\"]\n")
-	f := startFhWith(t, appOptions(dir))
+	opts := appOptions(dir)
+	opts.AgentStartTimeout = 2 * time.Second // the start times out: that is what this test waits for
+	f := startFhWith(t, opts)
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 	f.addProject(c, repo)
@@ -482,12 +484,11 @@ func TestQuittingWhileAnAgentStartsLeavesNoProcessBehind(t *testing.T) {
 	f.addProject(c, repo)
 	f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})
 	var pid []byte
-	for range 100 {
+	for deadline := time.Now().Add(waitBudget); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if b, err := os.ReadFile(pidFile); err == nil && len(b) > 0 {
 			pid = b
 			break
 		}
-		time.Sleep(20 * time.Millisecond)
 	}
 	if pid == nil {
 		t.Fatal("fake agent never started")

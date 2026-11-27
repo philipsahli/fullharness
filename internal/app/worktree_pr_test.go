@@ -30,7 +30,7 @@ func prRepo(t *testing.T, branches ...string) (f *fh, repo string, paths map[str
 // tests wait for them this way.
 func waitProjects(t *testing.T, tab *websocket.Conn, what string, ok func([]map[string]any) bool) []map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {
@@ -156,8 +156,10 @@ func TestAddingAProjectAndARefreshDoNotWaitForGh(t *testing.T) {
 	c := f.authorisedClient()
 	tab := f.connectTab(c)
 	// gh is held until the test releases it, so a call that waited on gh
-	// would never return; the timeout turns that into a failure.
-	c.Timeout = 5 * time.Second
+	// would never return; the timeout turns that into a failure. Any bound
+	// tells the two apart, so it is the generous waitBudget: an add runs git
+	// and can take seconds on a loaded machine (#220).
+	c.Timeout = waitBudget
 
 	// A turn end runs the same Refresh as /api/projects/refresh.
 	added := f.addProject(c, repo)
@@ -166,7 +168,7 @@ func TestAddingAProjectAndARefreshDoNotWaitForGh(t *testing.T) {
 	}
 
 	// Both calls returned; now check gh really was running all along.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for g.prListCalls() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("gh pr list never started")
@@ -195,7 +197,7 @@ func TestQuittingFhCancelsARunningPRFetch(t *testing.T) {
 	c := f.authorisedClient()
 	f.addProject(c, repo)
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for g.prListCalls() == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("gh pr list never started")
@@ -207,8 +209,10 @@ func TestQuittingFhCancelsARunningPRFetch(t *testing.T) {
 	if err := f.inst.Close(); err != nil {
 		t.Fatalf("stop fh: %v", err)
 	}
-	// gh's own timeout is 30 s; a Close that waited for gh would take that.
-	if d := time.Since(start); d > 5*time.Second {
+	// gh is held past the test and its own timeout is 30 s, so a Close that
+	// waited for gh would take 30 s. 15 s leaves room for a loaded machine
+	// (#220) and still tells the two apart.
+	if d := time.Since(start); d > 15*time.Second {
 		t.Errorf("Close took %v with gh held, want it to cancel the fetch", d)
 	}
 }
