@@ -117,6 +117,7 @@ func TestAProjectsOwnUIPathsStopItsPRs(t *testing.T) {
 func TestAutopilotKeepsScreenshotsOutOfGitAndTellsTheAgentWhereTheyGo(t *testing.T) {
 	t.Parallel()
 	f, c, repo, _, s := reviewed(t, []string{"internal/x.go"}, "", nil)
+	f.lastStop(c, repo)
 	exclude, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
 	if err != nil {
 		t.Fatal(err)
@@ -124,11 +125,17 @@ func TestAutopilotKeepsScreenshotsOutOfGitAndTellsTheAgentWhereTheyGo(t *testing
 	if !strings.Contains("\n"+string(exclude), "\n.fh/\n") {
 		t.Errorf(".git/info/exclude is %q, want a .fh/ line", exclude)
 	}
-	det := f.sessionDetail(c, s["id"].(string))
-	first := objects(t, det, "transcript")[0]
-	if !strings.Contains(first["text"].(string), ".fh/screenshots/") {
-		t.Errorf("the implement prompt %q doesn't say where screenshots go", first["text"])
+	prompts := userTexts(f.transcript(c, s["id"].(string)))
+	if len(prompts) == 0 || firstLine(prompts[0]) != "/implement #11" || !strings.Contains(prompts[0], ".fh/screenshots/") {
+		t.Errorf("prompts %q, want the implement skill, saying where screenshots go", prompts)
 	}
+}
+
+// firstLine is s up to its first newline: the skill and its argument of a
+// prompt Autopilot sent.
+func firstLine(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
 }
 
 func TestScreenshotsAreServedOnlyFromTheTicketsWorktree(t *testing.T) {

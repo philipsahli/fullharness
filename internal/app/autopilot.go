@@ -44,6 +44,12 @@ func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifi
 			if err != nil {
 				return "", err
 			}
+			if err := excludeFh(s.Project); err != nil {
+				d.log.Info("add .fh/ to .git/info/exclude failed", "project", s.Project, "err", err)
+			}
+			if strings.HasPrefix(s.Skill, "implement") {
+				prompt += screenshotNote
+			}
 			link := s.Link
 			req := newSession{Project: s.Project, Agent: s.Agent, Prompt: prompt, Link: &link, autopilot: true}
 			req.Worktree, req.Branch = d.worktreeFor(s.Project, s.Branch)
