@@ -554,11 +554,63 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
   .ap-live .ap-eq span { height: 6px; }
 }
 @media (max-width: 720px) { .ap-legend { padding: 10px 12px 0; } .ap-head { padding: 12px 12px 4px; } }
+
+/* Stop point items in the Inbox (#199, ADR 0014): Approve spec and Screenshot review.
+   Drawn in the waiting colour with ◉, like the badge; the item leaves with a slide once you act. */
+.ibox.stop { position: relative; border-color: color-mix(in srgb, var(--ap-waiting) 45%, var(--line));
+  background: linear-gradient(100deg, color-mix(in srgb, var(--ap-waiting-tint) 70%, var(--surface)) 0%, var(--surface) 46%);
+  box-shadow: 0 10px 28px -20px var(--ap-waiting-glow); padding-left: 18px; animation: stop-in .45s cubic-bezier(.2,.8,.3,1.1); }
+.ibox.stop::before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--ap-waiting); box-shadow: 0 0 10px var(--ap-waiting-glow); }
+.ibox.stop.leaving { animation: stop-out .42s ease-in forwards; }
+.ibox.stop .kind { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ibox.stop .kind strong { font-family: var(--f-display); font-size: 15px; letter-spacing: -.01em; }
+.ibox.stop .why { margin-top: 4px; font-size: 13px; color: var(--fg); }
+.ibox.stop .why a { color: var(--accent); }
+.spec-peek { margin-top: 8px; border-left: 2px solid var(--line); padding: 2px 0 2px 10px; font-size: 12.5px; color: var(--muted); display: grid; gap: 2px; }
+.spec-peek b { color: var(--fg); font-weight: 600; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; max-width: 640px; }
+.shot { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 0; cursor: zoom-in; display: grid; overflow: hidden; min-width: 0; text-align: left;
+  transition: transform .2s cubic-bezier(.3,.7,.3,1.2), box-shadow .2s; }
+.shot:hover { transform: translateY(-2px); box-shadow: 0 10px 22px -14px var(--ap-waiting-glow), 0 0 0 1px color-mix(in srgb, var(--ap-waiting) 40%, transparent); }
+.shot svg { display: block; width: 100%; height: auto; }
+.shot span { font-family: var(--f-mono); font-size: 11px; color: var(--muted); padding: 5px 8px; border-top: 1px solid var(--line); background: var(--surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.files .mono { font-size: 11.5px; padding: 1px 7px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); }
+.files .mono.ui { border-color: color-mix(in srgb, var(--ap-waiting) 50%, var(--line)); background: var(--ap-waiting-tint); color: var(--fg); }
+.note-box { margin-top: 10px; display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); animation: ap-slide .25s ease-out; }
+.note-box label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.note-box textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; font-size: 13px; background: var(--bg); color: var(--fg); }
+.note-box .goes { font-size: 12px; color: var(--muted); }
+.note-box .row { display: flex; gap: 8px; justify-content: flex-end; }
+.ibox.stop .acts { align-self: start; padding-top: 4px; }
+.justnow { margin-top: 4px; display: grid; gap: 8px; }
+.justnow h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.jn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 10px; animation: ap-slide .35s ease-out; }
+.jn .what { color: var(--muted); }
+.jn .ok { color: var(--ap-done); font-weight: 600; }
+.uipaths { display: flex; gap: 6px; align-items: baseline; border: 0; background: transparent; color: var(--muted); font-size: 11px; padding: 0 2px 4px 2px; margin-top: -2px; cursor: pointer; max-width: 100%; }
+.uipaths .mono { font-size: 10.5px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.uipaths:hover .mono { border-color: var(--accent); }
+.modal textarea.paths { width: 100%; min-height: 96px; font-family: var(--f-mono); font-size: 12.5px; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; background: var(--bg); color: var(--fg); resize: vertical; }
+.modal .hint2 { font-size: 12.5px; color: var(--muted); margin: 0; }
+.match { font-size: 12px; display: grid; gap: 3px; }
+.match .y { color: var(--ap-waiting); } .match .n { color: var(--muted); }
+.lightbox { width: min(980px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; display: grid; animation: lb-in .25s cubic-bezier(.2,.8,.3,1.1); }
+.lightbox .lbhead { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.lightbox .lbhead .mono { color: var(--muted); font-size: 12px; }
+.lightbox .lbhead .acts { margin-left: auto; display: flex; gap: 6px; }
+.lightbox .lbimg { background: var(--bg); padding: 14px; }
+.lightbox .lbimg svg { display: block; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 12px 40px -18px rgba(0,0,0,.45); }
+@keyframes stop-in { from { transform: translateY(8px); opacity: 0; } }
+@keyframes stop-out { to { transform: translateX(40px); opacity: 0; height: 0; padding-top: 0; padding-bottom: 0; margin: 0; } }
+@keyframes lb-in { from { transform: scale(.96); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ibox.stop, .ibox.stop.leaving, .note-box, .jn, .shot, .lightbox { animation: none !important; transition: none !important; } }
+@media (max-width: 720px) { .shots { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ibox.stop .acts { justify-content: flex-start; } }
 </style>
 
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
-    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option>
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option><option value="sp-reject">Inbox: Reject a Spec, note open</option><option value="sp-changes">Inbox: Request changes, note open</option><option value="sp-shot">Inbox: a screenshot at full size</option><option value="sp-approved">Inbox: after Approve and Looks good</option><option value="sp-rejected">Inbox: after Reject and Request changes</option><option value="sp-paths">Projects: edit UI paths</option>
   </select></label></p>
 
 <div class="app">
@@ -720,7 +772,7 @@ const factory = {
       tickets: [
         { n: 8,  t: "Start an Agent over ACP and stream messages", stage: "Shipped", pr: { n: 16, state: "merged" } },
         { n: 9,  t: "Render tool calls as collapsible cards", stage: "Shipped", pr: { n: 18, state: "merged" } },
-        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
+        { n: 10, t: "Permission request card with Allow / Deny", stage: "Review", sid: "s10", pr: { n: 21, state: "open", ci: "pass", checks: "4 of 4 passed", review: "Approved", screens: "wait" }, older: [{ n: 17, state: "closed", ci: "fail" }] },
         { n: 12, t: "Token usage in the Session header", stage: "Review", sid: "s2", pr: { n: 24, state: "draft", ci: "run", checks: "2 of 4 running" } },
         { n: 11, t: "Reopen a Session via session/load", stage: "Tickets", startable: true },
         { n: 13, t: "Waiting state from ACP turn-end events", stage: "Tickets", label: "needs-info", blockedBy: [11] },
@@ -751,6 +803,7 @@ const factory = {
     { id: "f-io3", name: "Cluster labels", stage: "Shipped", ref: "Spec #91", next: "Retro", skill: "/retro", closedEarly: 93, retroDone: true,
       tickets: [ { n: 92, t: "Read labels from the cluster API", stage: "Shipped", pr: { n: 94, state: "merged" } }, { n: 93, t: "Filter inventory by label", stage: "Implementing", note: "Spec closed by `Closes #91` in PR #94" } ] },
     { id: "f-io2", name: "Multi-cluster inventory", stage: "Spec", ref: "Spec #90", next: "Make tickets", skill: "/to-tickets" },
+    { id: "f-io4", name: "Drift alerts", stage: "Spec", ref: "Spec #96", next: "Make tickets", skill: "/to-tickets", unapproved: "needs-triage" },
   ],
   hf: [
     { id: "f-hf1", name: "Onboarding", stage: "Idea", ref: "ideas/onboarding.md", trackerIdea: true, next: "Open grilling Session", skill: "", body: "First-run onboarding: sample Flow or empty start?" },
@@ -791,7 +844,7 @@ function rdBadge(id) {
 /* Roadmap group lives on the Spec (roadmap:* label, or the Roadmap: line in spec.md; ADR 0005/0008). v1 (#197): Features with a Spec only, no Ideas, no order inside a group.
    A Feature with a Spec and no group reads as Later (inventory-operator's Backoff here). Shipped Features drop off. */
 const roadmap = {
-  now:   [["fh","f-acp"],["fh","f-wt"],["fh","f-clean"],["io","f-io1"]],
+  now:   [["fh","f-acp"],["fh","f-wt"],["fh","f-clean"],["io","f-io1"],["io","f-io4"]],
   next:  [["fh","f-board"],["hf","f-hf2"]],
   later: [],
 };
@@ -892,14 +945,14 @@ function renderRail() {
   const loose = sessions.filter(s => !s.fid);
   $("#loose").innerHTML = loose.length ? sTree(loose) : `<li class="hint" style="padding:0 8px">None. Sessions started outside a Feature land here.</li>`;
   $("#ptree").innerHTML = projects.map(p => `
-    <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}${apSwitch(p)}<small>${p.tracker ?? "no tracker"}</small></div>
+    <li class="proj"><div>${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name}${apSwitch(p)}<small>${p.tracker ?? "no tracker"}</small></div>${uiPathsLine(p)}
       <ul class="wts">${p.worktrees.map(w => {
         // The most urgent state of the Worktree's Sessions; faint with none (#167).
         const st = sessions.filter(x => x.project === p.id && x.wt === w.path).map(x => x.state).sort((a, b) => STATE_ORDER[a] - STATE_ORDER[b])[0];
         return `<li class="wt"><span class="dot ${st || "none"}" role="img" aria-label="${st ? STATE_LABEL[st] : "No Session"}"></span><span title="${p.name}.worktrees/${w.path}">${w.url ? `<a href="${w.url}" target="_blank" rel="noopener">${w.path}</a>` : w.path}</span>${w.agentWt ? '<span class="tag">Agent worktree</span>' : ""}</li>`;
       }).join("")}</ul></li>`).join("");
   const c = $("#inbox-count");
-  const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length;
+  const pending = sessions.filter(s => s.perm && !s.perm.answer).length + spawns.filter(r => !r.answer).length + stops.length;
   c.textContent = pending; pending ? c.removeAttribute("data-zero") : c.setAttribute("data-zero", "");
 }
 
@@ -1183,8 +1236,8 @@ function moveFeature(key, toGroup) {
 /* ---------- Inbox ---------- */
 function renderInbox() {
   const pend = sessions.filter(s => s.perm);
-  $("#main").innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every pending permission request and Child Session request across all Sessions, oldest first.</span></div>
-    <div class="inbox">${spawns.map(r => { const par = sess(r.parent); return `
+  $("#main").innerHTML = `<div class="mhead"><h2>Inbox</h2><span class="crumb">Every Autopilot Stop point that waits for you, then every pending permission request and Child Session request, oldest first.</span></div>
+    <div class="inbox">${stops.map(stopItem).join("")}${spawns.map(r => { const par = sess(r.parent); return `
       <div class="ibox"><div>
         <div class="meta">${agentTag(par.agent)}<span>${esc(feat(par.fid).f.name)}</span><button class="btn small" data-open="${par.id}">Open Session</button></div>
         <div style="margin-top:6px"><strong>Start a Child Session</strong> — ${AGENTS[par.agent].name} wants to start ${AGENTS[r.agent].name} in a new Worktree <span class="mono">${r.branch}</span>. Auto-approve never covers this.</div><code>${esc(r.prompt)}</code></div>
@@ -1195,7 +1248,7 @@ function renderInbox() {
         <div style="margin-top:6px"><strong>${s.perm.kind}</strong> — ${inline(s.perm.why)}</div><code>${esc(s.perm.cmd)}</code></div>
         <div class="acts">${s.perm.answer ? `<span class="resolved">${s.perm.answer}</span>` : `<button class="btn primary" data-allow="${s.id}">Allow</button><button class="btn" data-deny="${s.id}">Deny</button>`}</div>
       </div>`; }).join("")}
-      ${pend.every(s => s.perm.answer) && spawns.every(r => r.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a desktop notification.</p>` : ""}</div>`;
+      ${!stops.length && pend.every(s => s.perm.answer) && spawns.every(r => r.answer) ? `<p class="empty-note">Nothing waiting. New requests appear here and as a desktop notification.</p>` : ""}${justNowList()}</div>`;
 }
 
 /* ---------- shell ---------- */
@@ -1220,6 +1273,7 @@ const AP = {
   "f-wt":    { st: "waiting", stop: "Agent asking", t: 14, on: "#14", note: "OpenCode asks to edit internal/worktree/list.go. Answer it in the Inbox or the Session." },
   "f-clean": { st: "failed", skill: "/code-review", t: 19, on: "PR #20", note: "Copilot CLI exited before its first turn: session/new not supported." },
   "f-io1":   { st: "idle", note: "Nothing to start: every Ticket is closed. Closing Spec #87 is yours." },
+  "f-io4":   { st: "waiting", stop: "Approve spec", on: "Spec #96", note: "Autopilot wrote Spec #96. Approve or Reject it in the Inbox." },
   "f-rel":   { st: "done", note: "Spec #1 is closed and the retro turn ended done." },
 };
 const AP_WORD = { off: "Off", idle: "Idle", running: "Running", waiting: "Waiting", failed: "Failed", done: "Done" };
@@ -1279,7 +1333,15 @@ function flowNodes(t, ap) {
     (t.older || []).filter(o => o.ci === "fail").forEach(o => n.push({ k: "fail", s: `PR #${o.n} checks failed` }, { k: "run", s: "/implement (rework)" }));
     if (t.pr && t.pr.ci === "fail") n.push({ k: "fail", s: `PR #${t.pr.n} checks failed` });
     else if (t.pr && t.pr.ci === "run") n.push({ k: "pend", s: `PR #${t.pr.n} checks running` });
-    else n.push({ k: "run", s: "/code-review" }, { k: "stop", s: "Merge" });
+    else {
+      n.push({ k: "run", s: "/code-review" });
+      // Screenshot review (#199): a PR that touches the Project's UI paths stops here before merge.
+      const sc = t.pr && t.pr.screens;
+      if (sc === "wait") n.push({ k: "stop", s: "Screenshot review", lbl: "screens · yours" });
+      else if (sc === "changes") n.push({ k: "stop", s: "Screenshot review", done: true }, { k: "pend", s: "/implement (changes)" });
+      else if (sc === "ok") n.push({ k: "stop", s: "Screenshot review", done: true }, { k: "stop", s: "Merge" });
+      else n.push({ k: "stop", s: "Merge" });
+    }
   } else if (t.stage === "Implementing") n.push({ k: "pend", s: "/implement" });
   if (ap.t === t.n && ["running", "waiting", "failed"].includes(ap.st)) {
     if (n.length && (n[n.length - 1].k === "pend" || n[n.length - 1].k === "fail")) n.pop();
@@ -1310,10 +1372,10 @@ function flowGraph(pid, f, ap) {
     nodes.forEach((nd, k) => {
       const x = xOf(k), title = `<title>#${t.n} · ${esc(nd.s)}</title>`;
       if (nd.k === "run") top.push(`<circle class="fl-run${merged || k < nodes.length - 1 ? " done" : ""}" cx="${x}" cy="${y}" r="4.5">${title}</circle>`);
-      else if (nd.k === "pend") top.push(`<circle class="fl-pend" cx="${x}" cy="${y}" r="5">${title}</circle><text class="lbl" x="${x}" y="${y + 17}" text-anchor="middle">${t.pr && t.pr.ci === "run" ? "checks…" : "Session"}</text>`);
+      else if (nd.k === "pend") top.push(`<circle class="fl-pend" cx="${x}" cy="${y}" r="5">${title}</circle><text class="lbl" x="${x}" y="${y + 17}" text-anchor="middle">${t.pr && t.pr.ci === "run" ? "checks…" : t.pr && t.pr.screens === "changes" ? "changes" : "Session"}</text>`);
       else if (nd.k === "fail") top.push(`<g>${title}<path class="fl-fail" d="M${x - 4},${y - 4} L${x + 4},${y + 4} M${x + 4},${y - 4} L${x - 4},${y + 4}"/></g>`);
       else if (nd.k === "stop") top.push(nd.done ? `<rect class="fl-stop done" x="${x - 4}" y="${y - 4}" width="8" height="8" rx="1.5" transform="rotate(45 ${x} ${y})">${title}</rect>`
-        : `<g>${title}<circle class="fl-stop" cx="${x}" cy="${y}" r="6.5"/><circle class="fl-stop-dot" cx="${x}" cy="${y}" r="2.6"/><text class="lbl" x="${x}" y="${y + 19}" text-anchor="middle">merge · yours</text></g>`);
+        : `<g>${title}<circle class="fl-stop" cx="${x}" cy="${y}" r="6.5"/><circle class="fl-stop-dot" cx="${x}" cy="${y}" r="2.6"/><text class="lbl" x="${x}" y="${y + 19}" text-anchor="middle">${nd.lbl || "merge · yours"}</text></g>`);
       else if (nd.k === "cur") top.push(`<g data-ap="${ap.st}">${title}<circle class="fl-halo" cx="${x}" cy="${y}" r="11"/>${ap.st === "running" ? `<circle class="fl-ring" cx="${x}" cy="${y}" r="6"/><circle class="fl-ring r2" cx="${x}" cy="${y}" r="6"/><circle class="fl-cur" cx="${x}" cy="${y}" r="6"/>`
         : `<text class="glyph" x="${x}" y="${y + 4.5}" text-anchor="middle">${AP_GLYPH[ap.st]}</text>`}<text class="curlbl" x="${x + 16}" y="${y + 4}">${esc(nd.s)}</text></g>`);
     });
@@ -1387,6 +1449,159 @@ document.addEventListener("click", e => {
   const pid = b.dataset.apswitch; AP_ON[pid] = !AP_ON[pid];
   toast(AP_ON[pid] ? `Autopilot on for ${proj(pid).name} · stepped the Project now` : `Autopilot off for ${proj(pid).name} · a running turn finishes first`);
   render();
+});
+
+/* ---------- Stop points in the Inbox (#199, ADR 0014) ----------
+   fh adds an item when Autopilot waits at Approve spec or Screenshot review. Acting on one writes through the
+   tracker write path (#192), records the action in the Autopilot history as yours, and steps that Project at once. */
+const UI_PATHS = { fh: ["web/src/**"], io: ["web/src/**"], hf: ["web/src/**"] }; // per Project; web/src/** is the default (#199, 2026-11-27)
+const uiPathsLine = p => p.tracker ? `<button class="uipaths" data-uipaths="${p.id}" title="A PR that touches one of these paths stops at Screenshot review">UI paths <span class="mono">${esc(UI_PATHS[p.id].join(", "))}</span></button>` : "";
+const SHOTS = [
+  { file: ".fh/screenshots/permission-card.png", dark: false },
+  { file: ".fh/screenshots/permission-card-dark.png", dark: true },
+  { file: ".fh/screenshots/permission-card-inbox.png", dark: false, inbox: true },
+];
+const STOPS = () => [
+  { id: "sp1", kind: "approve", pid: "io", fid: "f-io4", spec: 96, since: "4 min ago" },
+  { id: "sp2", kind: "screens", pid: "fh", fid: "f-acp", t: 10, pr: 21, sid: "s10", since: "11 min ago",
+    files: [["web/src/PermissionCard.tsx", true], ["web/src/styles.css", true], ["internal/acp/permission.go", false]] },
+];
+let stops = STOPS(), justNow = [];
+const stopNote = {}; // a Stop point item's open note box (Reject, Request changes): id -> text
+const AP_IO4 = AP["f-io4"], T10 = () => feat("f-acp").f.tickets.find(t => t.n === 10);
+
+/* A screenshot the Agent saved, drawn as a small picture of the changed screen: a Session with the permission card. */
+function shotSvg(s, big) {
+  const c = s.dark ? { bg: "#141b19", sf: "#1d2623", ln: "#2c3834", fg: "#e6ece9", mu: "#8d9a95", ac: "#3fbfa7", wa: "#f0a04b", wt: "#33240f" }
+                   : { bg: "#f3f5f4", sf: "#ffffff", ln: "#d5dcd9", fg: "#16201d", mu: "#5b6863", ac: "#0d6b5f", wa: "#ab4f09", wt: "#fdecd3" };
+  const bar = (x, y, w, o = 1) => `<rect x="${x}" y="${y}" width="${w}" height="7" rx="3.5" fill="${c.mu}" opacity="${.35 * o}"/>`;
+  const card = (x, y, w) => `<g><rect x="${x}" y="${y}" width="${w}" height="112" rx="10" fill="${c.wt}" stroke="${c.wa}" stroke-width="1.5"/>
+    <text x="${x + 16}" y="${y + 24}" font-size="13" font-weight="700" fill="${c.wa}">Run command</text><text x="${x + 110}" y="${y + 24}" font-size="11" fill="${c.mu}">Claude Code asks</text>
+    <rect x="${x + 16}" y="${y + 36}" width="${w - 32}" height="26" rx="6" fill="${c.bg}"/><text x="${x + 26}" y="${y + 53}" font-size="12" font-family="ui-monospace,monospace" fill="${c.fg}">go test ./internal/acp/...</text>
+    <rect x="${x + 16}" y="${y + 74}" width="62" height="26" rx="7" fill="${c.ac}"/><text x="${x + 47}" y="${y + 91}" font-size="12" font-weight="600" text-anchor="middle" fill="#fff">Allow</text>
+    <rect x="${x + 86}" y="${y + 74}" width="96" height="26" rx="7" fill="${c.sf}" stroke="${c.ln}"/><text x="${x + 134}" y="${y + 91}" font-size="12" text-anchor="middle" fill="${c.fg}">Always allow</text>
+    <rect x="${x + 190}" y="${y + 74}" width="56" height="26" rx="7" fill="${c.sf}" stroke="${c.ln}"/><text x="${x + 218}" y="${y + 91}" font-size="12" text-anchor="middle" fill="${c.fg}">Deny</text></g>`;
+  const main = s.inbox
+    ? `<text x="186" y="74" font-size="17" font-weight="700" fill="${c.fg}">Inbox</text>${card(186, 92, 420)}${bar(186, 224, 300)}${bar(186, 240, 220)}`
+    : `${bar(186, 66, 360)}${bar(186, 82, 300)}<rect x="186" y="102" width="250" height="34" rx="9" fill="${c.ac}" opacity=".16"/>${bar(196, 115, 200)}${card(186, 150, 420)}${bar(186, 284, 380)}${bar(186, 300, 260)}`;
+  return `<svg viewBox="0 0 640 380" ${big ? "" : 'aria-hidden="true"'} font-family="system-ui,sans-serif">
+    <rect width="640" height="380" fill="${c.bg}"/><rect width="640" height="38" fill="${c.sf}"/><line x1="0" y1="38" x2="640" y2="38" stroke="${c.ln}"/>
+    <text x="16" y="25" font-size="15" font-weight="800" fill="${c.fg}">fh</text>
+    <rect x="58" y="9" width="210" height="21" rx="6" fill="${c.bg}"/><rect x="${s.inbox ? 196 : 62}" y="12" width="66" height="15" rx="4" fill="${c.sf}"/>
+    <rect x="0" y="39" width="164" height="341" fill="${c.bg}"/><line x1="164" y1="38" x2="164" y2="380" stroke="${c.ln}"/>
+    ${[60, 92, 124, 156].map((y, i) => `<circle cx="18" cy="${y + 3}" r="4" fill="${i === 0 ? c.wa : c.mu}" opacity="${i === 0 ? 1 : .5}"/>${bar(30, y, 100 - i * 12, 1.4)}`).join("")}
+    ${main}</svg>`;
+}
+
+function stopItem(sp) {
+  const { f } = feat(sp.fid), p = proj(sp.pid), approve = sp.kind === "approve";
+  const ap = { st: "waiting", stop: approve ? "Approve spec" : "Screenshot review" };
+  const open = stopNote[sp.id] !== undefined;
+  const meta = `<div class="meta">${apBadge(ap)}<span>${p.name} · ${esc(f.name)}${sp.t ? ` · #${sp.t}` : ""}</span><span>${sp.since}</span><button class="btn small" data-feat="${sp.fid}">Open Feature</button>${sp.sid ? `<button class="btn small" data-open="${sp.sid}">Open Session</button>` : ""}</div>`;
+  const note = !open ? "" : `<div class="note-box"><label for="note-${sp.id}">${approve ? `Why reject? fh posts this on Spec #${sp.spec}.` : `What's wrong? fh posts this on PR #${sp.pr}.`}</label>
+    <textarea id="note-${sp.id}" data-note="${sp.id}" placeholder="${approve ? "What the Spec gets wrong or leaves out" : "What to change on the screen"}">${esc(stopNote[sp.id])}</textarea>
+    <span class="goes">${approve
+      ? `Then fh sends it to the Autopilot Session that wrote the Spec. That Session has exited, so fh starts a new Autopilot Session with <b class="mono">/to-spec</b>, your note and the Spec. When the revision ends, a new Approve spec item comes back here.`
+      : `Then fh sends it to #${sp.t}'s Autopilot Session as its next turn. When the Agent saves a new screenshot, a new Screenshot review item comes back here.`}</span>
+    <div class="row"><button class="btn" data-notecancel="${sp.id}">Cancel</button><button class="btn primary" data-notesend="${sp.id}">${approve ? "Post and send" : "Post and send"}</button></div></div>`;
+  const body = approve
+    ? `<div class="kind"><strong>Approve spec</strong>${issueLink(sp.pid, sp.spec, `Spec #${sp.spec}`, "ext")}${f.unapproved ? `<span class="lbl">${f.unapproved}</span>` : ""}</div>
+      <div class="why">Autopilot wrote this Spec and stops here before it makes Tickets. Approve labels it <span class="mono">ready-for-agent</span> and starts <b class="mono">/to-tickets</b> at once.</div>
+      <div class="spec-peek"><span><b>Problem</b> · Drift between clusters shows only on the next full reconcile, up to 10 minutes later.</span><span><b>Solution</b> · Watch the inventory CRDs and raise a DriftAlert within 30 s.</span><span><b>User stories</b> · 6 · <b>Open questions</b> · none</span></div>`
+    : `<div class="kind"><strong>Screenshot review</strong>${issueLink(sp.pid, sp.pr, `PR #${sp.pr}`, "ext")}<span class="crumb">checks passed · code review done</span></div>
+      <div class="why">This PR changes files under ${esc(p.name)}'s UI paths, so it stops here before the merge Stop point. Look at the ${SHOTS.length} screens the Agent saved.</div>
+      <div class="files">${sp.files.map(([x, ui]) => `<span class="mono${ui ? " ui" : ""}" title="${ui ? "Under a UI path" : "Not a UI path"}">${esc(x)}</span>`).join("")}</div>
+      <div class="shots">${SHOTS.map((s, i) => `<button class="shot" data-shot="${sp.id}:${i}" aria-label="Show ${esc(s.file)} full size">${shotSvg(s)}<span>${esc(s.file.replace(".fh/screenshots/", ""))}</span></button>`).join("")}</div>`;
+  const acts = approve
+    ? `<button class="btn primary" data-spok="${sp.id}">Approve</button><button class="btn" data-spno="${sp.id}" aria-expanded="${open}">Reject</button>`
+    : `<button class="btn primary" data-spok="${sp.id}">Looks good</button><button class="btn" data-spno="${sp.id}" aria-expanded="${open}">Request changes</button>`;
+  return `<div class="ibox stop" data-stop="${sp.id}" data-ap="waiting"><div>${meta}${body}${note}</div><div class="acts">${acts}</div></div>`;
+}
+
+function justNowList() {
+  if (!justNow.length) return "";
+  return `<div class="justnow"><h3>Just now</h3>${justNow.map(j => { const { pid, f } = feat(j.fid);
+    return `<div class="jn"><span class="ok" aria-hidden="true">${j.mark}</span><strong>${j.text}</strong><span class="what">${j.what}</span>${apBadge(apStatus(pid, f), { key: "jn:" + j.id, fid: f.id })}${apLive(f.id, apStatus(pid, f))}</div>`; }).join("")}</div>`;
+}
+
+/* What each action does, in the order fh does it (ADR 0014). */
+function stopAct(id, ok) {
+  const sp = stops.find(x => x.id === id); if (!sp) return;
+  const note = (stopNote[id] || "").trim();
+  if (!ok && !note) { $(`#note-${id}`)?.focus(); return toast("Write a note first: fh posts it and sends it to the Agent"); }
+  stops = stops.filter(x => x !== sp); delete stopNote[id];
+  const { f } = feat(sp.fid);
+  if (sp.kind === "approve" && ok) {
+    f.unapproved = null;
+    AP[sp.fid] = { st: "running", skill: "/to-tickets", on: `Spec #${sp.spec}`, tools: [`Read Spec #${sp.spec}`, "Write .scratch/drift-alerts/issues/01-watch-crds.md", "Run gh issue create"] };
+    justNow.unshift({ id, fid: sp.fid, mark: "✓", text: `Approved Spec #${sp.spec}`, what: "ready-for-agent set · Autopilot stepped inventory-operator now" });
+    toast(`ready-for-agent set on Spec #${sp.spec} · /to-tickets started`);
+  } else if (sp.kind === "approve") {
+    AP[sp.fid] = { st: "running", skill: "/to-spec", on: "revision", tools: [`Read the note on Spec #${sp.spec}`, `Edit Spec #${sp.spec}: Solution`, `Run gh issue edit ${sp.spec}`] };
+    sessions.push({ id: "s12", title: `/to-spec Spec #${sp.spec} (revision)`, project: sp.pid, wt: "inventory-operator", agent: "claude", state: "working", fid: sp.fid, acp: "sess_9c1…e07", started: "just now",
+      git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: `/to-spec Spec #${sp.spec}. Rejected: ${note}` }] });
+    justNow.unshift({ id, fid: sp.fid, mark: "↩", text: `Rejected Spec #${sp.spec}`, what: `note posted on Spec #${sp.spec} · a new Autopilot Session revises it with /to-spec` });
+    toast(`Note posted on Spec #${sp.spec} · /to-spec Session started`);
+  } else if (ok) {
+    T10().pr.screens = "ok";
+    justNow.unshift({ id, fid: sp.fid, mark: "✓", text: `Looks good on PR #${sp.pr}`, what: `“Screen reviewed in fh” posted · PR #${sp.pr} is at the merge Stop point` });
+    toast(`“Screen reviewed in fh” posted on PR #${sp.pr}`);
+  } else {
+    T10().pr.screens = "changes";
+    const s = sess(sp.sid); s.state = "working"; s.turnDone = false; s.msgs.push({ r: "user", t: `Screenshot review of PR #${sp.pr}: ${note}` });
+    justNow.unshift({ id, fid: sp.fid, mark: "↩", text: `Changes requested on PR #${sp.pr}`, what: `note posted on PR #${sp.pr} · sent to #${sp.t}'s Session as its next turn` });
+    toast(`Note posted on PR #${sp.pr} · sent to #${sp.t}'s Session`);
+  }
+}
+function stopReset() {
+  stops = STOPS(); justNow = []; for (const k in stopNote) delete stopNote[k];
+  AP["f-io4"] = AP_IO4; feat("f-io4").f.unapproved = "needs-triage"; T10().pr.screens = "wait";
+  sessions = sessions.filter(s => s.id !== "s12"); const s10 = sess("s10"); if (s10) s10.state = "idle";
+}
+function openShot(id, i) {
+  const sp = STOPS().find(x => x.id === id), s = SHOTS[i];
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot ${i + 1} of ${SHOTS.length} for PR #${sp.pr}">
+    <div class="lbhead"><strong>PR #${sp.pr}</strong><span class="mono">${esc(s.file)}</span><span class="crumb">${i + 1} of ${SHOTS.length}</span>
+      <div class="acts"><button class="btn small" data-shotgo="${id}:${(i + SHOTS.length - 1) % SHOTS.length}" aria-label="Previous screenshot">←</button><button class="btn small" data-shotgo="${id}:${(i + 1) % SHOTS.length}" aria-label="Next screenshot">→</button><button class="btn small" data-close="1">Close</button></div></div>
+    <div class="lbimg">${shotSvg(s, true)}</div></div></div>`;
+  $(".lightbox [data-close]").focus();
+}
+let uipDraft = ""; // confirmModal closes the dialog before Save runs, so keep the text as it is typed
+function openUiPaths(pid) {
+  const p = proj(pid); uipDraft = UI_PATHS[pid].join("\n");
+  confirmModal(`UI paths for ${esc(p.name)}`, `<p class="hint2">A PR that touches one of these paths changes a screen, so Autopilot stops it at Screenshot review before merge, unless its description says “No visible UI change”. One path per line; <span class="mono">**</span> matches any folder.</p>
+    <label class="field"><span>Paths</span><textarea class="paths" id="uip-text" aria-label="UI paths">${esc(UI_PATHS[pid].join("\n"))}</textarea></label>
+    <div class="match" aria-live="polite"><span class="crumb">PR #21 touches:</span><span class="y">◉ web/src/PermissionCard.tsx · Screenshot review</span><span class="n">internal/acp/permission.go · not a UI path</span></div>`,
+    "Save", () => { const v = uipDraft.split("\n").map(x => x.trim()).filter(Boolean); UI_PATHS[pid] = v.length ? v : ["web/src/**"]; toast(`UI paths saved for ${p.name}`); render(); });
+}
+document.addEventListener("input", e => {
+  const t = e.target.closest?.("[data-note]"); if (t) stopNote[t.dataset.note] = t.value;
+  if (e.target.id === "uip-text") uipDraft = e.target.value;
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-spok], [data-spno], [data-notecancel], [data-notesend], [data-shot], [data-shotgo], [data-uipaths]"); if (!b) return;
+  const d = b.dataset;
+  if (d.uipaths) return openUiPaths(d.uipaths);
+  if (d.shot || d.shotgo) { const [id, i] = (d.shot || d.shotgo).split(":"); return openShot(id, +i); }
+  if (d.spno) { stopNote[d.spno] = stopNote[d.spno] ?? ""; render(); return $(`#note-${d.spno}`)?.focus(); }
+  if (d.notecancel) { delete stopNote[d.notecancel]; return render(); }
+  const id = d.spok || d.notesend, ok = !!d.spok;
+  if (!ok && !(stopNote[id] || "").trim()) return stopAct(id, false);
+  const el = $(`.ibox[data-stop="${id}"]`); if (el) el.classList.add("leaving");
+  setTimeout(() => { stopAct(id, ok); render(); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400);
+});
+// Show state: each Stop point state, reached the same way a click would.
+$("#demo").addEventListener("change", e => {
+  const v = e.target.value; stopReset(); closeOverlay();
+  if (!v.startsWith("sp-")) return;
+  ui.view = "inbox";
+  if (v === "sp-reject") stopNote.sp1 = "The Solution watches every CRD; we only need the inventory ones. Also add how long an alert stays open.";
+  if (v === "sp-changes") stopNote.sp2 = "The Deny button sits too close to Allow on the phone layout. Give it more room.";
+  if (v === "sp-approved") { stopAct("sp1", true); stopAct("sp2", true); }
+  if (v === "sp-rejected") { stopNote.sp1 = "Only the inventory CRDs."; stopNote.sp2 = "More room for Deny on phone."; stopAct("sp1", false); stopAct("sp2", false); }
+  render();
+  if (v === "sp-shot") openShot("sp2", 0);
+  if (v === "sp-paths") openUiPaths("fh");
 });
 
 /* ---------- actions ---------- */
