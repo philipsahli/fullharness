@@ -46,7 +46,7 @@ func TestTheFlowGraphShowsWhereAutopilotIs(t *testing.T) {
 	// parallel, the turn end and that recompute can take seconds, so the
 	// deadline is generous: it only bounds a wait for progress.
 	var g map[string]any
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for {
 		_, g = f.flow(c, repo, "search")
 		lanes, _ := g["lanes"].([]any)
