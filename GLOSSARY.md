@@ -34,6 +34,10 @@ _Avoid_: orphan, ad-hoc session, scratch session
 The single list of everything waiting for the user's answer across all Sessions: permission requests, requests to start a Child Session, and the Autopilot Stop points Approve spec and Screenshot review.
 _Avoid_: queue (that is a Queued message), notifications, approvals
 
+**Switcher**:
+The dialog that ⌘K (Ctrl+K off macOS) opens. It finds a Session by words, and a Spec, Ticket, PR, Idea or issue by its number across all Projects, and goes to it in fullharness. Closed and merged items show dimmed.
+_Avoid_: command palette, search, ⌘K menu, jump bar
+
 **Session state**:
 Where a Session is in its life: **Starting** (the Agent is launching, not ready yet), **Working** (producing output), **Waiting** (the Agent wants input from the user: a permission request is open, or it finished a turn the user hasn't looked at), **Idle** (quiet, not asking for anything), or **Exited** (the Agent process is gone). An Exited Session always carries its reason: fh quit, Agent crashed, or login needed. (Closing a Session removes it, so "closed" is never shown as a reason.)
 _Avoid_: status, busy, blocked, error (an error is an Exited reason)
