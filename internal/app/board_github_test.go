@@ -637,3 +637,37 @@ func TestAWayfinderChildOfAWayfinderIssueIsNowhereOnTheBoard(t *testing.T) {
 		t.Errorf("features = %s, want none", got)
 	}
 }
+
+// #66: a Spec closed while a Ticket is still open stays Shipped, and the
+// board says which Tickets were left; a Spec closed after its Tickets says
+// nothing.
+func TestAClosedSpecWithAnOpenTicketSaysWhichTicketIsLeft(t *testing.T) {
+	t.Parallel()
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 2, Title: "Closed early", State: "CLOSED", SubIssues: []int{3, 4}},
+		{Number: 3, Title: "Left open", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 2},
+		{Number: 4, Title: "Done", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 2},
+		{Number: 5, Title: "Closed on time", State: "CLOSED", SubIssues: []int{6}},
+		{Number: 6, Title: "Done too", State: "CLOSED", Labels: []string{"ready-for-agent"}, Parent: 5},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	early := featureByID(t, b, "2")
+	if early["stage"] != "shipped" {
+		t.Errorf("#2 stage = %v, want shipped (Spec closed)", early["stage"])
+	}
+	if note := early["note"]; note != "Spec closed with Ticket #3 open" {
+		t.Errorf("#2 note = %v, want %q", note, "Spec closed with Ticket #3 open")
+	}
+	if s := ticketByNumber(t, early, "3")["stage"]; s != "tickets" {
+		t.Errorf("#3 stage = %v, want tickets (its own Stage)", s)
+	}
+	if note, ok := featureByID(t, b, "5")["note"]; ok {
+		t.Errorf("#5 note = %v, want none (every Ticket closed)", note)
+	}
+}
