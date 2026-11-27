@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { get } from "./api";
 import { byListOrder, projectName, type Project, type SessionSummary } from "./events";
+import { optionIds } from "./optionIds";
 
 // SwitcherTicket is one open Ticket /api/switcher matched (internal/switcher).
 type SwitcherTicket = { number: string; title: string; feature: string; featureTitle: string };
@@ -33,10 +34,10 @@ export function Switcher(props: {
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
-  // Option ids come from the Entry key, so the input's aria-activedescendant
-  // names the same row while the list around it changes.
+  // Option ids come from the Entry key (optionIds), so the input's
+  // aria-activedescendant names the same row while the list around it
+  // changes.
   const listId = useId();
-  const optionId = (e: Entry) => `${listId}-${e.key}`;
 
   // The Tickets for the query, kept with the query they answer, so a late
   // answer to an older query is never shown under a newer one.
@@ -98,7 +99,11 @@ export function Switcher(props: {
 
   // The highlighted row stays in sight when the keys move it past the
   // list's edge; "nearest" leaves the list still if the row already shows.
-  const activeId = entries[active] && optionId(entries[active]);
+  const ids = optionIds(
+    listId,
+    entries.map((e) => e.key),
+  );
+  const activeId = ids[active];
   useEffect(() => {
     if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: "nearest" });
   }, [activeId]);
@@ -114,6 +119,7 @@ export function Switcher(props: {
       <div
         className="switcher"
         role="dialog"
+        aria-modal="true"
         aria-label="Switcher"
         onClick={(e) => e.stopPropagation()}
         // Keys on the dialog, not the input, so they work wherever focus is
@@ -166,7 +172,7 @@ export function Switcher(props: {
           {entries.map((e, i) => (
             <li
               key={e.key}
-              id={optionId(e)}
+              id={ids[i]}
               role="option"
               aria-selected={i === active}
               onMouseEnter={() => setActive(i)}

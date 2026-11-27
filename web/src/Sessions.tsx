@@ -4,6 +4,7 @@ import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
 import { LinkOrText } from "./LinkOrText";
 import { AgentMarkdown } from "./Markdown";
+import { optionIds } from "./optionIds";
 import { PRPart } from "./PR";
 import {
   byListOrder,
@@ -484,7 +485,10 @@ export function Conversation(props: {
   // aria-activedescendant, so a screen reader hears it while focus stays in
   // the textarea.
   const slashId = useId();
-  const optionId = (c: Command) => `${slashId}-${c.name}`;
+  const slashIds = optionIds(
+    slashId,
+    matches.map((c) => c.name),
+  );
   const choose = (c: Command) => {
     setText(`/${c.name} `);
     setPick(0);
@@ -582,8 +586,8 @@ export function Conversation(props: {
           <ul className="slash" role="listbox" aria-label="Slash commands">
             {matches.map((c, i) => (
               <li
-                key={c.name}
-                id={optionId(c)}
+                key={slashIds[i]}
+                id={slashIds[i]}
                 role="option"
                 aria-selected={i === pick}
                 // mousedown, not click: the textarea keeps focus.
@@ -611,7 +615,7 @@ export function Conversation(props: {
           }
           aria-label="Message"
           aria-activedescendant={
-            showSlash ? optionId(matches[Math.min(pick, matches.length - 1)]) : undefined
+            showSlash ? slashIds[Math.min(pick, matches.length - 1)] : undefined
           }
           rows={2}
           onKeyDown={(e) => {

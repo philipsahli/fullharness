@@ -39,6 +39,6 @@ test("arrow keys move between the view tabs and only the selected tab is in the 
     await page.keyboard.press("ArrowLeft");
     await expectSelected("Roadmap");
   } finally {
-    await fh.stop();
+    await fh.dispose();
   }
 });
