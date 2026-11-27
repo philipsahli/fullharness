@@ -22,6 +22,7 @@ GitHub Actions only calls these `make` targets, so the commands live in one plac
   - the restart message appears after fh restarts.
 
   Chromium only, on every PR. A later UI ticket may add one smoke case for its main path; the UI stays mostly checked by hand.
+- **PR rules run outside `make check`.** Checks that read the PR itself, its body or its changed files, are separate jobs in `pr-rules.yml`, each behind its own `make` target: `closes-open-spec` (#135) and `mockup-touched` (#136). They re-run when the PR body is edited, and #137's docs-only skip doesn't apply to them.
 - **No coverage threshold.** Spec #1's "Covered through the seam" list is what review checks. A percentage would mostly measure code behind the seam, which the tests deliberately leave alone.
 - **Dependencies.** Dependabot opens weekly PRs for gomod, npm and github-actions, with minor and patch updates grouped per ecosystem. govulncheck runs in `make lint`. There is no npm audit gate, because it mostly flags dev-only dependencies.
 - **Real-Agent smoke test stays manual.** It needs logged-in Claude Code, Copilot CLI and OpenCode, and real tokens that cost money. It runs as `make smoke` on the maintainer's Mac before tagging, never in Actions (#16).
