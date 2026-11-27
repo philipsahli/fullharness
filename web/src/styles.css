@@ -1971,6 +1971,8 @@ span.agent i {
 .rap {
   display: grid;
   justify-items: start;
+  gap: 4px;
+  min-width: 0;
 }
 /* In Now with Autopilot off: the link to the switch is the card's last row,
    edge to edge, as the mockup draws it under the card. */
