@@ -145,13 +145,15 @@ func TestSendNowCancelsTheTurnAndSendsTheQueuedMessage(t *testing.T) {
 
 func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
 	t.Parallel()
-	// The Agent exits 1 s after the turn starts. The tab connected before
-	// the Session started, and "more" goes out right after Working, so it is
-	// queued before the exit even with other tests running alongside.
+	// The Agent exits once "more" is queued: the turn holds on a gate until
+	// then, however slow the machine (#220). The tab connected before the
+	// Session started, so it sees the exit.
+	gate, openGate := turnGate(t)
 	f, c, id, tab := startWorking(t, script{"prompts": map[string]any{
-		"long": []any{map[string]any{"sleepMs": 1000}, map[string]any{"exit": 3}},
+		"long": []any{map[string]any{"waitFile": gate}, map[string]any{"exit": 3}},
 	}})
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
+	openGate()
 
 	s := waitState(t, tab, id, "exited")
 

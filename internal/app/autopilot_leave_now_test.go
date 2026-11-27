@@ -14,14 +14,15 @@ func TestAFeatureThatLeftNowNoLongerHoldsTheProjectOnceItsTurnEnds(t *testing.T)
 	t.Parallel()
 	for _, end := range []string{"asking", "stuck", "unsure", "done", "exited"} {
 		t.Run(end, func(t *testing.T) {
-			// The turn lasts long enough to move the Feature and look a few
-			// times while it runs.
+			// The turn holds on a gate until the test has moved the Feature
+			// and looked a few times, however slow the machine (#220).
 			last, verdict := map[string]any{"say": "Opened a PR."}, end
 			if end == "exited" {
 				// The Agent exits mid-turn, so no turn end is classified.
 				last, verdict = map[string]any{"exit": 3}, "done"
 			}
-			f := startAutopilotFh(t, script{"default": []any{map[string]any{"sleepMs": 1500}, last}}, verdict)
+			gate, openGate := turnGate(t)
+			f := startAutopilotFh(t, script{"default": []any{map[string]any{"waitFile": gate}, last}}, verdict)
 			c := f.authorisedClient()
 			repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 			scratch(t, repo, "login/spec.md", nowSpec("Login"))
@@ -46,13 +47,13 @@ func TestAFeatureThatLeftNowNoLongerHoldsTheProjectOnceItsTurnEnds(t *testing.T)
 			if st := running[0]["state"]; st != "starting" && st != "working" {
 				t.Fatalf("Login's turn already ended (%v), so the check above proves nothing", running[0]["state"])
 			}
+			openGate() // Login's turn ends now
 
-			// Once it ends, Search starts. Under make stress a 1.5 s turn
-			// took 6 s, and Search's start then adds a Worktree and an
-			// Agent, so the wait is long; a hold that is never released
-			// still fails here. On a timeout the history says whether
-			// Login's turn end was classified.
-			deadline := time.Now().Add(30 * time.Second)
+			// Once it ends, Search starts, which adds a Worktree and an
+			// Agent; a hold that is never released still fails here. On a
+			// timeout the history says whether Login's turn end was
+			// classified.
+			deadline := time.Now().Add(waitBudget)
 			for len(f.autopilotSessions(c)) < 2 {
 				if time.Now().After(deadline) {
 					t.Fatalf("Autopilot never started Search; Sessions %v\nhistory %v",
