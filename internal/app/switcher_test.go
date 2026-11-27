@@ -102,6 +102,11 @@ func TestTheSwitcherFindsEachKindOfItemByNumberAcrossProjects(t *testing.T) {
 		{"2", gh, []string{"shop issue 2 Drift alert fires twice → triage #2", "notes ticket 02 Tag colour → ticket tags 02"}},
 		{"2", local, []string{"notes ticket 02 Tag colour → ticket tags 02", "shop issue 2 Drift alert fires twice → triage #2"}},
 		{"99", gh, []string{}},
+		// The Project's repo comes from its origin (#256).
+		{"PR 2", gh, []string{}},
+		{"someone/shop#2", local, []string{"shop issue 2 Drift alert fires twice → triage #2"}},
+		{pr("21") + "/files", local, []string{"shop pr 21 Invoice page → ticket 10 11"}},
+		{"other/repo#5", gh, []string{"other/repo issue 5 other/repo → github https://github.com/other/repo/issues/5"}},
 	} {
 		if got := f.switcherResults(c, tc.current, tc.q); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("q %q from %s:\n got %v\nwant %v", tc.q, tc.current, got, tc.want)

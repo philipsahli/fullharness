@@ -35,12 +35,16 @@ func registerSwitcherRoutes(srv *server.Server, projects *project.Registry, b *b
 			go func() {
 				defer wg.Done()
 				s := switcher.Source{Project: p.Path, Name: p.Name}
+				g, onGitHub := gitremote.ParseGitHub(p.URL)
+				if onGitHub {
+					s.Repo = g.NameWithOwner()
+				}
 				board, read := b.read(p.Path, false)
 				if !read {
 					sources[i] = s
 					return
 				}
-				if g, ok := gitremote.ParseGitHub(p.URL); ok && board.Tracker == tracker.KindGitHub {
+				if onGitHub && board.Tracker == tracker.KindGitHub {
 					tracker.LinkIssues(&board, g)
 				}
 				s.Board = board

@@ -1,16 +1,19 @@
 // Package switcher works out what the Switcher (⌘K, GLOSSARY.md) lists for
 // a query besides Sessions (Spec #201). A number finds the open Spec,
-// Ticket, PR or issue with that number in every Project (#254); words find
+// Ticket, PR or issue with that number in every Project (#254), or in one
+// repo for owner/repo#N or a pasted link (#256); words find
 // the current Project's open Tickets by title (#195). It reads only board
 // data fh already has, so typing never calls GitHub.
 package switcher
 
 import (
 	"cmp"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/philipsahli/fullharness/internal/gitremote"
 	"github.com/philipsahli/fullharness/internal/tracker"
 )
 
@@ -63,8 +66,12 @@ type Result struct {
 type Source struct {
 	Project string
 	Name    string
-	Board   tracker.Board
-	PRs     []tracker.PR
+	// Repo is the Project's GitHub repo, "owner/repo", from its origin;
+	// empty without one. owner/repo#N and pasted links find the Project by
+	// it.
+	Repo  string
+	Board tracker.Board
+	PRs   []tracker.PR
 }
 
 // Resolve lists what query finds, current being the Project the board
@@ -75,6 +82,13 @@ type Source struct {
 // then the others by name, each in board order. Leading zeros don't count,
 // so "1" finds local Ticket "01". Closed and merged items are left out.
 //
+// The number can also name its repo, as owner/repo#N or a pasted
+// github.com link to an issue or a PR: then only that Project's items
+// count, and only GitHub's numbers, so local Ticket "01" isn't o/shop#1. A
+// repo that isn't a Project gives one result that opens on GitHub. A type
+// word before any of these ("PR 21", "spec o/web#10") keeps that type only
+// (#256).
+//
 // Any other query finds current's open Tickets whose title holds every
 // word of it, in any order and any case. An empty query finds nothing.
 func Resolve(query, current string, sources []Source) []Result {
@@ -83,8 +97,8 @@ func Resolve(query, current string, sources []Source) []Result {
 	if query == "" {
 		return out
 	}
-	number, isNumber := asNumber(query)
-	if !isNumber {
+	q, isRef := parseRef(query)
+	if !isRef {
 		words := strings.Fields(strings.ToLower(query))
 		for _, s := range sources {
 			if s.Project == current {
@@ -106,15 +120,102 @@ func Resolve(query, current string, sources []Source) []Result {
 		}
 		return cmp.Compare(a.Name, b.Name)
 	})
+	if q.repo != "" {
+		i := slices.IndexFunc(ordered, func(s Source) bool { return strings.EqualFold(s.Repo, q.repo) })
+		if i < 0 {
+			return []Result{q.onGitHub()}
+		}
+		ordered = ordered[i : i+1]
+	}
 	for _, s := range ordered {
-		out = append(out, byNumber(s, number)...)
+		for _, r := range byNumber(s, q.number, q.repo != "") {
+			if q.kind == "" || r.Kind == q.kind {
+				out = append(out, r)
+			}
+		}
 	}
 	return out
 }
 
+// ref is a query that names an item by number.
+type ref struct {
+	number string // without "#" and leading zeros
+	kind   Kind   // the type word's, or "" for any
+	repo   string // "owner/repo" it names, or "" for every Project
+	// link is a pasted link's issue or PR page, without its tab, and
+	// linkKind which of the two its path says.
+	link     string
+	linkKind Kind
+}
+
+// typeWords are the words that keep one type of result, in lower case.
+var typeWords = map[string]Kind{"spec": KindSpec, "ticket": KindTicket, "pr": KindPR, "issue": KindIssue}
+
+// parseRef reads "42", "#42", "owner/repo#42" or a github.com link to issue
+// or PR 42, each with an optional type word before it. ok is false for
+// anything else, words included.
+func parseRef(query string) (ref, bool) {
+	if f := strings.Fields(query); len(f) == 2 {
+		k, isType := typeWords[strings.ToLower(f[0])]
+		q, ok := parseRef(f[1])
+		q.kind = k
+		return q, isType && ok
+	}
+	if n, isNumber := asNumber(query); isNumber {
+		return ref{number: n}, true
+	}
+	if strings.Contains(query, "://") {
+		return parseLink(query)
+	}
+	repo, n, found := strings.Cut(query, "#")
+	g, isRepo := gitremote.ParseGitHub("https://github.com/" + repo)
+	n, isNumber := asNumber(n)
+	if !found || !isRepo || !isNumber || strings.Count(repo, "/") != 1 {
+		return ref{}, false
+	}
+	return ref{number: n, repo: g.NameWithOwner()}, true
+}
+
+// parseLink reads a github.com link to an issue or a PR, with or without a
+// tab ("/files") or a comment ("#issuecomment-1") after the number.
+func parseLink(link string) (ref, bool) {
+	u, err := url.Parse(link)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") ||
+		strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.") != "github.com" {
+		return ref{}, false
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 4 || (parts[2] != "issues" && parts[2] != "pull") || strings.HasPrefix(parts[3], "#") {
+		return ref{}, false
+	}
+	g, isRepo := gitremote.ParseGitHub("https://github.com/" + parts[0] + "/" + parts[1])
+	n, isNumber := asNumber(parts[3])
+	if !isRepo || !isNumber {
+		return ref{}, false
+	}
+	q := ref{number: n, repo: g.NameWithOwner(), link: g.URL() + "/" + parts[2] + "/" + n, linkKind: KindIssue}
+	if parts[2] == "pull" {
+		q.linkKind = KindPR
+	}
+	return q, true
+}
+
+// onGitHub is the one result for q when its repo isn't a Project: its
+// page on GitHub. fh has no data on the repo, so owner/repo#N is an Issue
+// unless a type word or a /pull/ link says PR; GitHub redirects
+// /issues/N to the PR when N is one.
+func (q ref) onGitHub() Result {
+	return Result{
+		Kind: cmp.Or(q.kind, q.linkKind, KindIssue), ProjectName: q.repo, Number: q.number, Title: q.repo,
+		Detail: "not one of your Projects",
+		Opens:  Opens{Place: PlaceGitHub, URL: cmp.Or(q.link, "https://github.com/"+q.repo+"/issues/"+q.number)},
+	}
+}
+
 // byNumber is s's open items numbered n, in board order: Specs, then
-// Tickets, then PRs, then Untriaged issues.
-func byNumber(s Source, n string) []Result {
+// Tickets, then PRs, then Untriaged issues. With onlyGitHub, a local
+// board's Tickets are left out: their numbers aren't GitHub's.
+func byNumber(s Source, n string, onlyGitHub bool) []Result {
 	is := func(number string) bool {
 		m, ok := asNumber(number)
 		return ok && m == n
@@ -131,7 +232,9 @@ func byNumber(s Source, n string) []Result {
 			}
 		}
 	}
-	out = append(out, ticketsBy(s, func(t tracker.Ticket) bool { return is(t.Number) })...)
+	if !onlyGitHub || s.Board.Tracker == tracker.KindGitHub {
+		out = append(out, ticketsBy(s, func(t tracker.Ticket) bool { return is(t.Number) })...)
+	}
 	for _, p := range s.PRs {
 		if !p.Unmerged() || !is(strconv.Itoa(p.Number)) {
 			continue
