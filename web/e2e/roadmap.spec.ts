@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
 import { Fh } from "./fh";
 import { fakeGhPath, type GhIssue } from "./gh";
@@ -116,11 +119,13 @@ test("a Roadmap card's Autopilot badge changes without a reload", async ({ page 
   const shop = tempRepoWith("shop", {
     ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
   });
-  // Turning Autopilot on starts to-tickets for the approved Spec; the fake
-  // turn runs long enough to see, then ends asking.
+  // Turning Autopilot on starts to-tickets for the approved Spec. The fake
+  // turn holds on a gate file until the test has seen it running, however
+  // slow the machine (#220), then ends asking.
+  const gate = path.join(mkdtempSync(path.join(tmpdir(), "fh-gate-")), "gate");
   const fh = await Fh.start({
     ghPRs: [],
-    agentScript: { default: [{ sleepMs: 3000 }, { say: "Which labels should the tickets get?" }] },
+    agentScript: { default: [{ waitFile: gate }, { say: "Which labels should the tickets get?" }] },
     verdict: "asking",
   });
   try {
@@ -144,6 +149,7 @@ test("a Roadmap card's Autopilot badge changes without a reload", async ({ page 
     await expect(badge).toHaveAccessibleName("Autopilot status: Running /to-tickets");
     await expect(login).toHaveAttribute("data-ap", "running");
     await expect(login.getByRole("button", { name: /Turn on/ })).toHaveCount(0);
+    writeFileSync(gate, ""); // the turn ends now
     await expect(badge).toHaveAccessibleName("Autopilot status: Waiting at Agent asking", {
       timeout: 10_000,
     });

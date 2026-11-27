@@ -24,7 +24,7 @@ func TestConversationEventsAreNumberedAndTheFetchSaysWhichItHolds(t *testing.T) 
 	id := f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude", "prompt": "hello"})
 
 	var seqs []int
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {

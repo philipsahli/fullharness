@@ -401,7 +401,7 @@ func TestNoSessionStartsInAWorktreeWhileItIsBeingRemoved(t *testing.T) {
 	}()
 	select {
 	case <-reached:
-	case <-time.After(10 * time.Second):
+	case <-time.After(waitBudget):
 		t.Fatal("the removal never reached git")
 	}
 

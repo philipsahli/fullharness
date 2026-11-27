@@ -54,12 +54,11 @@ func fakeOsascript(t *testing.T) func() string {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return func() string {
-		// Up to 10 s: a loaded machine (or CI) can take seconds to end the turn.
-		for range 500 {
+		// A loaded machine (or CI) can take seconds to end the turn (#220).
+		for deadline := time.Now().Add(waitBudget); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 			if b, err := os.ReadFile(calls); err == nil && len(b) > 0 {
 				return string(b)
 			}
-			time.Sleep(20 * time.Millisecond)
 		}
 		return ""
 	}
