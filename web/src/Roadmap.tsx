@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { command, get } from "./api";
-import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
+import { AutopilotBadge, AutopilotLive, OutsideNow, goToSwitch, showsBadge } from "./Autopilot";
 import type { AutopilotStatus } from "./events";
 import { LinkOrText } from "./LinkOrText";
 
@@ -307,13 +307,17 @@ export function Roadmap({
   );
 }
 
-// RoadmapBadge is a card's Autopilot status badge, as on the Feature card
-// (#216).
+// RoadmapBadge is a card's Autopilot status, drawn as on the Feature card:
+// the badge, the live tool call of a running turn (#205), and "Session
+// running outside Now" for a running turn whose Feature left Now (#217,
+// ADR-0013), until that turn ends.
 function RoadmapBadge({ status }: { status: AutopilotStatus | undefined }) {
   if (!status) return null;
   return (
     <div className="rap">
       <AutopilotBadge status={status} />
+      <AutopilotLive status={status} />
+      {status.outsideNow && <OutsideNow />}
     </div>
   );
 }
