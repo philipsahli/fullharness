@@ -35,7 +35,7 @@ The single list of everything waiting for the user's answer across all Sessions:
 _Avoid_: queue (that is a Queued message), notifications, approvals
 
 **Switcher**:
-The dialog that ⌘K (Ctrl+K off macOS) opens. It finds a Session by words, and a Spec, Ticket, PR, Idea or issue by its number across all Projects, and goes to it in fullharness. Closed and merged items show dimmed.
+The dialog that ⌘K (Ctrl+K off macOS) opens. It finds a Session or an Idea by words, and a Spec, Ticket, PR or issue by its number across all Projects, and goes to it in fullharness. Closed and merged items show dimmed.
 _Avoid_: command palette, search, ⌘K menu, jump bar
 
 **Session state**:
