@@ -1849,6 +1849,7 @@ span.agent i {
 .roadmap-view .board-head .crumb {
   flex-basis: 100%;
   margin: 0;
+  white-space: normal; /* the sentence on what ← and → write wraps, as in the mockup */
 }
 .fhead {
   display: flex;
@@ -1978,6 +1979,69 @@ span.agent i {
   border: 0;
   border-top: 1px dashed var(--line);
   border-radius: 0 0 7px 7px;
+}
+/* Moving a card (#215): it lands with a glow in its Autopilot status
+   colour, or the accent; one whose write failed shakes once as it goes
+   back and shows gh's error. */
+.rcard.rfail {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+}
+.rerr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  color: var(--bad);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--bad) 8%, var(--surface));
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.rerr b {
+  font-weight: 600;
+}
+.rerr .mono {
+  grid-column: 1 / -1;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: var(--fg);
+}
+.rcard.moved {
+  animation: rm-land 1s ease-out;
+}
+.rcard.bounced {
+  animation: rm-shake 0.45s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+@keyframes rm-land {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--c, var(--accent)),
+      0 0 24px 3px var(--g, transparent);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+@keyframes rm-shake {
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rcard.moved,
+  .rcard.bounced {
+    animation: none;
+  }
 }
 .rempty {
   color: var(--muted);

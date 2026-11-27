@@ -85,6 +85,11 @@ type ghFake struct {
 	edits     func() string
 	afterEdit func([]ghIssue)
 	failEdits func(msg string)
+	// missingLabels makes an edit that adds one of labels fail the way gh
+	// does for a label the repo lacks, until `label create` makes it.
+	// labelsCreated are the `label create` commands, one per line.
+	missingLabels func(labels ...string)
+	labelsCreated func() string
 }
 
 // newFakeGh writes this test's fake gh. gh runs it in the repos linkFakeGh
@@ -115,12 +120,17 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	editsFile := filepath.Join(dir, "edits")
 	failFile := filepath.Join(dir, "edit-fails")
 	after := filepath.Join(dir, "issues-after-edit.json")
+	missing := filepath.Join(dir, "missing-labels")
+	created := filepath.Join(dir, "labels-created")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
 		"  \"issue edit \"*) echo \"$*\" >> \"" + editsFile + "\"\n" +
 		"    if [ -f \"" + failFile + "\" ]; then cat \"" + failFile + "\" >&2; exit 1; fi\n" +
+		"    if [ -f \"" + missing + "\" ]; then while read -r l; do case \"$* \" in *\"--add-label $l \"*) echo \"could not add label: '$l' not found\" >&2; exit 1 ;; esac; done < \"" + missing + "\"; fi\n" +
 		"    if [ -f \"" + after + "\" ]; then mv \"" + after + "\" \"" + dir + "/issues.json\"; fi ;;\n" +
+		"  \"label create \"*) echo \"$*\" >> \"" + created + "\"\n" +
+		"    if [ -f \"" + missing + "\" ]; then grep -vxF \"$3\" \"" + missing + "\" > \"" + missing + ".new\"; mv \"" + missing + ".new\" \"" + missing + "\"; fi ;;\n" +
 		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
@@ -152,7 +162,14 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		},
 		afterEdit: func(issues []ghIssue) { write("issues-after-edit.json", issuesPage(issues)) },
 		failEdits: func(msg string) { writeFile(t, failFile, msg+"\n") },
-		hold:      func() { writeFile(t, gate, "") },
+		missingLabels: func(labels ...string) {
+			writeFile(t, missing, strings.Join(labels, "\n")+"\n")
+		},
+		labelsCreated: func() string {
+			b, _ := os.ReadFile(created) // no file yet means none
+			return string(b)
+		},
+		hold: func() { writeFile(t, gate, "") },
 		release: func() {
 			if err := os.Remove(gate); err != nil && !os.IsNotExist(err) {
 				t.Error(err)
