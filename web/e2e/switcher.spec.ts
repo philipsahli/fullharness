@@ -72,3 +72,83 @@ test("⌘K finds a Ticket of the board's Project and opens its Feature at the ro
     await fh.dispose();
   }
 });
+
+// The Switcher works from the keyboard alone (#248), as the mockup's
+// openPalette does: the input is a combobox that names the highlighted
+// option, focus stays in the dialog, Escape closes it from anywhere in it,
+// and the highlight scrolls into view in a long list.
+test("⌘K is a combobox that names the highlighted option and keeps focus", async ({ page }) => {
+  // Twenty open Tickets, more rows than the list shows at once.
+  const tickets = Array.from({ length: 20 }, (_, i) => ({
+    number: 11 + i,
+    title: `Shop task ${i + 1}`,
+    labels: ["ready-for-agent"],
+    parent: 10,
+  }));
+  const PATH = fakeGhPath([
+    {
+      number: 10,
+      title: "Login",
+      labels: ["ready-for-agent"],
+      subIssues: tickets.map((t) => t.number),
+    },
+    ...tickets,
+  ]);
+  const fh = await Fh.start({ env: { PATH }, agentScript: { default: [{ say: "hello" }] } });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    // The board has read the Tickets before ⌘K looks for them.
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await expect(page.getByRole("button", { name: /^Login/ })).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session or Ticket" });
+    const options = dialog.getByRole("option");
+    await search.fill("shop task");
+    await expect(options).toHaveCount(20);
+
+    // aria-activedescendant follows the highlight.
+    const selected = dialog.locator('[role="option"][aria-selected="true"]');
+    const named = async () =>
+      expect(search).toHaveAttribute(
+        "aria-activedescendant",
+        (await selected.getAttribute("id")) ?? "no id",
+      );
+    await expect(selected).toContainText("Shop task 1");
+    await named();
+    await page.keyboard.press("ArrowDown");
+    await expect(selected).toContainText("Shop task 2");
+    await named();
+
+    // The last row starts below the list's edge; walking the highlight down
+    // to it scrolls it into view.
+    const last = options.filter({ hasText: "Shop task 20" });
+    await expect(last).not.toBeInViewport();
+    for (let i = 0; i < 18; i++) await page.keyboard.press("ArrowDown");
+    await expect(selected).toContainText("Shop task 20");
+    await named();
+    await expect(last).toBeInViewport();
+
+    // Tab and Shift+Tab leave focus on the input, the dialog's one control
+    // (Chrome would otherwise focus the scrolling list, then the page);
+    // Escape still closes it.
+    await page.keyboard.press("Tab");
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  } finally {
+    await fh.dispose();
+  }
+});
