@@ -215,6 +215,63 @@ test("the Autopilot badge follows a Feature through Approve spec without a reloa
   }
 });
 
+// The live pulse (#205): a running Feature's card shows the tool call its
+// Autopilot turn is on, follows the Agent to the next one without a
+// reload, and drops the line when the turn ends.
+test("a running Feature's card follows its Agent's tool calls live", async ({ page }) => {
+  const repo = tempRepoWith("shop", {
+    ".scratch/search/spec.md": "# Search\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+  });
+  const fh = await Fh.start({
+    ghPRs: [],
+    agentScript: {
+      default: [
+        {
+          tool: {
+            id: "t1",
+            title: "Read internal/acp/client.go",
+            kind: "read",
+            status: "in_progress",
+          },
+        },
+        { sleepMs: 3000 },
+        {
+          tool: { id: "t2", title: "Edit web/src/Board.tsx", kind: "edit", status: "in_progress" },
+        },
+        { sleepMs: 3000 },
+        { say: "Which labels should the tickets get?" },
+      ],
+    },
+    verdict: "asking",
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const card = page
+      .locator('.column[aria-label="Spec"]')
+      .getByRole("button", { name: /^Search/ });
+    const live = card.locator(".ap-live");
+
+    await projects.getByRole("checkbox", { name: "Autopilot" }).click();
+    await expect(live).toHaveText("Read internal/acp/client.go");
+    await expect(live).toHaveText("Edit web/src/Board.tsx");
+
+    await expect(card.getByRole("img", { name: /^Autopilot status/ })).toHaveAccessibleName(
+      "Autopilot status: Waiting at Agent asking",
+      { timeout: 10_000 },
+    );
+    await expect(live).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {
   const fh = await Fh.start({ dev: true });
   try {

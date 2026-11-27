@@ -58,12 +58,24 @@ for (const scheme of ["light", "dark"] as const) {
     });
 
     // Autopilot status badges (#203): first with Autopilot off, then one
-    // Feature running, one waiting at Spec approval, one outside Now
-    // without a badge.
+    // Feature running with its live pulse (#205), one waiting at Spec
+    // approval, one outside Now without a badge.
     test("Software factory board with Autopilot badges", async ({ page }) => {
       const fh = await Fh.start({
         ghPRs: [],
-        agentScript: { default: [{ sleepMs: 60_000 }] },
+        agentScript: {
+          default: [
+            {
+              tool: {
+                id: "t1",
+                title: "Edit web/src/Board.tsx",
+                kind: "edit",
+                status: "in_progress",
+              },
+            },
+            { sleepMs: 60_000 },
+          ],
+        },
         verdict: "done",
       });
       try {
@@ -98,6 +110,7 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(badges.last()).toHaveAccessibleName(
           "Autopilot status: Running /implement on #01",
         );
+        await expect(page.locator(".ap-live")).toHaveText("Edit web/src/Board.tsx");
         await expect(page).toHaveScreenshot(`board-autopilot-${scheme}.png`, {
           mask: dynamic(page),
         });
