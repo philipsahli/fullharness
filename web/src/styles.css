@@ -1879,3 +1879,245 @@ span.agent i {
     grid-template-columns: 1fr;
   }
 }
+
+/* Flow graph (#206), as the mockup draws it: Stages on a main line, each
+   Ticket's Worktree branches off and merges back. One SVG, scaled by its
+   viewBox, so the Loop view (#114) can draw it full-screen. Colours come
+   from the Autopilot status tokens: --c, --t and --g follow data-ap. */
+.flow-panel {
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.flow-wrap {
+  overflow-x: auto;
+  padding: 4px 6px 2px;
+}
+svg.flow {
+  display: block;
+  width: 100%;
+  min-width: 700px;
+  height: auto;
+  font-family: var(--f-body);
+}
+svg.flow .fl-bridge {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 8;
+}
+svg.flow .fl-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+svg.flow .fl-done {
+  stroke: color-mix(in srgb, var(--ap-done) 60%, var(--line));
+}
+svg.flow .fl-todo {
+  stroke: var(--line);
+  stroke-dasharray: 2 6;
+}
+svg.flow .fl-live {
+  stroke: var(--c);
+  stroke-dasharray: 6 6;
+  animation: fl-flow 0.9s linear infinite;
+  filter: drop-shadow(0 0 3px var(--g));
+}
+svg.flow .fl-open {
+  stroke: color-mix(in srgb, var(--muted) 55%, var(--line));
+}
+svg.flow .fl-run {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--ap-done) 70%, var(--line));
+  stroke-width: 2;
+}
+svg.flow .fl-run.done {
+  fill: color-mix(in srgb, var(--ap-done) 70%, var(--line));
+}
+svg.flow .fl-stage {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--ap-done) 70%, var(--line));
+  stroke-width: 2;
+  transition: fill 0.4s ease;
+}
+svg.flow .fl-stage.done {
+  fill: color-mix(in srgb, var(--ap-done) 75%, var(--line));
+}
+svg.flow .fl-stage.todo {
+  stroke: var(--line);
+  stroke-dasharray: 3 3;
+}
+svg.flow .fl-stop {
+  fill: var(--surface);
+  stroke: var(--ap-waiting);
+  stroke-width: 2;
+}
+svg.flow .fl-stop.done {
+  fill: color-mix(in srgb, var(--ap-done) 75%, var(--line));
+  stroke: color-mix(in srgb, var(--ap-done) 75%, var(--line));
+}
+svg.flow .fl-stop-dot {
+  fill: var(--ap-waiting);
+}
+svg.flow .fl-fail {
+  fill: none;
+  stroke: var(--ap-failed);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+svg.flow .fl-cur {
+  fill: var(--c);
+  filter: drop-shadow(0 0 6px var(--g));
+}
+svg.flow .fl-ring {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fl-ring 1.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+svg.flow .fl-ring.r2 {
+  animation-delay: 0.9s;
+}
+svg.flow .fl-halo {
+  fill: var(--t);
+}
+svg.flow g[data-ap="waiting"] .fl-halo {
+  animation: fl-breathe 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* Where Autopilot is now springs in when it moves (its node is keyed on
+   its state, so React mounts it again). */
+svg.flow .fl-here {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fl-in 0.6s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+svg.flow text {
+  fill: var(--muted);
+  font-size: 10.5px;
+}
+svg.flow text.cap {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+svg.flow text.tn {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  fill: var(--fg);
+}
+svg.flow text.lbl {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+}
+svg.flow text.curlbl {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  fill: var(--c);
+}
+svg.flow text.glyph {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--c);
+}
+svg.flow .fl-node[role="button"] {
+  cursor: pointer;
+}
+svg.flow .fl-node[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+svg.flow .fl-node[role="button"]:hover circle {
+  filter: brightness(1.15);
+}
+.flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 14px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.flow-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.flow-legend svg {
+  width: 14px;
+  height: 14px;
+}
+.flow-legend .lg-run {
+  fill: color-mix(in srgb, var(--ap-done) 70%, var(--line));
+}
+.flow-legend .lg-stop {
+  fill: color-mix(in srgb, var(--ap-done) 75%, var(--line));
+}
+.flow-legend .lg-here {
+  fill: var(--ap-running);
+}
+.flow-legend .lg-todo {
+  stroke: var(--line);
+  stroke-width: 2.5;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+.flow-legend .lg-wait {
+  color: var(--ap-waiting);
+}
+.flow-legend .lg-fail {
+  color: var(--ap-failed);
+}
+@keyframes fl-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@keyframes fl-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+@keyframes fl-breathe {
+  50% {
+    transform: scale(1.25);
+    opacity: 0.6;
+  }
+}
+@keyframes fl-in {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+/* Reduced motion: the graph stops moving; where Autopilot is still shows by
+   colour, glow and mark. */
+@media (prefers-reduced-motion: reduce) {
+  svg.flow *,
+  svg.flow *::before,
+  svg.flow *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  svg.flow .fl-ring {
+    display: none;
+  }
+}

@@ -139,6 +139,10 @@ export function App() {
               autopilot={snapshot.autopilot}
               onStart={newSession}
               focus={focus}
+              onOpenSession={(id) => {
+                setView("sessions");
+                setOpened(id);
+              }}
             />
           )}
           {view === "roadmap" && (
