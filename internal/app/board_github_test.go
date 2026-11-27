@@ -53,7 +53,7 @@ func (i ghIssue) node() map[string]any {
 		"subIssues": map[string]any{"nodes": subs}, "blockedBy": map[string]any{"nodes": blocked}}
 }
 
-// fakeGh puts a gh first on PATH that answers fh's GraphQL query with
+// fakeGh is the gh of this test's linked repos (linkFakeGh). It answers fh's GraphQL query with
 // issues, `pr list --state all --limit 500` with prs, and `auth status`
 // with authOK. It returns a function that counts the GraphQL calls.
 func fakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) func() int {
@@ -87,9 +87,11 @@ type ghFake struct {
 	failEdits func(msg string)
 }
 
+// newFakeGh writes this test's fake gh. gh runs it in the repos linkFakeGh
+// linked; githubRepo links its repo.
 func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) ghFake {
 	t.Helper()
-	dir := t.TempDir()
+	dir := fakeGhDir(t)
 	write := func(name string, v any) {
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -130,7 +132,6 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	if err := os.Chmod(filepath.Join(bin, "gh"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	count := func(file string) func() int {
 		return func() int {
 			b, _ := os.ReadFile(file) // no file yet means no calls
@@ -174,6 +175,7 @@ func githubRepo(t *testing.T) string {
 	t.Helper()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 	git(t, repo, "remote", "add", "origin", "git@github.com:someone/shop.git")
+	linkFakeGh(t, repo)
 	return repo
 }
 
@@ -191,6 +193,7 @@ func boardRefresh(t *testing.T, f *fh, c *http.Client, project string) map[strin
 }
 
 func TestAGitHubBoardPutsEachFeatureAtItsStage(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	git(t, repo, "checkout", "-q", "-b", "31-export")
 	commitFile(t, repo, "export.go", "package main\n")
@@ -255,6 +258,7 @@ var loginIssues = []ghIssue{
 }
 
 func TestAGitHubBoardLinksSpecTicketAndBlockerNumbersToTheirIssues(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, loginIssues, nil, true)
 	f := startFh(t, t.TempDir())
@@ -277,6 +281,7 @@ func TestAGitHubBoardLinksSpecTicketAndBlockerNumbersToTheirIssues(t *testing.T)
 }
 
 func TestABlockerInAnotherRepositoryOrUnknownGetsNoLink(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 10, Title: "Spec: Login", State: "OPEN", SubIssues: []int{11, 12}},
@@ -301,8 +306,10 @@ func TestABlockerInAnotherRepositoryOrUnknownGetsNoLink(t *testing.T) {
 }
 
 func TestAGitHubTrackerOnAGitLabRemoteGetsNoLinks(t *testing.T) {
+	t.Parallel()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
 	git(t, repo, "remote", "add", "origin", "git@gitlab.com:someone/shop.git")
+	linkFakeGh(t, repo)
 	// The tracker is GitHub by its doc, as the skills read it, but origin
 	// isn't on github.com: fh can't say which repository the numbers are in.
 	if err := os.MkdirAll(filepath.Join(repo, "docs", "agents"), 0o755); err != nil {
@@ -328,6 +335,7 @@ func TestAGitHubTrackerOnAGitLabRemoteGetsNoLinks(t *testing.T) {
 }
 
 func TestGitHubReadsAreCachedUntilRefresh(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	calls := fakeGh(t, []ghIssue{{Number: 1, Title: "Spec", State: "OPEN", Labels: []string{"ready-for-agent"}}}, nil, true)
 	f := startFh(t, t.TempDir())
@@ -370,6 +378,7 @@ func TestAMissingOrLoggedOutGhSaysWhatToDo(t *testing.T) {
 }
 
 func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
@@ -389,6 +398,7 @@ func TestALocalProjectWithAGitHubRemoteGetsItsPRs(t *testing.T) {
 }
 
 func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "Spec", State: "OPEN", Labels: []string{"ready-for-agent"}},
@@ -420,6 +430,7 @@ func TestGitHubBlockersParentsAndPRLinksInEveryWrittenForm(t *testing.T) {
 }
 
 func TestClosedIssuesWithoutTicketsAreLeftOff(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "Old chore", State: "CLOSED", Labels: []string{"ready-for-agent"}},
@@ -439,6 +450,7 @@ func TestClosedIssuesWithoutTicketsAreLeftOff(t *testing.T) {
 }
 
 func TestAnEmptyBoardSaysHowToStart(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, nil, true)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -460,6 +472,7 @@ func TestAnEmptyBoardSaysHowToStart(t *testing.T) {
 }
 
 func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	git(t, repo, "checkout", "-q", "-b", "3-work")
 	commitFile(t, repo, "w.go", "package main\n")
@@ -484,6 +497,7 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 }
 
 func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
@@ -513,6 +527,7 @@ func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
 }
 
 func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
@@ -528,6 +543,7 @@ func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
 }
 
 func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, loginIssues, nil, true)
 	f := startFh(t, t.TempDir())
@@ -540,6 +556,7 @@ func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
 }
 
 func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
@@ -563,6 +580,7 @@ func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
 }
 
 func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 40, Title: "Retry uploads", State: "OPEN", Labels: []string{"ready-for-agent"}, Body: "Part of #7"},
@@ -583,6 +601,7 @@ func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *test
 }
 
 func TestAWayfinderChildOfAWayfinderIssueIsNowhereOnTheBoard(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},

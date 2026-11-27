@@ -45,6 +45,7 @@ func newSessionIn(t *testing.T, f *fh, prompt string) (c *http.Client, tab *webs
 // A tab opens a new Session's conversation, and says it's looking, while
 // the Agent is still starting. That must not lose the starting prompt.
 func TestLookingAtAStartingSessionKeepsItsStartingPrompt(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{"hello": []any{map[string]any{"say": "hi"}}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -81,6 +82,7 @@ func TestLookingAtAStartingSessionKeepsItsStartingPrompt(t *testing.T) {
 }
 
 func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "one "}, map[string]any{"say": "two"}}})
 	_, tab, id, _ := newSessionIn(t, f, "go")
 
@@ -106,6 +108,7 @@ func TestAgentRepliesStreamToTabsAsChunks(t *testing.T) {
 }
 
 func TestToolCallsShowStatusAndOutput(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"tool": map[string]any{"id": "t1", "title": "Terminal", "kind": "execute", "status": "pending"}},
 		map[string]any{"toolUpdate": map[string]any{"id": "t1", "title": "ls", "text": "a.txt"}},
@@ -130,6 +133,7 @@ func TestToolCallsShowStatusAndOutput(t *testing.T) {
 
 // The UI picks a read card's language from its file's extension.
 func TestAToolCallCarriesItsLocations(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"tool": map[string]any{"id": "t1", "title": "Read", "kind": "read", "status": "pending", "path": "/w/a.go"}},
 		map[string]any{"toolUpdate": map[string]any{"id": "t1", "status": "completed", "path": "/w/main.go", "text": "package main"}},
@@ -152,6 +156,7 @@ func TestAToolCallCarriesItsLocations(t *testing.T) {
 }
 
 func TestAnEditToolCallCarriesAStructuredDiff(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"tool": map[string]any{"id": "t1", "title": "Write notes.md", "kind": "edit", "status": "pending",
 			"path": "notes.md", "diffNew": "one\ntwo\n"}},
@@ -188,6 +193,7 @@ func TestAnEditToolCallCarriesAStructuredDiff(t *testing.T) {
 // Sending while Working queues the message (queued_test.go); this checks
 // cancel on its own.
 func TestCancelEndsTheTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -208,6 +214,7 @@ func TestCancelEndsTheTurn(t *testing.T) {
 }
 
 func TestOnlyOneSessionPerWorktree(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -221,6 +228,7 @@ func TestOnlyOneSessionPerWorktree(t *testing.T) {
 }
 
 func TestNoSessionInAnAgentWorktree(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -237,6 +245,7 @@ func TestNoSessionInAnAgentWorktree(t *testing.T) {
 }
 
 func TestNewWorktreeIsCreatedNextToTheProjectAndIsNotAnAgentWorktree(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -271,6 +280,7 @@ func TestNewWorktreeIsCreatedNextToTheProjectAndIsNotAnAgentWorktree(t *testing.
 }
 
 func TestNewWorktreeRejectsBadAndExistingBranches(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -286,6 +296,7 @@ func TestNewWorktreeRejectsBadAndExistingBranches(t *testing.T) {
 }
 
 func TestACrashedAgentShowsItsLastStderrLines(t *testing.T) {
+	t.Parallel()
 	var steps []any
 	for i := 1; i <= 25; i++ {
 		steps = append(steps, map[string]any{"stderr": "line " + string(rune('A'+i-1))})
@@ -337,6 +348,7 @@ func TestStartingFhClaudeSetsDefaultModeAndItsEnvironment(t *testing.T) {
 }
 
 func TestTheAgentsTitleReplacesTheBranchName(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"title": "Fix the login page"}}})
 	_, tab, id, _ := newSessionIn(t, f, "title please")
 
@@ -349,6 +361,7 @@ func TestTheAgentsTitleReplacesTheBranchName(t *testing.T) {
 }
 
 func TestATurnEndRefreshesTheWorktrees(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"writeFile": "made-by-agent.txt"}}})
 	_, tab, _, repo := newSessionIn(t, f, "write")
 
@@ -361,6 +374,7 @@ func TestATurnEndRefreshesTheWorktrees(t *testing.T) {
 }
 
 func TestQuittingFhStopsItsAgents(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"sayPid": true}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -379,6 +393,7 @@ func TestQuittingFhStopsItsAgents(t *testing.T) {
 }
 
 func TestTwoPromptsAtOnceStartOnlyOneTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"waitCancel": true}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 
@@ -411,6 +426,7 @@ func TestTwoPromptsAtOnceStartOnlyOneTurn(t *testing.T) {
 }
 
 func TestAnAgentThatFailsToStartEndsExitedNotStarting(t *testing.T) {
+	t.Parallel()
 	// A command that runs but never speaks ACP: initialize gets no answer
 	// it can use, while the process stays alive.
 	dir := t.TempDir()
@@ -429,6 +445,7 @@ func TestAnAgentThatFailsToStartEndsExitedNotStarting(t *testing.T) {
 }
 
 func TestAnAgentWithoutTheAskingModeSaysSoInTheConversation(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"noDefaultMode": true})
 	c, _, id, _ := newSessionIn(t, f, "")
 
@@ -439,6 +456,7 @@ func TestAnAgentWithoutTheAskingModeSaysSoInTheConversation(t *testing.T) {
 }
 
 func TestANewWorktreesBranchTracksNothing(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -456,6 +474,7 @@ func TestANewWorktreesBranchTracksNothing(t *testing.T) {
 }
 
 func TestQuittingWhileAnAgentStartsLeavesNoProcessBehind(t *testing.T) {
+	t.Parallel()
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"pidFile": pidFile}, map[string]any{"sleepMs": 5000}}})
 	c := f.authorisedClient()

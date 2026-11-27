@@ -52,6 +52,7 @@ func uncommittedIn(t *testing.T, ev map[string]any, repo string) any {
 }
 
 func TestAddingAProjectReachesConnectedTabs(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	tab := f.connectTab(c)
@@ -66,6 +67,7 @@ func TestAddingAProjectReachesConnectedTabs(t *testing.T) {
 }
 
 func TestPeriodicRefreshPushesOnlyChanges(t *testing.T) {
+	t.Parallel()
 	interval := 50 * time.Millisecond
 	f := startFhWith(t, app.Options{Dir: t.TempDir(), Port: new(int), RefreshInterval: interval})
 	c := f.authorisedClient()
@@ -84,6 +86,7 @@ func TestPeriodicRefreshPushesOnlyChanges(t *testing.T) {
 }
 
 func TestRefreshCommandPushesChangesAtOnce(t *testing.T) {
+	t.Parallel()
 	f := startFhWith(t, app.Options{Dir: t.TempDir(), Port: new(int), RefreshInterval: time.Hour})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -104,6 +107,7 @@ func TestRefreshCommandPushesChangesAtOnce(t *testing.T) {
 // With no tab open nothing refreshes, so a tab that connects after a quiet
 // spell must not be left with old state until the next tick.
 func TestATabConnectingAfterAQuietSpellGetsCurrentState(t *testing.T) {
+	t.Parallel()
 	f := startFhWith(t, app.Options{Dir: t.TempDir(), Port: new(int), RefreshInterval: time.Hour})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))

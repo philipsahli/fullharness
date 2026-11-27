@@ -32,6 +32,7 @@ func (f *fh) suggestions(c *http.Client) []string {
 }
 
 func TestScanFolderSuggestsReposUpToTwoLevelsDown(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Not resolved: on macOS t.TempDir sits behind the /var symlink, like a
 	// scan_folder a user writes through a symlinked path.
@@ -56,6 +57,7 @@ func TestScanFolderSuggestsReposUpToTwoLevelsDown(t *testing.T) {
 }
 
 func TestNoScanFolderMeansNoSuggestions(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	if got := f.suggestions(f.authorisedClient()); len(got) != 0 {

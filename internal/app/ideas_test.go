@@ -25,6 +25,7 @@ func ideaByName(t *testing.T, board map[string]any, name string) map[string]any 
 }
 
 func TestGrillNewIdeaStartsANamedSessionInItsOwnWorktree(t *testing.T) {
+	t.Parallel()
 	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	f := startFhWithAgent(t, script{})
@@ -58,6 +59,7 @@ func TestGrillNewIdeaStartsANamedSessionInItsOwnWorktree(t *testing.T) {
 }
 
 func TestAnIdeaSessionStartsWithTheAgentsGrillSkill(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgents(t, map[string]script{
 		"claude":  {"onStart": []any{commands("mattpocock-skills:grill-with-docs")}},
 		"copilot": {"onStart": []any{commands("grill-me")}},
@@ -92,6 +94,7 @@ func TestAnIdeaSessionStartsWithTheAgentsGrillSkill(t *testing.T) {
 }
 
 func TestASpecThatAppearsIsSuggestedAndLinkedInOneClick(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{{Number: 1, Title: "Spec: Login", State: "OPEN", Labels: ready}}, nil, true)
 	f := startFhWithAgent(t, script{})
@@ -146,6 +149,7 @@ func TestASpecThatAppearsIsSuggestedAndLinkedInOneClick(t *testing.T) {
 }
 
 func TestAnIdeaStartedWhileTheTrackerCantBeReadLearnsItsSpecsLater(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{{Number: 1, Title: "Spec: Login", State: "OPEN", Labels: ready}}, nil, false)
 	f := startFhWithAgent(t, script{})
@@ -179,6 +183,7 @@ func TestAnIdeaStartedWhileTheTrackerCantBeReadLearnsItsSpecsLater(t *testing.T)
 }
 
 func TestASpecLinkedToOneIdeaIsNotSuggestedToAnother(t *testing.T) {
+	t.Parallel()
 	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	f := startFhWithAgent(t, script{})
@@ -212,6 +217,7 @@ func TestASpecLinkedToOneIdeaIsNotSuggestedToAnother(t *testing.T) {
 }
 
 func TestIdeaRequestsFhRefuses(t *testing.T) {
+	t.Parallel()
 	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()

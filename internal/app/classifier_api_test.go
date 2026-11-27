@@ -19,6 +19,7 @@ func (f *fh) classifier(c *http.Client) map[string]any {
 }
 
 func TestTheClassifierRunsClaudeHaikuUnlessConfigured(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	got := f.classifier(f.authorisedClient())
 	if got["provider"] != "claude -p claude-haiku-5-5" || got["calls"] != float64(0) {
@@ -27,6 +28,7 @@ func TestTheClassifierRunsClaudeHaikuUnlessConfigured(t *testing.T) {
 }
 
 func TestTheClassifierProviderIsSetInConfig(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "[classifier]\nname = \"ollama llama3\"\ncommand = [\"ollama-classify\"]\n")
 	f := startFhWith(t, appOptions(dir))

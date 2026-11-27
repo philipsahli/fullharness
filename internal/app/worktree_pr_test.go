@@ -63,6 +63,7 @@ func waitPR(t *testing.T, tab *websocket.Conn, path string, number int) []map[st
 }
 
 func TestAWorktreeCarriesItsBranchsUnmergedPROrElseTheMostRecent(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, []map[string]any{
 		ghPR(5, "form", "CLOSED"), ghPR(7, "form", "OPEN", checkRun("COMPLETED", "SUCCESS")), ghPR(9, "form", "CLOSED"),
 		ghPR(3, "retry", "MERGED"), ghPR(6, "retry", "CLOSED"),
@@ -94,6 +95,7 @@ func TestAWorktreeCarriesItsBranchsUnmergedPROrElseTheMostRecent(t *testing.T) {
 }
 
 func TestAWorktreeCarriesNoPRInformationWhenGhIsLoggedOut(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, []map[string]any{ghPR(7, "form", "OPEN")}, false)
 	f, repo, paths := prRepo(t, "form")
 	c := f.authorisedClient()
@@ -109,6 +111,7 @@ func TestAWorktreeCarriesNoPRInformationWhenGhIsLoggedOut(t *testing.T) {
 }
 
 func TestWorktreesAndTheBoardShareOnePRListUntilABoardRefresh(t *testing.T) {
+	t.Parallel()
 	g := newFakeGh(t, prSpec(), []map[string]any{ghPR(7, "form", "CLOSED")}, true)
 	f, repo, paths := prRepo(t, "form")
 	c := f.authorisedClient()
@@ -144,6 +147,7 @@ func TestWorktreesAndTheBoardShareOnePRListUntilABoardRefresh(t *testing.T) {
 }
 
 func TestAddingAProjectAndARefreshDoNotWaitForGh(t *testing.T) {
+	t.Parallel()
 	g := newFakeGh(t, nil, []map[string]any{ghPR(7, "form", "OPEN")}, true)
 	g.hold()
 	f, repo, paths := prRepo(t, "form")
@@ -182,6 +186,7 @@ func TestAddingAProjectAndARefreshDoNotWaitForGh(t *testing.T) {
 }
 
 func TestQuittingFhCancelsARunningPRFetch(t *testing.T) {
+	t.Parallel()
 	g := newFakeGh(t, nil, []map[string]any{ghPR(7, "form", "OPEN")}, true)
 	g.hold()
 	// Releases gh only after the test, so fh's Close below can't wait for it.
