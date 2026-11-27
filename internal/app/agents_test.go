@@ -58,6 +58,7 @@ func TestClaudeCodeIsMissingWithoutItsCLIsAndSaysHowToInstall(t *testing.T) {
 }
 
 func TestAnOverriddenAgentCommandThatIsMissingIsReported(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, fmt.Sprintf("[agents.claude]\ncommand = [%q]\n", filepath.Join(dir, "no-such-agent")))
 	f := startFhWith(t, appOptions(dir))
@@ -68,6 +69,7 @@ func TestAnOverriddenAgentCommandThatIsMissingIsReported(t *testing.T) {
 }
 
 func TestFhLogIsPrivateAndHoldsNoTokenOrMessageText(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "secret reply text"}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))

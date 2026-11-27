@@ -9,6 +9,7 @@ import (
 )
 
 func TestAddProjectListsItWithItsMainTree(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -35,6 +36,7 @@ func TestAddProjectListsItWithItsMainTree(t *testing.T) {
 }
 
 func TestAddProjectRejectsPathsThatAreNotARepo(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	plain := t.TempDir()
@@ -57,6 +59,7 @@ func TestAddProjectRejectsPathsThatAreNotARepo(t *testing.T) {
 }
 
 func TestAddProjectRejectsALinkedWorktreeAndNamesItsRepo(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -75,6 +78,7 @@ func TestAddProjectRejectsALinkedWorktreeAndNamesItsRepo(t *testing.T) {
 }
 
 func TestAddProjectFromASubfolderAddsTheRepo(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -91,6 +95,7 @@ func TestAddProjectFromASubfolderAddsTheRepo(t *testing.T) {
 }
 
 func TestAddingAProjectTwiceIsAConflict(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -107,6 +112,7 @@ func TestAddingAProjectTwiceIsAConflict(t *testing.T) {
 }
 
 func TestProjectsSurviveARestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := startFh(t, dir)
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -122,6 +128,7 @@ func TestProjectsSurviveARestart(t *testing.T) {
 }
 
 func TestProjectsFileIsPrivateAndConfigIsNeverWritten(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	config := "# my settings\nport = 0 # any free port\n"
 	writeConfig(t, dir, config)
@@ -147,6 +154,7 @@ func TestProjectsFileIsPrivateAndConfigIsNeverWritten(t *testing.T) {
 }
 
 func TestRemoveProjectLeavesTheRepoOnDisk(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := startFh(t, dir)
 	c := f.authorisedClient()
@@ -172,6 +180,7 @@ func TestRemoveProjectLeavesTheRepoOnDisk(t *testing.T) {
 }
 
 func TestRemovingAnUnknownProjectIsNotFound(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	status, _ := f.post(f.authorisedClient(), "/api/projects/remove", map[string]string{"path": "/nowhere"})
@@ -182,6 +191,7 @@ func TestRemovingAnUnknownProjectIsNotFound(t *testing.T) {
 }
 
 func TestAddProjectRejectsABareRepositoryAndSaysWhy(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	bare := filepath.Join(t.TempDir(), "shop.git")
 	git(t, t.TempDir(), "init", "-q", "--bare", bare)
@@ -197,6 +207,7 @@ func TestAddProjectRejectsABareRepositoryAndSaysWhy(t *testing.T) {
 }
 
 func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, nil, true) // a GitHub origin makes fh read its PRs
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -236,6 +247,7 @@ func TestAProjectLinksToItsGitHubRepoOnlyWhenOriginIsOnGitHub(t *testing.T) {
 }
 
 func TestAWorktreeBranchLinksToGitHubOnlyWhenOriginHasIt(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, nil, true) // a GitHub origin makes fh read its PRs
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()

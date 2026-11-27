@@ -123,6 +123,7 @@ func nowSpec(title string) string {
 }
 
 func TestAutopilotStartsTheNextStartableTicket(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Opened a PR."}}}, "asking")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -151,6 +152,7 @@ func TestAutopilotStartsTheNextStartableTicket(t *testing.T) {
 }
 
 func TestAutopilotLeavesFeaturesOutsideNowAndProjectsWithItOff(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "ok"}}}, "done")
 	c := f.authorisedClient()
 
@@ -171,6 +173,7 @@ func TestAutopilotLeavesFeaturesOutsideNowAndProjectsWithItOff(t *testing.T) {
 }
 
 func TestAutopilotRunsOneSessionPerProjectAndGoesOnOnceItIsDone(t *testing.T) {
+	t.Parallel()
 	for _, verdict := range []string{"asking", "done"} {
 		t.Run(verdict, func(t *testing.T) {
 			f := startAutopilotFh(t, script{"default": []any{map[string]any{"sleepMs": 200}, map[string]any{"say": "Opened a PR."}}}, verdict)
@@ -205,6 +208,7 @@ func TestAutopilotRunsOneSessionPerProjectAndGoesOnOnceItIsDone(t *testing.T) {
 }
 
 func TestTheAutopilotSwitchSurvivesARestart(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{}, "done")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -226,6 +230,7 @@ func TestTheAutopilotSwitchSurvivesARestart(t *testing.T) {
 }
 
 func TestAutopilotOnUnknownProjectIsNotFound(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{}, "done")
 	if status, _ := f.post(f.authorisedClient(), "/api/projects/autopilot", map[string]any{"path": "/no/such", "on": true}); status != http.StatusNotFound {
 		t.Errorf("status %d, want 404", status)
@@ -233,6 +238,7 @@ func TestAutopilotOnUnknownProjectIsNotFound(t *testing.T) {
 }
 
 func TestAutopilotNeverMergesOrClosesASpec(t *testing.T) {
+	t.Parallel()
 	// Spec #10 in Now: its only Ticket #11 has an open PR (Review), so the
 	// next step is the user's merge. Spec #20 in Now has every Ticket
 	// closed, so the next step is the user closing it.
@@ -278,6 +284,7 @@ func TestAutopilotLeavesUntriagedIssuesToTheUser(t *testing.T) {
 }
 
 func TestAutopilotTurnsAnApprovedSpecInNowIntoTickets(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Wrote the tickets."}}}, "asking")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -300,6 +307,7 @@ func TestAutopilotTurnsAnApprovedSpecInNowIntoTickets(t *testing.T) {
 }
 
 func TestAutopilotReviewsATicketInItsOwnSessionOnceItsPRIsOpen(t *testing.T) {
+	t.Parallel()
 	_, unexpected, setPRs := fakeGhLogged(t, []ghIssue{
 		{Number: 10, Title: "Login", State: "OPEN", Labels: []string{"roadmap:now", "ready-for-agent"}, SubIssues: []int{11}},
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
@@ -346,6 +354,7 @@ func twoTicketRepo(t *testing.T) string {
 }
 
 func TestAStopPointStillHoldsTheProjectAfterARestart(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Which login method?"}}}, "asking")
 	c := f.authorisedClient()
 	repo := twoTicketRepo(t)
@@ -366,6 +375,7 @@ func TestAStopPointStillHoldsTheProjectAfterARestart(t *testing.T) {
 }
 
 func TestAnAgentThatExitsMidTurnIsAStopPoint(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"exit": 3}}}, "done")
 	c := f.authorisedClient()
 	repo := twoTicketRepo(t)
@@ -392,6 +402,7 @@ func TestAnAgentThatExitsMidTurnIsAStopPoint(t *testing.T) {
 }
 
 func TestAutopilotReusesATicketsExistingWorktree(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "ok"}}}, "asking")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -414,6 +425,7 @@ func TestAutopilotReusesATicketsExistingWorktree(t *testing.T) {
 }
 
 func TestAutopilotStartsTheProjectsAgent(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{}, "done")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -435,6 +447,7 @@ func TestAutopilotStartsTheProjectsAgent(t *testing.T) {
 // classifier's measurement and the Runner's state.json save could land
 // after Close, while a test's TempDir cleanup was removing the folder.
 func TestClosingFhStopsAutopilotsTurnEndWorkBeforeItReturns(t *testing.T) {
+	t.Parallel()
 	started := filepath.Join(t.TempDir(), "classifying")
 	// Its output goes nowhere, so a killed sh leaves no pipe open behind it.
 	f := startAutopilotFhClassifying(t, script{"default": []any{map[string]any{"say": "ok"}}},

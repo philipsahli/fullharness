@@ -17,6 +17,7 @@ func commandNames(t *testing.T, s map[string]any) []string {
 }
 
 func TestASessionListsTheSlashCommandsOfItsLatestUpdate(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{
 		"onStart": []any{commands("grill-me", "mattpocock-skills:tdd")},
 		"prompts": map[string]any{"install": []any{commands("grill-me", "mattpocock-skills:tdd", "retro")}},
@@ -55,6 +56,7 @@ func option(t *testing.T, s map[string]any, id string) map[string]any {
 }
 
 func TestTheModelCanBeChangedThroughTheAgentsConfigOption(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"models": true, "default": []any{map[string]any{"sayConfig": "model"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 
@@ -79,6 +81,7 @@ func TestTheModelCanBeChangedThroughTheAgentsConfigOption(t *testing.T) {
 }
 
 func TestASessionShowsContextUseAndCostFromUsageUpdates(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{
 		"copilot-like": []any{map[string]any{"usage": map[string]any{"used": 12000, "size": 200000}}},
 		"claude-like":  []any{map[string]any{"usage": map[string]any{"used": 53000, "size": 200000, "cost": 0.42, "currency": "USD"}}},
@@ -113,6 +116,7 @@ func (f *fh) lastAgentText(c *http.Client, id string) any {
 }
 
 func TestTheModeCanBeChangedAmongTheModesTheAgentOffers(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{
 		"prompts": map[string]any{"which": []any{map[string]any{"sayMode": true}}},
 		"default": []any{map[string]any{"switchMode": "default"}},
@@ -145,6 +149,7 @@ func TestTheModeCanBeChangedAmongTheModesTheAgentOffers(t *testing.T) {
 }
 
 func TestChoosingTheAllowWithoutAskingSettingTurnsAutoApproveOnAndOff(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		agent, path, key, auto, ask string
 	}{

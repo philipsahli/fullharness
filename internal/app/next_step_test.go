@@ -16,6 +16,7 @@ func nextSkill(item map[string]any) string {
 }
 
 func TestEachFeaturesNextStepFollowsItsStage(t *testing.T) {
+	t.Parallel()
 	repo := localBoardRepo(t)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -45,6 +46,7 @@ func TestEachFeaturesNextStepFollowsItsStage(t *testing.T) {
 }
 
 func TestEachTicketsNextStepFollowsItsStage(t *testing.T) {
+	t.Parallel()
 	repo := localBoardRepo(t)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -72,6 +74,7 @@ func TestEachTicketsNextStepFollowsItsStage(t *testing.T) {
 }
 
 func TestATicketAtReviewGetsCodeReviewNext(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 20, Title: "Search", State: "OPEN", SubIssues: []int{21}},

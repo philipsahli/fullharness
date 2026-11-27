@@ -16,6 +16,7 @@ func (f *fh) viewing(c *http.Client, id, tab string, on bool) int {
 }
 
 func TestAFinishedTurnWaitsUntilYouLook(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -30,6 +31,7 @@ func TestAFinishedTurnWaitsUntilYouLook(t *testing.T) {
 }
 
 func TestLookingDoesNotClearAWaitingPermissionRequest(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, id, _ := askAndWait(t, f)
 
@@ -41,6 +43,7 @@ func TestLookingDoesNotClearAWaitingPermissionRequest(t *testing.T) {
 }
 
 func TestACancelledTurnIsIdleNotWaiting(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"waitCancel": true}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -55,6 +58,7 @@ func TestACancelledTurnIsIdleNotWaiting(t *testing.T) {
 }
 
 func TestTurnsEndingByLimitOrErrorAlsoWait(t *testing.T) {
+	t.Parallel()
 	for name, step := range map[string]map[string]any{
 		"max_tokens": {"stop": "max_tokens"},
 		"refusal":    {"stop": "refusal"},
@@ -72,6 +76,7 @@ func TestTurnsEndingByLimitOrErrorAlsoWait(t *testing.T) {
 }
 
 func TestAnAgentThatNeedsALoginExitsWithTheLoginCommand(t *testing.T) {
+	t.Parallel()
 	for name, s := range map[string]script{
 		"at start":  {"onStart": []any{map[string]any{"authError": true}}},
 		"in a turn": {"default": []any{map[string]any{"authError": true}}},
@@ -94,6 +99,7 @@ func TestAnAgentThatNeedsALoginExitsWithTheLoginCommand(t *testing.T) {
 }
 
 func TestTheSessionListPutsWhatNeedsYouFirst(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{
 		"prompts": map[string]any{
 			"wait":  []any{map[string]any{"say": "done"}},
@@ -136,6 +142,7 @@ func TestTheSessionListPutsWhatNeedsYouFirst(t *testing.T) {
 }
 
 func TestATurnThatEndsWhileYouLookGoesStraightToIdle(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -151,6 +158,7 @@ func TestATurnThatEndsWhileYouLookGoesStraightToIdle(t *testing.T) {
 }
 
 func TestAViewerThatLeftNoLongerCounts(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -162,6 +170,7 @@ func TestAViewerThatLeftNoLongerCounts(t *testing.T) {
 }
 
 func TestSendingFromAFinishedTurnStartsTheNextOne(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -175,6 +184,7 @@ func TestSendingFromAFinishedTurnStartsTheNextOne(t *testing.T) {
 }
 
 func TestACancelEndsIdleEvenIfTheAgentSaysEndTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"endAfterCancel": true, "default": []any{map[string]any{"waitCancel": true}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -189,6 +199,7 @@ func TestACancelEndsIdleEvenIfTheAgentSaysEndTurn(t *testing.T) {
 }
 
 func TestLoginNeededAtInitialize(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"initAuthError": true})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -202,6 +213,7 @@ func TestLoginNeededAtInitialize(t *testing.T) {
 }
 
 func TestAReconnectedTabGetsCurrentStatesInItsSnapshot(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)

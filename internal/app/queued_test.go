@@ -31,6 +31,7 @@ func userTexts(items []map[string]any) []string {
 }
 
 func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"sleepMs": 600}, map[string]any{"say": "first"}},
 		"more": []any{map[string]any{"say": "second"}},
@@ -63,6 +64,7 @@ func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testi
 }
 
 func TestSendingAgainAddsToTheQueuedMessage(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "one"})
@@ -74,6 +76,7 @@ func TestSendingAgainAddsToTheQueuedMessage(t *testing.T) {
 }
 
 func TestCancelMovesTheQueuedMessageBackInsteadOfSendingIt(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	tab := f.connectTab(c)
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
@@ -90,6 +93,7 @@ func TestCancelMovesTheQueuedMessageBackInsteadOfSendingIt(t *testing.T) {
 }
 
 func TestEditTakesTheQueuedMessageBackAndRemoveDropsIt(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
@@ -111,6 +115,7 @@ func TestEditTakesTheQueuedMessageBackAndRemoveDropsIt(t *testing.T) {
 }
 
 func TestSendNowCancelsTheTurnAndSendsTheQueuedMessage(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"waitCancel": true}},
 		"more": []any{map[string]any{"say": "done"}},
@@ -132,6 +137,7 @@ func TestSendNowCancelsTheTurnAndSendsTheQueuedMessage(t *testing.T) {
 }
 
 func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"sleepMs": 300}, map[string]any{"exit": 3}},
 	}})
@@ -146,6 +152,7 @@ func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
 }
 
 func TestAMessageSentWhileStartingIsSentOnceTheAgentIsReady(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{
 		"onStart": []any{map[string]any{"sleepMs": 400}},
 		"prompts": map[string]any{"early": []any{map[string]any{"say": "hi"}}},
@@ -182,6 +189,7 @@ func countOf(xs []string, x string) int {
 }
 
 func TestTheComposerClearsUnsentOnceItTookIt(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	tab := f.connectTab(c)
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
@@ -197,6 +205,7 @@ func TestTheComposerClearsUnsentOnceItTookIt(t *testing.T) {
 }
 
 func TestSendNowNeedsARunningTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"sleepMs": 400}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -212,6 +221,7 @@ func TestSendNowNeedsARunningTurn(t *testing.T) {
 }
 
 func TestAnUnknownQueuedActionIsABadRequest(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	if status, _ := f.post(c, "/api/sessions/"+id+"/queued", map[string]string{"action": "shout"}); status != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400", status)
@@ -219,6 +229,7 @@ func TestAnUnknownQueuedActionIsABadRequest(t *testing.T) {
 }
 
 func TestUnsentStaysUntilTheComposerTookIt(t *testing.T) {
+	t.Parallel()
 	f, c, id := startWorking(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"waitCancel": true}},
 		"next": []any{map[string]any{"waitCancel": true}},

@@ -7,6 +7,7 @@ import (
 )
 
 func TestRequestWithoutCookieIsRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	resp := get(t, noRedirectClient(t), f.origin()+"/api/state")
@@ -17,6 +18,7 @@ func TestRequestWithoutCookieIsRejected(t *testing.T) {
 }
 
 func TestLaunchURLExchangesTokenForStrictHttpOnlyCookie(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	resp := get(t, noRedirectClient(t), f.launchURL().String())
@@ -41,6 +43,7 @@ func TestLaunchURLExchangesTokenForStrictHttpOnlyCookie(t *testing.T) {
 }
 
 func TestRequestWithCookieIsAccepted(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 
@@ -52,6 +55,7 @@ func TestRequestWithCookieIsAccepted(t *testing.T) {
 }
 
 func TestRequestWithWrongCookieIsRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	req, _ := http.NewRequest("GET", f.origin()+"/api/state", nil)
 	req.AddCookie(&http.Cookie{Name: "fh_token_" + f.launchURL().Port(), Value: "not-the-token"})
@@ -68,6 +72,7 @@ func TestRequestWithWrongCookieIsRejected(t *testing.T) {
 }
 
 func TestLaunchURLWithWrongTokenIsRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	resp := get(t, noRedirectClient(t), f.origin()+"/auth?token=wrong")
@@ -81,6 +86,7 @@ func TestLaunchURLWithWrongTokenIsRejected(t *testing.T) {
 }
 
 func TestAppShellIsServedWithCookie(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	resp := get(t, f.authorisedClient(), f.origin()+"/")
@@ -94,6 +100,7 @@ func TestAppShellIsServedWithCookie(t *testing.T) {
 }
 
 func TestPageWithoutCookieTellsUserToRunFh(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	resp, err := noRedirectClient(t).Get(f.origin() + "/")
@@ -111,6 +118,7 @@ func TestPageWithoutCookieTellsUserToRunFh(t *testing.T) {
 }
 
 func TestCommandsFromAnotherOriginAreRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 
@@ -134,6 +142,7 @@ func TestCommandsFromAnotherOriginAreRejected(t *testing.T) {
 }
 
 func TestCommandsWithoutCookieAreRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	status, _ := f.post(noRedirectClient(t), "/api/projects/refresh", nil)

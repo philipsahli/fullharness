@@ -94,6 +94,7 @@ func localBoardRepo(t *testing.T) string {
 }
 
 func TestALocalMarkdownBoardPutsEachFeatureAtItsStage(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := localBoardRepo(t)
@@ -120,6 +121,7 @@ func TestALocalMarkdownBoardPutsEachFeatureAtItsStage(t *testing.T) {
 }
 
 func TestLocalTicketsShowLabelStageBlockersAndStartable(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := localBoardRepo(t)
@@ -144,6 +146,7 @@ func TestLocalTicketsShowLabelStageBlockersAndStartable(t *testing.T) {
 }
 
 func TestABranchAheadMakesItsTicketImplementing(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := localBoardRepo(t)
@@ -160,6 +163,7 @@ func TestABranchAheadMakesItsTicketImplementing(t *testing.T) {
 }
 
 func TestTrackerDetection(t *testing.T) {
+	t.Parallel()
 	fakeGh(t, nil, nil, false) // GitHub cases must never reach the real gh
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -224,6 +228,7 @@ func asJSON(v any) string {
 }
 
 func TestBlockedByReadsOnlyLeadingNumbersAndMatchesByValue(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -249,6 +254,7 @@ func TestBlockedByReadsOnlyLeadingNumbersAndMatchesByValue(t *testing.T) {
 }
 
 func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))

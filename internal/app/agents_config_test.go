@@ -75,6 +75,7 @@ func TestCopilotAndOpenCodeAreBuiltInAndSayWhatToInstall(t *testing.T) {
 }
 
 func TestCopilotAllowAllIsOffUnlessAutoApprove(t *testing.T) {
+	t.Parallel()
 	copilot := script{"allowAll": true, "default": []any{map[string]any{"sayConfig": "allow_all"}}}
 
 	for auto, want := range map[bool]string{false: "allow_all=off", true: "allow_all=on"} {
@@ -86,6 +87,7 @@ func TestCopilotAllowAllIsOffUnlessAutoApprove(t *testing.T) {
 }
 
 func TestOpenCodeAsksForBashAndEditUnlessAutoApprove(t *testing.T) {
+	t.Parallel()
 	opencode := script{"default": []any{map[string]any{"sayEnv": "OPENCODE_PERMISSION"}}}
 
 	for auto, want := range map[bool]string{
@@ -100,6 +102,7 @@ func TestOpenCodeAsksForBashAndEditUnlessAutoApprove(t *testing.T) {
 }
 
 func TestConfigCanAddAnAgentAndPassItsEnvironment(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgents(t,
 		map[string]script{"myagent": {"default": []any{map[string]any{"sayEnv": "MY_SETTING"}}}},
 		map[string]map[string]string{"myagent": {"MY_SETTING": "42"}})
@@ -113,6 +116,7 @@ func TestConfigCanAddAnAgentAndPassItsEnvironment(t *testing.T) {
 }
 
 func TestAnAgentFhCantMakeAskSaysSoInTheConversation(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgents(t, map[string]script{"myagent": {}}, nil)
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))

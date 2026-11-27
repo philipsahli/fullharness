@@ -119,6 +119,7 @@ func (f *fh) transcript(c *http.Client, id string) []map[string]any {
 }
 
 func TestStartSessionRunsTheStartingPromptAndShowsTheReply(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{
 		"hello": []any{map[string]any{"say": "Hi "}, map[string]any{"say": "there"}},
 	}})

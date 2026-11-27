@@ -7,6 +7,7 @@ import (
 )
 
 func TestEventChannelSendsEmptySnapshotOnConnect(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	conn, status, err := f.dialWS(f.authorisedClient(), f.origin())
@@ -27,6 +28,7 @@ func TestEventChannelSendsEmptySnapshotOnConnect(t *testing.T) {
 }
 
 func TestEventChannelWithoutCookieIsRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	_, status, err := f.dialWS(noRedirectClient(t), f.origin())
@@ -37,6 +39,7 @@ func TestEventChannelWithoutCookieIsRejected(t *testing.T) {
 }
 
 func TestEventChannelFromOtherOriginIsRejected(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 

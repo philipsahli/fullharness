@@ -41,6 +41,7 @@ func relabelled(n int) []ghIssue {
 }
 
 func TestMarkReadyOnATicketRelabelsItAndTheNextBoardShowsIt(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	g := newFakeGh(t, triageIssues, nil, true)
 	f := startFh(t, t.TempDir())
@@ -66,6 +67,7 @@ func TestMarkReadyOnATicketRelabelsItAndTheNextBoardShowsIt(t *testing.T) {
 }
 
 func TestMarkReadyOnASpecApprovesIt(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	g := newFakeGh(t, triageIssues, nil, true)
 	f := startFh(t, t.TempDir())
@@ -86,6 +88,7 @@ func TestMarkReadyOnASpecApprovesIt(t *testing.T) {
 }
 
 func TestAFailedWriteAnswersWithGhsOwnError(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	g := newFakeGh(t, triageIssues, nil, true)
 	g.failEdits("could not add label: 'ready-for-agent' not found")
@@ -104,6 +107,7 @@ func TestAFailedWriteAnswersWithGhsOwnError(t *testing.T) {
 }
 
 func TestMarkReadyRefusesARefThatIsNotASpecOrTicket(t *testing.T) {
+	t.Parallel()
 	repo := localBoardRepo(t)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -130,6 +134,7 @@ func TestMarkReadyRefusesARefThatIsNotASpecOrTicket(t *testing.T) {
 }
 
 func TestMarkReadyInLocalMarkdownRewritesOnlyTheStatusLine(t *testing.T) {
+	t.Parallel()
 	repo := localBoardRepo(t)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
@@ -170,6 +175,7 @@ func TestMarkReadyInLocalMarkdownRewritesOnlyTheStatusLine(t *testing.T) {
 }
 
 func TestMarkReadyOnALocalSpecWithoutAStatusLineAddsOne(t *testing.T) {
+	t.Parallel()
 	repo := localBoardRepo(t)
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()

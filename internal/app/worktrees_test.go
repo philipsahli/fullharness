@@ -35,6 +35,7 @@ func worktreeAt(t *testing.T, project map[string]any, path string) map[string]an
 }
 
 func TestEveryWorktreeIsListedAndOthersAreAgentWorktrees(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -61,6 +62,7 @@ func TestEveryWorktreeIsListedAndOthersAreAgentWorktrees(t *testing.T) {
 }
 
 func TestWorktreeShowsUncommittedFiles(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -75,6 +77,7 @@ func TestWorktreeShowsUncommittedFiles(t *testing.T) {
 }
 
 func TestAheadBehindComparesWithTheRemoteDefaultBranch(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -98,6 +101,7 @@ func TestAheadBehindComparesWithTheRemoteDefaultBranch(t *testing.T) {
 }
 
 func TestWithoutARemoteAheadBehindComparesWithLocalMain(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -118,6 +122,7 @@ func TestWithoutARemoteAheadBehindComparesWithLocalMain(t *testing.T) {
 }
 
 func TestProjectWithMissingFolderIsMarkedAndRecovers(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -147,6 +152,7 @@ func TestProjectWithMissingFolderIsMarkedAndRecovers(t *testing.T) {
 }
 
 func TestAMissingProjectCanBeRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -161,6 +167,7 @@ func TestAMissingProjectCanBeRemoved(t *testing.T) {
 }
 
 func TestARemoteWithoutOriginHeadStillComparesWithOrigin(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -182,6 +189,7 @@ func TestARemoteWithoutOriginHeadStillComparesWithOrigin(t *testing.T) {
 }
 
 func TestAWorktreeWhoseFolderWasDeletedIsMarkedMissing(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
