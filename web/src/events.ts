@@ -166,6 +166,7 @@ export type AutopilotStatus = {
   skill?: string;
   ticket?: string;
   reason?: AutopilotReason;
+  tool?: string; // running only: the tool call the turn is on (#205)
 };
 
 // Snapshot is the full state the server sends when the event channel opens.
