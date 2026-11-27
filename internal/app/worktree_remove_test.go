@@ -44,6 +44,7 @@ func mergedWorktree(t *testing.T, f *fh, c *http.Client, repo string) string {
 }
 
 func TestAMergedCleanWorktreeIsRemovedAfterConfirmation(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -76,6 +77,7 @@ func TestAMergedCleanWorktreeIsRemovedAfterConfirmation(t *testing.T) {
 }
 
 func TestAWorktreeWithAnUnmergedBranchIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -94,6 +96,7 @@ func TestAWorktreeWithAnUnmergedBranchIsNotRemoved(t *testing.T) {
 }
 
 func TestASquashMergedBranchCountsAsMerged(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -121,6 +124,7 @@ func TestASquashMergedBranchCountsAsMerged(t *testing.T) {
 }
 
 func TestAWorktreeWithUncommittedChangesIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -139,6 +143,7 @@ func TestAWorktreeWithUncommittedChangesIsNotRemoved(t *testing.T) {
 }
 
 func TestAWorktreeWithALiveSessionIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -160,6 +165,7 @@ func TestAWorktreeWithALiveSessionIsNotRemoved(t *testing.T) {
 }
 
 func TestAWorktreeWithAnExitedSessionIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"exit": 2}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -179,6 +185,7 @@ func TestAWorktreeWithAnExitedSessionIsNotRemoved(t *testing.T) {
 }
 
 func TestAnAgentWorktreeIsNeverRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -198,6 +205,7 @@ func TestAnAgentWorktreeIsNeverRemoved(t *testing.T) {
 }
 
 func TestTheMainTreeIsNeverRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -209,6 +217,7 @@ func TestTheMainTreeIsNeverRemoved(t *testing.T) {
 }
 
 func TestAWorktreeWhoseFolderIsGoneIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -226,6 +235,7 @@ func TestAWorktreeWhoseFolderIsGoneIsNotRemoved(t *testing.T) {
 }
 
 func TestARebaseMergedBranchCountsAsMerged(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -247,6 +257,7 @@ func TestARebaseMergedBranchCountsAsMerged(t *testing.T) {
 }
 
 func TestAWorktreeWithNoCommitsOfItsOwnIsRemovableButNotCalledMerged(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -264,6 +275,7 @@ func TestAWorktreeWithNoCommitsOfItsOwnIsRemovableButNotCalledMerged(t *testing.
 }
 
 func TestTheConfirmationListsTheIgnoredFilesRemovalDeletes(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -292,6 +304,7 @@ func TestTheConfirmationListsTheIgnoredFilesRemovalDeletes(t *testing.T) {
 }
 
 func TestRemovingInAnUnknownProjectIsNotFound(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 
@@ -301,6 +314,7 @@ func TestRemovingInAnUnknownProjectIsNotFound(t *testing.T) {
 }
 
 func TestAWorktreeMergedIntoOriginIsRemoved(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	parent := realPath(t, t.TempDir())
@@ -325,6 +339,7 @@ func TestAWorktreeMergedIntoOriginIsRemoved(t *testing.T) {
 }
 
 func TestWithoutAReflogAWorktreeWithNothingOfItsOwnIsCalledInBase(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -361,6 +376,7 @@ func rawPost(f *fh, c *http.Client, path string, body any) (int, error) {
 }
 
 func TestNoSessionStartsInAWorktreeWhileItIsBeingRemoved(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, fmt.Sprintf("[agents.claude]\ncommand = [%q]\nenv = { FH_FAKE_SCRIPT = \"{}\" }\n", fakeAgentBin))
 	opts := appOptions(dir)

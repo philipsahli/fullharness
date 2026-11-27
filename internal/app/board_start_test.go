@@ -37,6 +37,7 @@ func (f *fh) skill(c *http.Client, name string) map[string]skillInfo {
 func commands(names ...string) map[string]any { return map[string]any{"commands": names} }
 
 func TestSkillsResolvePerAgentFromItsSlashCommands(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgents(t, map[string]script{
 		// A plugin skill, plus a longer name that must not match "implement".
 		"claude":   {"onStart": []any{commands("mattpocock-skills:implement-spec", "mattpocock-skills:implement")}},
@@ -90,6 +91,7 @@ func loginSpecRepo(t *testing.T) string {
 }
 
 func TestTheBoardNamesEachTicketsBranchAndReference(t *testing.T) {
+	t.Parallel()
 	gh := loginSpecRepo(t)
 	local := realPath(t, newRepo(t, t.TempDir(), "notes"))
 	scratch(t, local, "login/spec.md", "# Login\n")
@@ -118,6 +120,7 @@ func TestTheBoardNamesEachTicketsBranchAndReference(t *testing.T) {
 }
 
 func TestAlongBranchNameIsCutAtAWord(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 7, Title: "Show every Worktree's uncommitted files and commits ahead of main", State: "OPEN", Labels: []string{"ready-for-agent"}},
@@ -134,6 +137,7 @@ func TestAlongBranchNameIsCutAtAWord(t *testing.T) {
 }
 
 func TestASessionStartedFromATicketIsLinkedAndMakesItImplementing(t *testing.T) {
+	t.Parallel()
 	repo := loginSpecRepo(t)
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
@@ -166,6 +170,7 @@ func TestASessionStartedFromATicketIsLinkedAndMakesItImplementing(t *testing.T) 
 }
 
 func TestASessionLinkedOnlyToAFeatureLeavesItsTicketsAlone(t *testing.T) {
+	t.Parallel()
 	repo := loginSpecRepo(t)
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
@@ -182,6 +187,7 @@ func TestASessionLinkedOnlyToAFeatureLeavesItsTicketsAlone(t *testing.T) {
 }
 
 func TestALinkWithoutAFeatureIsRefused(t *testing.T) {
+	t.Parallel()
 	repo := loginSpecRepo(t)
 	f := startFhWithAgent(t, script{})
 	c := f.authorisedClient()
@@ -196,6 +202,7 @@ func TestALinkWithoutAFeatureIsRefused(t *testing.T) {
 }
 
 func TestALocalTicketsSessionLinksByFolderAndNumberUntilClosed(t *testing.T) {
+	t.Parallel()
 	repo := realPath(t, newRepo(t, t.TempDir(), "notes"))
 	scratch(t, repo, "login/spec.md", "# Login\n")
 	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
@@ -229,6 +236,7 @@ func TestALocalTicketsSessionLinksByFolderAndNumberUntilClosed(t *testing.T) {
 }
 
 func TestAnImplementSpecSessionCoversItsOpenTickets(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "Spec: Login", State: "OPEN", SubIssues: []int{2, 3, 4}},

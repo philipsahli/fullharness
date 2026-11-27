@@ -34,6 +34,7 @@ func sessionAfterRestart(t *testing.T, s script, req map[string]any) (*fh, *http
 }
 
 func TestSessionsSurviveARestartAsExitedFhQuit(t *testing.T) {
+	t.Parallel()
 	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
 
 	sessions := objects(t, f.state(c), "sessions")
@@ -50,6 +51,7 @@ func TestSessionsSurviveARestartAsExitedFhQuit(t *testing.T) {
 }
 
 func TestReopenLoadsTheSessionWithItsHistory(t *testing.T) {
+	t.Parallel()
 	f, c, id, repo := sessionAfterRestart(t, script{"history": history, "default": []any{map[string]any{"sayMode": true}}}, map[string]any{"autoApprove": true})
 	tab := f.connectTab(c)
 
@@ -74,6 +76,7 @@ func TestReopenLoadsTheSessionWithItsHistory(t *testing.T) {
 }
 
 func TestReopenKeepsTheModeAndModelChosenInTheSession(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"models": true, "default": []any{
 		map[string]any{"sayMode": true}, map[string]any{"say": ";"}, map[string]any{"sayConfig": "model"},
 	}})
@@ -105,6 +108,7 @@ func TestReopenKeepsTheModeAndModelChosenInTheSession(t *testing.T) {
 }
 
 func TestReopenIsRefusedWhenTheWorktreeHasANewSession(t *testing.T) {
+	t.Parallel()
 	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
 	f.startSession(c, map[string]any{"project": repo, "worktree": repo, "agent": "claude"})
 
@@ -114,6 +118,7 @@ func TestReopenIsRefusedWhenTheWorktreeHasANewSession(t *testing.T) {
 }
 
 func TestReopenIsRefusedForAnAgentThatCantLoadSessions(t *testing.T) {
+	t.Parallel()
 	f, c, id, _ := sessionAfterRestart(t, script{"noLoad": true}, nil)
 
 	status, body := f.post(c, "/api/sessions/"+id+"/reopen", nil)
@@ -124,6 +129,7 @@ func TestReopenIsRefusedForAnAgentThatCantLoadSessions(t *testing.T) {
 }
 
 func TestCloseRemovesTheSessionFreesItsWorktreeAndDeletesItsLog(t *testing.T) {
+	t.Parallel()
 	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
 
 	if status, _ := f.post(c, "/api/sessions/"+id+"/close", nil); status != http.StatusNoContent {
@@ -145,6 +151,7 @@ func TestCloseRemovesTheSessionFreesItsWorktreeAndDeletesItsLog(t *testing.T) {
 }
 
 func TestClosingALiveSessionNeedsConfirmationAndStopsItsAgent(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"waitCancel": true}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -173,6 +180,7 @@ func TestClosingALiveSessionNeedsConfirmationAndStopsItsAgent(t *testing.T) {
 }
 
 func TestALoginNeededSessionCanBeReopened(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"authError": true}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -190,6 +198,7 @@ func TestALoginNeededSessionCanBeReopened(t *testing.T) {
 }
 
 func TestStartupRemovesLogsOfSessionsThatAreGone(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "logs"), 0o700); err != nil {
 		t.Fatal(err)
@@ -205,6 +214,7 @@ func TestStartupRemovesLogsOfSessionsThatAreGone(t *testing.T) {
 }
 
 func TestTwoReopensAtOnceStartOneAgent(t *testing.T) {
+	t.Parallel()
 	f, c, id, _ := sessionAfterRestart(t, script{}, nil)
 
 	statuses := make(chan int, 2)
@@ -223,6 +233,7 @@ func TestTwoReopensAtOnceStartOneAgent(t *testing.T) {
 }
 
 func TestALoginNeededAtStartCanBeReopenedAsANewSession(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"initAuthError": true})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -248,6 +259,7 @@ func TestALoginNeededAtStartCanBeReopenedAsANewSession(t *testing.T) {
 }
 
 func TestReopenInTheSameRunTellsTabsToDropTheOldConversation(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"history": history, "default": []any{map[string]any{"exit": 2}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectTab(c)
@@ -271,6 +283,7 @@ func TestReopenInTheSameRunTellsTabsToDropTheOldConversation(t *testing.T) {
 }
 
 func TestAnAgentRemovedFromConfigKeepsItsReopenAfterItComesBack(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgents(t, map[string]script{"myagent": {}}, nil)
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -300,6 +313,7 @@ func TestAnAgentRemovedFromConfigKeepsItsReopenAfterItComesBack(t *testing.T) {
 }
 
 func TestASessionsOwnPageSaysItCanBeReopened(t *testing.T) {
+	t.Parallel()
 	f, c, id, _ := sessionAfterRestart(t, script{}, nil)
 
 	resp, err := c.Get(f.origin() + "/api/sessions/" + id)
@@ -317,6 +331,7 @@ func TestASessionsOwnPageSaysItCanBeReopened(t *testing.T) {
 }
 
 func TestASessionWhoseWorktreeFolderIsGoneCantBeReopened(t *testing.T) {
+	t.Parallel()
 	f, c, id, repo := sessionAfterRestart(t, script{}, nil)
 	if err := os.RemoveAll(repo); err != nil {
 		t.Fatal(err)

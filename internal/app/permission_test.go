@@ -115,6 +115,7 @@ func permissionItem(t *testing.T, f *fh, c *http.Client, id string) map[string]a
 }
 
 func TestAPermissionRequestWaitsInTheInboxAndTheSession(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, id, req := askAndWait(t, f)
 
@@ -138,6 +139,7 @@ func TestAPermissionRequestWaitsInTheInboxAndTheSession(t *testing.T) {
 }
 
 func TestAnsweringFromTheInboxReachesTheAgentAndClearsBothPlaces(t *testing.T) {
+	t.Parallel()
 	for choice, want := range map[string]string{"allow": "allow-once", "deny": "reject", "always": "allow-always"} {
 		t.Run(choice, func(t *testing.T) {
 			f := startFhWithAgent(t, askScript(map[string]any{"always": true}))
@@ -160,6 +162,7 @@ func TestAnsweringFromTheInboxReachesTheAgentAndClearsBothPlaces(t *testing.T) {
 }
 
 func TestDenyPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
+	t.Parallel()
 	s := askScript(nil)
 	s["rejectAlwaysFirst"] = true
 	f := startFhWithAgent(t, s)
@@ -176,6 +179,7 @@ func TestDenyPicksRejectOnceEvenWhenRejectAlwaysComesFirst(t *testing.T) {
 }
 
 func TestAlwaysAllowIsRefusedWhenTheAgentDidNotOfferIt(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, _, req := askAndWait(t, f)
 
@@ -185,6 +189,7 @@ func TestAlwaysAllowIsRefusedWhenTheAgentDidNotOfferIt(t *testing.T) {
 }
 
 func TestOnlyTheFirstAnswerCounts(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, _, req := askAndWait(t, f)
 	if status, _ := f.answer(c, req["id"].(string), "allow"); status != http.StatusNoContent {
@@ -199,6 +204,7 @@ func TestOnlyTheFirstAnswerCounts(t *testing.T) {
 }
 
 func TestCancelWhileWaitingAnswersCancelledAndEndsTheTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, tab, id, _ := askAndWait(t, f)
 
@@ -217,6 +223,7 @@ func TestCancelWhileWaitingAnswersCancelledAndEndsTheTurn(t *testing.T) {
 }
 
 func TestARequestWhoseAgentExitedLeavesTheInbox(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"exitAfter": 300},
 		map[string]any{"permission": map[string]any{"id": "t1", "title": "rm x"}},
@@ -234,6 +241,7 @@ func TestARequestWhoseAgentExitedLeavesTheInbox(t *testing.T) {
 }
 
 func TestTheInboxListsRequestsOldestFirst(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c := f.authorisedClient()
 	tab := f.connectTab(c)
@@ -256,6 +264,7 @@ func TestTheInboxListsRequestsOldestFirst(t *testing.T) {
 }
 
 func TestAutoApproveStartsTheAgentInAutoMode(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"sayMode": true}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -274,6 +283,7 @@ func TestAutoApproveStartsTheAgentInAutoMode(t *testing.T) {
 }
 
 func TestAPermissionRequestCarriesTheEditAsAStructuredDiff(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"permission": map[string]any{
 		"id": "t1", "title": "Edit main.go", "kind": "edit", "path": "main.go", "text": "tidy main",
 		"diffOld": "a\nb\nc\n", "diffNew": "a\nB\nc\nd\n",

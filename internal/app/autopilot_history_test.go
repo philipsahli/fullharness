@@ -69,6 +69,7 @@ func (f *fh) waitEvents(c *http.Client, project, id string, n int) []map[string]
 }
 
 func TestAutopilotActionsAppearInOrderAndSurviveARestart(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Which login method?"}}}, "asking")
 	c := f.authorisedClient()
 	repo := twoTicketRepo(t)
@@ -96,6 +97,7 @@ func TestAutopilotActionsAppearInOrderAndSurviveARestart(t *testing.T) {
 }
 
 func TestASpecWaitingForApprovalIsOneStopPoint(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Wrote the tickets."}}}, "asking")
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -121,6 +123,7 @@ func TestASpecWaitingForApprovalIsOneStopPoint(t *testing.T) {
 }
 
 func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
+	t.Parallel()
 	_, _, setPRs := fakeGhLogged(t, []ghIssue{
 		{Number: 10, Title: "Login", State: "OPEN", Labels: []string{"roadmap:now", "ready-for-agent"}, SubIssues: []int{11}},
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
@@ -150,6 +153,7 @@ func TestAReviewedTicketWaitsForTheMergeAsOneStopPoint(t *testing.T) {
 }
 
 func TestAStartThatFailsIsOneEventWhileAutopilotRetries(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "[agents.claude]\ncommand = [\""+filepath.Join(dir, "no-such-agent")+"\"]\n")
 	opts := appOptions(dir)
@@ -176,6 +180,7 @@ func TestAStartThatFailsIsOneEventWhileAutopilotRetries(t *testing.T) {
 }
 
 func TestAReviewThatEndedStuckIsNoMergeWaitOnceItsSessionIsClosed(t *testing.T) {
+	t.Parallel()
 	_, _, setPRs := fakeGhLogged(t, []ghIssue{
 		{Number: 10, Title: "Login", State: "OPEN", Labels: []string{"roadmap:now", "ready-for-agent"}, SubIssues: []int{11}},
 		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
@@ -205,6 +210,7 @@ func TestAReviewThatEndedStuckIsNoMergeWaitOnceItsSessionIsClosed(t *testing.T) 
 }
 
 func TestASessionThatExitsMidTurnIsOneExitedStop(t *testing.T) {
+	t.Parallel()
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"exit": 3}}}, "done")
 	c := f.authorisedClient()
 	repo := twoTicketRepo(t)

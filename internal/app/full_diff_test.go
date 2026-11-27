@@ -52,6 +52,7 @@ func changedLines(f diff.File) int {
 }
 
 func TestShowFullDiffGetsTheLinesPastTheCut(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{
 		map[string]any{"tool": map[string]any{"id": "t1", "title": "Write big.txt", "kind": "edit", "status": "completed",
 			"path": "big.txt", "diffNew": numbered(400)}},
@@ -92,6 +93,7 @@ func TestShowFullDiffGetsTheLinesPastTheCut(t *testing.T) {
 }
 
 func TestFullDiffOfAnUnknownItemIsNotFound(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, id, _ := askAndWait(t, f)
 

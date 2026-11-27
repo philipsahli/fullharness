@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+
+	"github.com/coder/websocket"
 )
 
 // Queued message (#93): a message sent while the Session is Starting,
@@ -11,13 +13,14 @@ import (
 // the current turn ends.
 
 // startWorking starts a Session whose starting prompt "long" runs until
-// cancelled, and waits until it is Working.
-func startWorking(t *testing.T, s script) (f *fh, c *http.Client, id string) {
+// cancelled, and waits until it is Working. tab connected before the
+// Session started, so it sees every change after that (#151).
+func startWorking(t *testing.T, s script) (f *fh, c *http.Client, id string, tab *websocket.Conn) {
 	t.Helper()
 	f = startFhWithAgent(t, s)
-	c, tab, id, _ := newSessionIn(t, f, "long")
+	c, tab, id, _ = newSessionIn(t, f, "long")
 	waitState(t, tab, id, "working")
-	return f, c, id
+	return f, c, id, tab
 }
 
 func userTexts(items []map[string]any) []string {
@@ -31,6 +34,7 @@ func userTexts(items []map[string]any) []string {
 }
 
 func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"sleepMs": 600}, map[string]any{"say": "first"}},
 		"more": []any{map[string]any{"say": "second"}},
@@ -63,7 +67,8 @@ func TestAMessageSentWhileWorkingIsSentAsTheNextTurnWithoutAWaitingStop(t *testi
 }
 
 func TestSendingAgainAddsToTheQueuedMessage(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "one"})
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "two"})
@@ -74,7 +79,8 @@ func TestSendingAgainAddsToTheQueuedMessage(t *testing.T) {
 }
 
 func TestCancelMovesTheQueuedMessageBackInsteadOfSendingIt(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	tab := f.connectTab(c)
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
 
@@ -90,7 +96,8 @@ func TestCancelMovesTheQueuedMessageBackInsteadOfSendingIt(t *testing.T) {
 }
 
 func TestEditTakesTheQueuedMessageBackAndRemoveDropsIt(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
 	status, body := f.post(c, "/api/sessions/"+id+"/queued", map[string]string{"action": "edit"})
@@ -111,7 +118,8 @@ func TestEditTakesTheQueuedMessageBackAndRemoveDropsIt(t *testing.T) {
 }
 
 func TestSendNowCancelsTheTurnAndSendsTheQueuedMessage(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"waitCancel": true}},
 		"more": []any{map[string]any{"say": "done"}},
 	}})
@@ -132,10 +140,13 @@ func TestSendNowCancelsTheTurnAndSendsTheQueuedMessage(t *testing.T) {
 }
 
 func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{
-		"long": []any{map[string]any{"sleepMs": 300}, map[string]any{"exit": 3}},
+	t.Parallel()
+	// The Agent exits 1 s after the turn starts. The tab connected before
+	// the Session started, and "more" goes out right after Working, so it is
+	// queued before the exit even with other tests running alongside.
+	f, c, id, tab := startWorking(t, script{"prompts": map[string]any{
+		"long": []any{map[string]any{"sleepMs": 1000}, map[string]any{"exit": 3}},
 	}})
-	tab := f.connectTab(c)
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
 
 	s := waitState(t, tab, id, "exited")
@@ -146,6 +157,7 @@ func TestAQueuedMessageIsNeverLostWhenTheAgentExits(t *testing.T) {
 }
 
 func TestAMessageSentWhileStartingIsSentOnceTheAgentIsReady(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{
 		"onStart": []any{map[string]any{"sleepMs": 400}},
 		"prompts": map[string]any{"early": []any{map[string]any{"say": "hi"}}},
@@ -182,7 +194,8 @@ func countOf(xs []string, x string) int {
 }
 
 func TestTheComposerClearsUnsentOnceItTookIt(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	tab := f.connectTab(c)
 	f.post(c, "/api/sessions/"+id+"/prompt", map[string]string{"text": "more"})
 	f.post(c, "/api/sessions/"+id+"/cancel", nil)
@@ -197,6 +210,7 @@ func TestTheComposerClearsUnsentOnceItTookIt(t *testing.T) {
 }
 
 func TestSendNowNeedsARunningTurn(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"onStart": []any{map[string]any{"sleepMs": 400}}})
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -212,14 +226,16 @@ func TestSendNowNeedsARunningTurn(t *testing.T) {
 }
 
 func TestAnUnknownQueuedActionIsABadRequest(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{"long": []any{map[string]any{"waitCancel": true}}}})
 	if status, _ := f.post(c, "/api/sessions/"+id+"/queued", map[string]string{"action": "shout"}); status != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400", status)
 	}
 }
 
 func TestUnsentStaysUntilTheComposerTookIt(t *testing.T) {
-	f, c, id := startWorking(t, script{"prompts": map[string]any{
+	t.Parallel()
+	f, c, id, _ := startWorking(t, script{"prompts": map[string]any{
 		"long": []any{map[string]any{"waitCancel": true}},
 		"next": []any{map[string]any{"waitCancel": true}},
 	}})

@@ -36,6 +36,7 @@ func TestPortComesFromConfigFile(t *testing.T) {
 }
 
 func TestInvalidConfigFileFailsLaunch(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeConfig(t, dir, "port = \"not a number\"\n")
 

@@ -12,6 +12,7 @@ import (
 )
 
 func TestSecondLaunchOpensAuthorisedTabOnRunningInstance(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := startFh(t, dir)
 
@@ -27,6 +28,7 @@ func TestSecondLaunchOpensAuthorisedTabOnRunningInstance(t *testing.T) {
 }
 
 func TestSecondLaunchDoesNotOutliveTheFirst(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := startFh(t, dir)
 	second := startFh(t, dir)
@@ -40,6 +42,7 @@ func TestSecondLaunchDoesNotOutliveTheFirst(t *testing.T) {
 }
 
 func TestLaunchFilesAreReadableOnlyByTheUser(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	startFh(t, dir)
 
@@ -64,6 +67,7 @@ func TestLaunchFilesAreReadableOnlyByTheUser(t *testing.T) {
 }
 
 func TestLaunchAfterStaleInstanceStartsFreshServer(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	first := startFh(t, dir)
 	first.stop()
@@ -150,6 +154,7 @@ func TestDevRestartKeepsTheTokenSoOpenTabsStayAuthorised(t *testing.T) {
 }
 
 func TestWithoutDevTheSnapshotSaysSo(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 
 	if dev := f.state(f.authorisedClient())["dev"]; dev != false {

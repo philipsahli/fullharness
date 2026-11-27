@@ -29,8 +29,13 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	fakeAgentBin = bin
+	ghCleanup, err := installGhDispatcher()
+	if err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	cleanup()
+	ghCleanup()
 	os.Exit(code)
 }
 

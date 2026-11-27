@@ -66,6 +66,7 @@ func fakeOsascript(t *testing.T) func() string {
 }
 
 func TestAFinishedTurnNotifiesThroughATabThatCan(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectNotifyingTab(c)
@@ -79,6 +80,7 @@ func TestAFinishedTurnNotifiesThroughATabThatCan(t *testing.T) {
 }
 
 func TestAPermissionRequestNotifies(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectNotifyingTab(c)
@@ -92,6 +94,7 @@ func TestAPermissionRequestNotifies(t *testing.T) {
 }
 
 func TestAtMostOneNotificationPerSessionPerMinute(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, script{"default": []any{map[string]any{"say": "done"}}})
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectNotifyingTab(c)
@@ -109,6 +112,7 @@ func TestAtMostOneNotificationPerSessionPerMinute(t *testing.T) {
 }
 
 func TestNoNotificationForTheSessionInView(t *testing.T) {
+	t.Parallel()
 	f := startFhWithAgent(t, askScript(nil))
 	c, _, id, _ := newSessionIn(t, f, "")
 	tab := f.connectNotifyingTab(c)

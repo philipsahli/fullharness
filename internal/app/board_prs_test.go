@@ -46,6 +46,7 @@ func prBoard(t *testing.T, prs ...map[string]any) map[string]any {
 }
 
 func TestATicketCarriesItsOpenPRWithURLStateAndChecks(t *testing.T) {
+	t.Parallel()
 	spec := prBoard(t, ghPR(21, "2-form", "OPEN", checkRun("COMPLETED", "SUCCESS"), statusContext("SUCCESS")))
 
 	if got := asJSON(ticketByNumber(t, spec, "2")["prs"]); got != `[{"checks":"passed","number":21,"state":"open","url":"https://github.com/someone/shop/pull/21"}]` {
@@ -57,6 +58,7 @@ func TestATicketCarriesItsOpenPRWithURLStateAndChecks(t *testing.T) {
 }
 
 func TestATicketListsEveryPRNewestFirstInEachPRState(t *testing.T) {
+	t.Parallel()
 	draft := ghPR(30, "4-draft", "OPEN")
 	draft["isDraft"] = true
 	spec := prBoard(t,
@@ -75,6 +77,7 @@ func TestATicketListsEveryPRNewestFirstInEachPRState(t *testing.T) {
 }
 
 func TestEachCheckRollupGivesOneChecksResult(t *testing.T) {
+	t.Parallel()
 	spec := prBoard(t,
 		ghPR(20, "2-a", "OPEN", checkRun("COMPLETED", "SUCCESS"), checkRun("COMPLETED", "SKIPPED"), statusContext("SUCCESS")),
 		ghPR(21, "3-a", "OPEN", checkRun("COMPLETED", "SUCCESS"), checkRun("COMPLETED", "FAILURE"), checkRun("IN_PROGRESS", "")),
@@ -101,6 +104,7 @@ func TestEachCheckRollupGivesOneChecksResult(t *testing.T) {
 }
 
 func TestAMergedOrClosedPRLeavesStageAndStartableAlone(t *testing.T) {
+	t.Parallel()
 	spec := prBoard(t, ghPR(40, "2-old", "MERGED"), ghPR(41, "3-gone", "CLOSED"), ghPR(42, "4-live", "OPEN"))
 
 	for n, want := range map[string]struct {
