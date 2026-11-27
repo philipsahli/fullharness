@@ -126,7 +126,10 @@ export async function reachScreenshotReview(page: Page, { fh, PATH, repo, gate }
 }
 
 function tempGateDir(): string {
-  const dir = path.join(tmpdir(), `fh-e2e-gate-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  const dir = path.join(
+    tmpdir(),
+    `fh-e2e-gate-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }

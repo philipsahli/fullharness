@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -176,9 +175,7 @@ func TestScreenshotsAreServedOnlyFromTheTicketsWorktree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, string(b)
+		return resp.StatusCode, readBody(t, resp)
 	}
 	if status, body := shot("board.png"); status != http.StatusOK || body != "\x89PNG fake" {
 		t.Errorf("board.png: status %d, body %q", status, body)
