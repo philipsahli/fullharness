@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { Fh } from "./fh";
 import { fakeGhPath } from "./gh";
-import { tempRepo, withOrigin } from "./repo";
+import { tempRepo, tempRepoWith, withOrigin } from "./repo";
 
 // ⌘K finds the open Tickets of the board's Project (#195): by number or by
 // words in the title, after the Sessions, and a pick opens the Ticket's
@@ -113,6 +113,9 @@ test("⌘K is a combobox that names the highlighted option and keeps focus", asy
     const dialog = page.getByRole("dialog", { name: "Switcher" });
     const search = dialog.getByRole("combobox", { name: "Find a Session or Ticket" });
     const options = dialog.getByRole("option");
+    // Modal, as the mockup's openPalette: the page behind is inert to a
+    // screen reader while the Switcher is open.
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
     await search.fill("shop task");
     await expect(options).toHaveCount(20);
 
@@ -148,6 +151,49 @@ test("⌘K is a combobox that names the highlighted option and keeps focus", asy
     await page.keyboard.press("Tab");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// A local board's Feature id is its folder name, which may hold a space.
+// Each option id is still one valid ID reference with no whitespace, and
+// "dark mode" and "dark-mode" don't collapse to the same id.
+test("⌘K option ids hold no whitespace and stay unique when a Feature id has a space", async ({
+  page,
+}) => {
+  const shop = tempRepoWith("shop", {
+    ".scratch/dark mode/spec.md": "# Dark mode\n",
+    ".scratch/dark mode/issues/01-toggle.md": "# Toggle dark\n\n**Status:** ready-for-agent\n",
+    ".scratch/dark-mode/spec.md": "# Dark mode too\n",
+    ".scratch/dark-mode/issues/01-toggle.md":
+      "# Toggle dark again\n\n**Status:** ready-for-agent\n",
+  });
+  const fh = await Fh.start({ ghPRs: [] });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(shop);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await expect(page.getByRole("button", { name: /^Dark mode too/ })).toBeVisible();
+
+    await page.keyboard.press("ControlOrMeta+k");
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session or Ticket" });
+    const options = dialog.getByRole("option");
+    await search.fill("toggle");
+    await expect(options).toHaveCount(2);
+
+    const ids = await options.evaluateAll((els) => els.map((el) => el.id));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).toMatch(/^\S+$/);
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
+    await page.keyboard.press("ArrowDown");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[1]);
   } finally {
     await fh.dispose();
   }
