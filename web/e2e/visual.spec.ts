@@ -3,8 +3,9 @@ import { Fh } from "./fh";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
+import { reachScreenshotReview, startScreenshotReview } from "./screens";
 
-// Local pixel tests (ADR 0012): eight screens in light and dark, compared with
+// Local pixel tests (ADR 0012): nine screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -195,6 +196,23 @@ for (const scheme of ["light", "dark"] as const) {
         });
       } finally {
         await fh.dispose();
+      }
+    });
+
+    // Screenshot review in the Inbox (#226): PR #5 changes web/src, so after
+    // Autopilot's review it waits here with the Agent's screenshot.
+    test("Inbox with Screenshot review", async ({ page }) => {
+      test.setTimeout(90_000);
+      const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+      const setup = await startScreenshotReview(path.join(tmpdir(), "fh-visual", slug));
+      try {
+        const item = await reachScreenshotReview(page, setup);
+        await expect(item.locator(".shot img")).toHaveJSProperty("complete", true);
+        await expect(page).toHaveScreenshot(`inbox-screenshot-review-${scheme}.png`, {
+          mask: dynamic(page),
+        });
+      } finally {
+        await setup.fh.dispose();
       }
     });
 

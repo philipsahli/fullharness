@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { command, get } from "./api";
 import { AutopilotBadge } from "./Autopilot";
 import type { AutopilotStatus } from "./events";
@@ -166,7 +167,9 @@ function Lightbox(props: {
     return () => window.removeEventListener("keydown", key);
   }, [index, last, onMove, onClose]);
   const name = names[index];
-  return (
+  // A portal to the page: inside the Inbox item, the item's own layout and
+  // motion would hold the dialog.
+  return createPortal(
     <div className="overlay" onClick={onClose}>
       <div
         className="lightbox"
@@ -207,6 +210,7 @@ function Lightbox(props: {
           <img src={props.src(name)} alt={`Screenshot ${name}`} />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

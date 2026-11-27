@@ -16,7 +16,7 @@ You need Go 1.27.2 or later, and Node 22.12 or later with npm.
 | `make e2e` | Builds `bin/fh` and runs the Playwright smoke tests in Chromium. The first run downloads Chromium (about 150 MB). |
 | `make check` | Runs `lint`, `test` and `e2e`, the same as CI. Run it before you open a PR. |
 | `make stress` | Runs the Go tests that depend on what you changed against `origin/main`, 5 times each at `-cpu 1,2` with the race detector, to catch tests that fail on timing. A change outside `internal/` runs every package; `STRESS_PKGS=./...` does too. CI runs it nightly on `main` 20 times each (`STRESS_COUNT=20`) and opens a `needs-triage` issue when a test fails. |
-| `make e2e-visual` | Takes screenshots of eight screens in light and dark (the Software factory board with Autopilot badges in two states, the Roadmap, the Inbox with Approve spec, and the Feature page with its flow graph) and compares them with your last baselines. Mac only; CI never runs it. |
+| `make e2e-visual` | Takes screenshots of nine screens in light and dark (the Software factory board with Autopilot badges in two states, the Roadmap, the Inbox with Approve spec, the Inbox with Screenshot review, and the Feature page with its flow graph) and compares them with your last baselines. Mac only; CI never runs it. |
 | `make e2e-visual-update` | Takes new baselines in `web/e2e/__visual__/`, which git ignores. |
 | `make smoke` | Runs the release smoke test against the real Claude Code, Copilot CLI and OpenCode. It needs all three installed and logged in, and spends real tokens, so CI never runs it. See [Releasing](README.md#releasing). |
 
