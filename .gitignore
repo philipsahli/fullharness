@@ -8,3 +8,9 @@ web/playwright-report/
 *.tsbuildinfo
 /dist/
 web/e2e/__visual__/
+
+# Local tool state: Claude Code worktrees and settings, fh screenshots
+# (ADR 0014). Ignored so make stress does not count them as changes (#222).
+.fh/
+.claude/worktrees/
+.claude/settings.local.json
