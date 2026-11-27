@@ -14,8 +14,15 @@ import { Roadmap } from "./Roadmap";
 import { awaitingUser } from "./StopPoints";
 
 type View = "sessions" | "factory" | "roadmap" | "inbox";
-// The header tabs in screen order; ArrowLeft/ArrowRight step through it.
-const views: View[] = ["sessions", "factory", "roadmap", "inbox"];
+// The header tabs in screen order: the header renders them from this list,
+// and ArrowLeft/ArrowRight step through it.
+const tabs: { view: View; label: string }[] = [
+  { view: "sessions", label: "Sessions" },
+  { view: "factory", label: "Software factory" },
+  { view: "roadmap", label: "Roadmap" },
+  { view: "inbox", label: "Inbox" },
+];
+const views = tabs.map((t) => t.view);
 
 export function App() {
   const [view, setView] = useState<View>("sessions");
@@ -112,21 +119,19 @@ export function App() {
           Find a Session or Ticket… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views" onKeyDown={onTabKey}>
-          <Tab view="sessions" current={view} onSelect={pickTab}>
-            Sessions
-          </Tab>
-          <Tab view="factory" current={view} onSelect={pickTab}>
-            Software factory
-          </Tab>
-          <Tab view="roadmap" current={view} onSelect={pickTab}>
-            Roadmap
-          </Tab>
-          <Tab view="inbox" current={view} onSelect={pickTab}>
-            Inbox{" "}
-            <span className="count" data-zero={inboxCount === 0 || undefined}>
-              {inboxCount}
-            </span>
-          </Tab>
+          {tabs.map((t) => (
+            <Tab key={t.view} view={t.view} current={view} onSelect={pickTab}>
+              {t.label}
+              {t.view === "inbox" && (
+                <>
+                  {" "}
+                  <span className="count" data-zero={inboxCount === 0 || undefined}>
+                    {inboxCount}
+                  </span>
+                </>
+              )}
+            </Tab>
+          ))}
         </div>
       </header>
       <ConnectionBanner conn={conn} />
