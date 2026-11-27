@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { command, get } from "./api";
 import { Highlighted, languageOfPath, unfence } from "./Code";
 import { ChangeCounts, Diffs } from "./Diff";
@@ -480,6 +480,11 @@ export function Conversation(props: {
   const [slashOff, setSlashOff] = useState(false); // Escape hides it until the text changes
   const matches = slashMatches(session.commands ?? [], text);
   const showSlash = !slashOff && matches.length > 0;
+  // Option ids let the textarea name the picked option in
+  // aria-activedescendant, so a screen reader hears it while focus stays in
+  // the textarea.
+  const slashId = useId();
+  const optionId = (c: Command) => `${slashId}-${c.name}`;
   const choose = (c: Command) => {
     setText(`/${c.name} `);
     setPick(0);
@@ -578,6 +583,7 @@ export function Conversation(props: {
             {matches.map((c, i) => (
               <li
                 key={c.name}
+                id={optionId(c)}
                 role="option"
                 aria-selected={i === pick}
                 // mousedown, not click: the textarea keeps focus.
@@ -604,6 +610,9 @@ export function Conversation(props: {
                 : `Message the Agent${session.commands?.length ? ", or / for its commands" : ""}`
           }
           aria-label="Message"
+          aria-activedescendant={
+            showSlash ? optionId(matches[Math.min(pick, matches.length - 1)]) : undefined
+          }
           rows={2}
           onKeyDown={(e) => {
             if (showSlash) {
