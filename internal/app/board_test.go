@@ -267,6 +267,10 @@ func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T
 	if old["stage"] != "shipped" {
 		t.Errorf("stage = %v, want shipped (Spec closed)", old["stage"])
 	}
+	// GLOSSARY Stage: a closed Spec with an open Ticket is a mistake to show.
+	if note, _ := old["note"].(string); note != "Spec closed with Ticket #01 open" {
+		t.Errorf("note = %q, want %q", note, "Spec closed with Ticket #01 open")
+	}
 	if l := ticketByNumber(t, old, "01")["label"]; l != "ready-for-agent" {
 		t.Errorf("label from a plain Status: line = %v, want ready-for-agent", l)
 	}
