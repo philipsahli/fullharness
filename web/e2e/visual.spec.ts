@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
 
-// Local pixel tests (ADR 0012): five screens in light and dark, compared with
+// Local pixel tests (ADR 0012): six screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -101,6 +101,45 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(page).toHaveScreenshot(`board-autopilot-${scheme}.png`, {
           mask: dynamic(page),
         });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    // The Roadmap (#214): two Projects' Features in Now, Next and Later.
+    test("Roadmap", async ({ page }) => {
+      const fh = await Fh.start({ ghPRs: [] });
+      try {
+        const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+        const parent = path.join(tmpdir(), "fh-visual", slug);
+        const shop = tempRepoWith(
+          "shop",
+          {
+            ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n",
+            ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
+            ".scratch/search/spec.md": "# Search\n\n**Roadmap:** next\n",
+          },
+          path.join(parent, "a"),
+        );
+        const notes = tempRepoWith(
+          "notes",
+          {
+            ".scratch/tags/spec.md": "# Tags\n",
+            ".scratch/themes/spec.md": "# Themes\n\n**Roadmap:** now\n",
+          },
+          path.join(parent, "b"),
+        );
+        await open(page, fh, shop);
+        const projects = page.getByRole("region", { name: "Projects" });
+        await projects.getByRole("button", { name: "+ Add Project" }).click();
+        await projects.getByLabel("Path to a git repository").fill(notes);
+        await projects.getByRole("button", { name: "Add", exact: true }).click();
+        await expect(projects).toContainText("notes");
+        await page.getByRole("tab", { name: "Roadmap" }).click();
+        await expect(
+          page.getByRole("region", { name: "Now", exact: true }).getByRole("listitem"),
+        ).toHaveCount(2);
+        await expect(page).toHaveScreenshot(`roadmap-${scheme}.png`, { mask: dynamic(page) });
       } finally {
         await fh.dispose();
       }

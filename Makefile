@@ -10,7 +10,7 @@
 # make e2e:   Playwright smoke tests in Chromium against a fresh bin/fh. The
 #             first run downloads Chromium; CI sets PLAYWRIGHT_INSTALL_FLAGS=--with-deps
 #             to also install its system libraries on Linux.
-# make e2e-visual: local pixel tests (ADR 0012) of five screens in light and
+# make e2e-visual: local pixel tests (ADR 0012) of six screens in light and
 #             dark against your own last baseline. Mac only, never in CI.
 # make e2e-visual-update: take new baselines after a deliberate look change.
 # make check: everything CI runs. Run it before opening a PR.

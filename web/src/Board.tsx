@@ -93,19 +93,26 @@ function mainTree(p: Project): string {
   return p.worktrees.find((w) => w.main)?.path ?? p.path;
 }
 
+// BoardFocus is a Feature the board opens on, as the Roadmap's Open asks.
+export type BoardFocus = { project: string; feature: string };
+
 // Board is the Software factory: one Project's Features by Stage. It reads
 // the board while it's shown, every 60 s and on Refresh; nothing is read
 // for boards nobody looks at. Its buttons open the Start dialog (onStart).
+// focus, read when the board is first shown, picks its Project and Feature.
 export function Board({
   projects,
   autopilot,
   onStart,
+  focus,
 }: {
   projects: Project[];
   autopilot: AutopilotStatus[];
   onStart: (from: StartFrom) => void;
+  focus?: BoardFocus;
 }) {
   const [project, setProject] = useState(() => {
+    if (focus) return focus.project;
     try {
       return localStorage.getItem(lastProjectKey) ?? "";
     } catch {
@@ -114,7 +121,7 @@ export function Board({
   });
   const chosen = projects.find((p) => p.path === project) ?? projects[0];
   const [board, setBoard] = useState<BoardData | undefined>();
-  const [open, setOpen] = useState<string | undefined>();
+  const [open, setOpen] = useState<string | undefined>(focus?.feature);
   // The Needs triage group's toggle; undefined until clicked, so its size
   // decides. Kept across board refreshes, not across reloads or Projects.
   const [triageOpen, setTriageOpen] = useState<boolean | undefined>();
