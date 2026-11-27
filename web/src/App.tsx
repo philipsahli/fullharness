@@ -123,7 +123,11 @@ export function App() {
         <main className="main" role="tabpanel" aria-labelledby={`tab-${view}`}>
           {view === "sessions" && sessionsView()}
           {view === "factory" && snapshot && (
-            <Board projects={snapshot.projects} onStart={newSession} />
+            <Board
+              projects={snapshot.projects}
+              autopilot={snapshot.autopilot}
+              onStart={newSession}
+            />
           )}
           {view === "inbox" && snapshot && (
             <Inbox

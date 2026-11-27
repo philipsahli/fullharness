@@ -36,6 +36,27 @@
   --code-comment: #5b6863;
   --code-literal: #6d3fc0;
   --code-title: #1f5fa6;
+  /* Autopilot status (ADR-0013): a base for text and marks, a tint for
+     backgrounds, a glow for motion. Apart from the Session state colours:
+     an Autopilot status of idle or waiting is not the Session state. */
+  --ap-off: #5f6b7a;
+  --ap-off-tint: #eceff3;
+  --ap-off-glow: rgba(95, 107, 122, 0.3);
+  --ap-idle: #0b6e85;
+  --ap-idle-tint: #ddf2f6;
+  --ap-idle-glow: rgba(11, 110, 133, 0.35);
+  --ap-running: #6a2fd6;
+  --ap-running-tint: #ece4fd;
+  --ap-running-glow: rgba(106, 47, 214, 0.45);
+  --ap-waiting: #875c00;
+  --ap-waiting-tint: #faefc8;
+  --ap-waiting-glow: rgba(214, 150, 0, 0.5);
+  --ap-failed: #c11f3a;
+  --ap-failed-tint: #fde3e7;
+  --ap-failed-glow: rgba(193, 31, 58, 0.4);
+  --ap-done: #12773a;
+  --ap-done-tint: #daf2e2;
+  --ap-done-glow: rgba(18, 119, 58, 0.35);
   color-scheme: light;
 }
 /* Dark follows the OS setting only; fh has no theme switch (ADR 0012). */
@@ -66,6 +87,24 @@
     --code-comment: #8a9a94;
     --code-literal: #c4a5f5;
     --code-title: #7cc4f0;
+    --ap-off: #97a3b4;
+    --ap-off-tint: #1f2631;
+    --ap-off-glow: rgba(151, 163, 180, 0.25);
+    --ap-idle: #4fd1e6;
+    --ap-idle-tint: #0f2d34;
+    --ap-idle-glow: rgba(79, 209, 230, 0.4);
+    --ap-running: #b49bff;
+    --ap-running-tint: #281d48;
+    --ap-running-glow: rgba(150, 115, 255, 0.6);
+    --ap-waiting: #f5c84b;
+    --ap-waiting-tint: #33290b;
+    --ap-waiting-glow: rgba(245, 200, 75, 0.5);
+    --ap-failed: #ff7a8e;
+    --ap-failed-tint: #3d1520;
+    --ap-failed-glow: rgba(255, 122, 142, 0.45);
+    --ap-done: #56d98a;
+    --ap-done-tint: #12301f;
+    --ap-done-glow: rgba(86, 217, 138, 0.4);
     color-scheme: dark;
   }
 }
@@ -1336,6 +1375,290 @@ span.agent i {
 }
 .triage li .btn {
   margin-left: auto;
+}
+
+/* Autopilot status badge (#203), as the mockup draws it. Any element with
+   data-ap gets --c (base), --t (tint) and --g (glow). */
+[data-ap="off"] {
+  --c: var(--ap-off);
+  --t: var(--ap-off-tint);
+  --g: var(--ap-off-glow);
+}
+[data-ap="idle"] {
+  --c: var(--ap-idle);
+  --t: var(--ap-idle-tint);
+  --g: var(--ap-idle-glow);
+}
+[data-ap="running"] {
+  --c: var(--ap-running);
+  --t: var(--ap-running-tint);
+  --g: var(--ap-running-glow);
+}
+[data-ap="waiting"] {
+  --c: var(--ap-waiting);
+  --t: var(--ap-waiting-tint);
+  --g: var(--ap-waiting-glow);
+}
+[data-ap="failed"] {
+  --c: var(--ap-failed);
+  --t: var(--ap-failed-tint);
+  --g: var(--ap-failed-glow);
+}
+[data-ap="done"] {
+  --c: var(--ap-done);
+  --t: var(--ap-done-tint);
+  --g: var(--ap-done-glow);
+}
+@property --ap-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.ap {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  background: var(--t);
+  color: var(--c);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.35;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent),
+    0 2px 12px -4px var(--g);
+}
+.ap > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fcard > .ap {
+  align-self: flex-start;
+  margin: 3px 0 2px;
+}
+.ap b {
+  font-weight: 600;
+}
+.ap b.mono {
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
+.ap[data-ap="off"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted);
+}
+.ap[data-ap="off"].in-now {
+  color: var(--ap-off);
+  box-shadow: inset 0 0 0 1.5px var(--ap-off);
+  background: var(--ap-off-tint);
+}
+.ap[data-ap="failed"] {
+  box-shadow:
+    inset 0 0 0 1.5px var(--c),
+    0 2px 12px -4px var(--g);
+}
+/* running: a light runs round the rim */
+.ap[data-ap="running"]::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ap-angle),
+    transparent 0 55%,
+    color-mix(in srgb, var(--c) 30%, transparent) 70%,
+    var(--c) 88%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ap-spin 2.6s linear infinite;
+}
+/* waiting: the glow breathes slowly, so a Stop point catches the eye without flashing */
+.ap[data-ap="waiting"] {
+  animation: ap-breathe 3.2s ease-in-out infinite;
+}
+.ap-mark {
+  flex: none;
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  font-style: normal;
+  display: grid;
+  place-items: center;
+}
+.ap[data-ap="off"] .ap-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.ap[data-ap="idle"] .ap-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--c);
+}
+.ap[data-ap="running"] .ap-mark {
+  box-shadow: 0 0 8px 1px var(--g);
+}
+.ap[data-ap="running"] .ap-mark::before,
+.ap[data-ap="running"] .ap-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--c);
+  animation: ap-ring 1.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.ap[data-ap="running"] .ap-mark::after {
+  animation-delay: 0.9s;
+}
+.ap[data-ap="waiting"] .ap-mark,
+.ap[data-ap="failed"] .ap-mark,
+.ap[data-ap="done"] .ap-mark {
+  background: transparent;
+  width: auto;
+  height: auto;
+  font-size: 11px;
+  line-height: 1;
+}
+/* A Feature in Now whose Project has Autopilot off: a link to the switch
+   under the card. It takes the user to the switch; it doesn't turn it on. */
+.fcard-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.fcard-wrap:has(.ap-offlink) .fcard {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ap-offlink {
+  border: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
+  background: var(--ap-off-tint);
+  color: var(--ap-off);
+  border-radius: 0 0 7px 7px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ap-offlink u {
+  text-underline-offset: 2px;
+}
+.ap-offlink:hover {
+  color: var(--fg);
+}
+.autopilot label.flash {
+  animation: ap-callout 1.2s ease-out 2;
+  border-radius: 6px;
+}
+@keyframes ap-callout {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  40% {
+    box-shadow: 0 0 0 3px var(--ap-running-glow);
+  }
+}
+/* The Feature card takes the Autopilot status as a lit left edge. */
+.fcard[data-ap] {
+  position: relative;
+  overflow: hidden;
+}
+.fcard[data-ap]::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--c);
+  box-shadow: 0 0 10px 1px var(--g);
+}
+.fcard[data-ap="off"]::before {
+  display: none;
+}
+.fcard[data-ap="running"] {
+  box-shadow: 0 6px 22px -14px var(--g);
+}
+/* A status change: the new badge springs in with a burst of its glow. */
+.ap.changed {
+  animation: ap-in 0.7s cubic-bezier(0.2, 0.9, 0.25, 1.25);
+}
+.ap.changed > span:last-child {
+  animation: ap-slide 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes ap-spin {
+  to {
+    --ap-angle: 360deg;
+  }
+}
+@keyframes ap-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+@keyframes ap-breathe {
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent),
+      0 0 18px 0 var(--g);
+  }
+}
+@keyframes ap-in {
+  0% {
+    transform: scale(0.82);
+    box-shadow: 0 0 0 0 var(--g);
+  }
+  45% {
+    transform: scale(1.07);
+    box-shadow:
+      0 0 0 7px transparent,
+      0 0 24px 4px var(--g);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes ap-slide {
+  from {
+    transform: translateY(60%);
+    opacity: 0;
+  }
+}
+/* Reduced motion: every Autopilot animation stops; the status still shows
+   by colour, mark and words. */
+@media (prefers-reduced-motion: reduce) {
+  .ap,
+  .ap::before,
+  .ap *,
+  .ap *::before,
+  .ap *::after,
+  .autopilot label.flash {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ap[data-ap="running"]::before {
+    background: color-mix(in srgb, var(--c) 45%, transparent);
+  }
 }
 .fdetail {
   border-top: 1px solid var(--line);

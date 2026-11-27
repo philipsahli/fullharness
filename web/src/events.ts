@@ -143,6 +143,31 @@ export type Item =
   | { type: "tool"; tool: Tool }
   | { type: "permission"; permission: PermissionRequest };
 
+// AutopilotStatus matches internal/autopilot/status.Status: what Autopilot
+// is doing with one Feature (GLOSSARY.md, ADR-0013). fh works out every
+// Feature's Autopilot status, off included; the UI only draws it. The
+// fields the UI doesn't draw yet (session, error, since) are left out.
+export type AutopilotKind = "off" | "idle" | "running" | "waiting" | "failed" | "done";
+// AutopilotReason is why an Autopilot status is waiting (the Stop point)
+// or off, matching status.Reason.
+export type AutopilotReason =
+  | "spec-approval"
+  | "merge"
+  | "exited"
+  | "asking"
+  | "stuck"
+  | "unsure"
+  | "autopilot-off"
+  | "not-in-now";
+export type AutopilotStatus = {
+  project: string;
+  feature: string;
+  kind: AutopilotKind;
+  skill?: string;
+  ticket?: string;
+  reason?: AutopilotReason;
+};
+
 // Snapshot is the full state the server sends when the event channel opens.
 // transcripts holds only the conversations this tab opened; events keep
 // them current. The other fields are this tab's own (#69): fh numbers each
@@ -156,6 +181,7 @@ export type Snapshot = {
   sessions: SessionSummary[];
   inbox: PermissionRequest[]; // open requests, oldest first
   projects: Project[];
+  autopilot: AutopilotStatus[]; // the Autopilot status of every Feature fh could read
   transcripts: Record<string, Item[]>;
   seqs: Record<string, number>; // the last event in each open conversation
   held: Record<string, ConversationEvent[]>; // events not applied yet: the fetch or an earlier event is still to come
@@ -328,6 +354,8 @@ function apply(snap: Snapshot, ev: Record<string, unknown>): Snapshot {
       return { ...snap, projects: ev.projects as Project[] };
     case "inbox":
       return { ...snap, inbox: ev.inbox as PermissionRequest[] };
+    case "autopilot":
+      return { ...snap, autopilot: ev.statuses as AutopilotStatus[] };
     case "reset":
     case "item":
     case "chunk": {
