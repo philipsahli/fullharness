@@ -81,8 +81,8 @@ Where a Feature is in the Software factory: Idea, Spec, Tickets, Implementing, R
 _Avoid_: status, phase, column
 
 **Ticket**:
-An issue in the Software factory that describes one buildable piece of work, typically produced by `/to-tickets`.
-_Avoid_: task, story, card
+An issue in the Software factory that describes one buildable piece of work, typically produced by `/to-tickets`. A Ticket belongs to one Spec, through a GitHub sub-issue or a `Part of #N` or `## Parent` line in its body.
+_Avoid_: task, story, card, parent issue (say "the Ticket's Spec"; Parent is a Session term)
 
 **Pull request** (**PR**):
 A GitHub pull request from a Worktree's branch. It belongs to a Ticket when its branch is named after the Ticket's number or its description closes the Ticket. It belongs to a Session when its branch is the branch of the Session's Worktree.
