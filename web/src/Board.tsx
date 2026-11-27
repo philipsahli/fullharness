@@ -38,7 +38,11 @@ type Feature = {
   idea?: string; // the Idea it was linked from (#14)
   url?: string;
   next?: Step;
+  approved?: boolean; // the Spec is labelled ready-for-agent
 };
+
+// A Ticket in one of these triage roles can be marked ready-for-agent.
+const markable = ["needs-info", "needs-triage"];
 // Idea matches internal/app's ideaView: an Idea without its Spec yet, and
 // the Specs that appeared since it started.
 type Idea = {
@@ -250,8 +254,11 @@ export function Board({
       {feature && (
         <FeatureDetail
           feature={feature}
+          project={chosen.path}
           start={(from) => onStart({ project: chosen.path, ...from })}
           mainTree={mainTree(chosen)}
+          // fh expired its cached read with the write: a plain read shows it.
+          onWritten={() => setReloads((n) => n + 1)}
         />
       )}
     </section>
@@ -294,14 +301,53 @@ function breakdown(f: Feature): string {
     .join(" · ");
 }
 
+// MarkReady is Mark ready-for-agent on a Spec or Ticket: fh writes the
+// label itself (ADR 0008, #192). A failure shows gh's message beside it.
+function MarkReady({
+  project,
+  itemRef,
+  onWritten,
+}: {
+  project: string;
+  itemRef: string;
+  onWritten: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const mark = async () => {
+    setBusy(true);
+    setError("");
+    const r = await command("/api/tracker/mark-ready", { project, ref: itemRef });
+    setBusy(false);
+    if (r.ok) onWritten();
+    else setError(r.error);
+  };
+  return (
+    <>
+      <button className="btn small" type="button" disabled={busy} onClick={() => void mark()}>
+        Mark ready-for-agent
+      </button>
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
 function FeatureDetail({
   feature,
+  project,
   start,
   mainTree,
+  onWritten,
 }: {
   feature: Feature;
+  project: string;
   start: (from: Omit<StartFrom, "project">) => void;
   mainTree: string;
+  onWritten: () => void;
 }) {
   // A Spec is never Startable itself; it offers its Stage's next skill.
   const step = feature.next;
@@ -314,6 +360,16 @@ function FeatureDetail({
         {feature.tickets.length > 0 && " (earliest open Ticket)"}
         {feature.idea && ` · from Idea "${feature.idea}"`}
       </p>
+      {!feature.closed && !feature.approved && (
+        <p>
+          <MarkReady
+            key={feature.id}
+            project={project}
+            itemRef={feature.ref}
+            onWritten={onWritten}
+          />
+        </p>
+      )}
       {step && (
         <p>
           <button
@@ -369,6 +425,9 @@ function FeatureDetail({
                 >
                   {next.label}
                 </button>
+              )}
+              {!t.closed && markable.includes(t.label) && (
+                <MarkReady project={project} itemRef={t.ref} onWritten={onWritten} />
               )}
               <span className="prs">
                 {t.prs.length === 0

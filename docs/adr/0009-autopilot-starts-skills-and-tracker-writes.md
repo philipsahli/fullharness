@@ -1,5 +1,5 @@
 ---
-status: accepted, amends ADR-0008
+status: accepted, amends ADR-0008, amended by ADR-0013 and ADR-0014
 ---
 
 # Autopilot starts skills and tracker writes itself, and stops only at Stop points

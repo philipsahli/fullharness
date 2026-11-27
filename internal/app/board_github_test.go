@@ -79,17 +79,17 @@ type ghFake struct {
 	setPRs       func([]map[string]any)
 	// hold makes each `pr list` wait, after it is counted, until release.
 	hold, release func()
+	// edits are the `issue edit` commands, one per line. afterEdit sets the
+	// issues the next GraphQL read answers with once an edit ran, as GitHub
+	// would show them; failEdits makes every edit fail with msg on stderr.
+	edits     func() string
+	afterEdit func([]ghIssue)
+	failEdits func(msg string)
 }
 
 func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool) ghFake {
 	t.Helper()
 	dir := t.TempDir()
-	nodes := []any{}
-	for _, i := range issues {
-		nodes = append(nodes, i.node())
-	}
-	page := []any{map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{
-		"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil}}}}}}
 	write := func(name string, v any) {
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -97,7 +97,7 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		}
 		writeFile(t, filepath.Join(dir, name), string(b))
 	}
-	write("issues.json", page)
+	write("issues.json", issuesPage(issues))
 	if prs == nil {
 		prs = []map[string]any{}
 	}
@@ -110,9 +110,15 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	unexpectedFile := filepath.Join(dir, "unexpected")
 	prCallsFile := filepath.Join(dir, "pr-calls")
 	gate := filepath.Join(dir, "gate")
+	editsFile := filepath.Join(dir, "edits")
+	failFile := filepath.Join(dir, "edit-fails")
+	after := filepath.Join(dir, "issues-after-edit.json")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
+		"  \"issue edit \"*) echo \"$*\" >> \"" + editsFile + "\"\n" +
+		"    if [ -f \"" + failFile + "\" ]; then cat \"" + failFile + "\" >&2; exit 1; fi\n" +
+		"    if [ -f \"" + after + "\" ]; then mv \"" + after + "\" \"" + dir + "/issues.json\"; fi ;;\n" +
 		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
@@ -139,13 +145,29 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 			return string(b)
 		},
 		setPRs: func(prs []map[string]any) { write("prs.json", prs) },
-		hold:   func() { writeFile(t, gate, "") },
+		edits: func() string {
+			b, _ := os.ReadFile(editsFile) // no file yet means no edits
+			return string(b)
+		},
+		afterEdit: func(issues []ghIssue) { write("issues-after-edit.json", issuesPage(issues)) },
+		failEdits: func(msg string) { writeFile(t, failFile, msg+"\n") },
+		hold:      func() { writeFile(t, gate, "") },
 		release: func() {
 			if err := os.Remove(gate); err != nil && !os.IsNotExist(err) {
 				t.Error(err)
 			}
 		},
 	}
+}
+
+// issuesPage is issues as one page of fh's GraphQL read.
+func issuesPage(issues []ghIssue) []any {
+	nodes := []any{}
+	for _, i := range issues {
+		nodes = append(nodes, i.node())
+	}
+	return []any{map[string]any{"data": map[string]any{"repository": map[string]any{"issues": map[string]any{
+		"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil}}}}}}
 }
 
 func githubRepo(t *testing.T) string {

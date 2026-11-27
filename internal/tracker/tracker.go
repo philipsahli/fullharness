@@ -1,6 +1,7 @@
 // Package tracker reads a Project's Issue tracker into Features, Specs and
 // Tickets and derives each one's Stage, in one place for every tracker
-// (ADR 0004). fh only reads trackers; skills in Sessions write them.
+// (ADR 0004). It also runs the fixed list of writes fh makes itself
+// (ADR 0008, write.go); every other write happens in a skill in a Session.
 package tracker
 
 import (
