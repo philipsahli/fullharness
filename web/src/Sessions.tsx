@@ -14,7 +14,9 @@ import {
   tabID,
 } from "./events";
 import { AgentChip, stateNames } from "./Chips";
+import { StopPoints, awaitingApproval } from "./StopPoints";
 import type {
+  AutopilotStatus,
   Command,
   Item,
   Link,
@@ -865,11 +867,20 @@ export function PermissionCard({
 }
 
 // Inbox lists every open permission request across Sessions, oldest first.
-export function Inbox(props: { inbox: PermissionRequest[]; onOpen: (session: string) => void }) {
+export function Inbox(props: {
+  inbox: PermissionRequest[];
+  autopilot: AutopilotStatus[];
+  onOpen: (session: string) => void;
+}) {
+  // Autopilot's Stop points come first: each holds a whole Feature.
+  const stops = awaitingApproval(props.autopilot).length;
   return (
     <section className="panel inbox" aria-label="Inbox">
       <h2>Inbox</h2>
-      {props.inbox.length === 0 && <p className="empty">Nothing is waiting for your answer.</p>}
+      <StopPoints statuses={props.autopilot} />
+      {props.inbox.length === 0 && stops === 0 && (
+        <p className="empty">Nothing is waiting for your answer.</p>
+      )}
       {props.inbox.map((r) => (
         <PermissionCard key={r.id} request={r} showSession={() => props.onOpen(r.session)} />
       ))}
