@@ -400,6 +400,12 @@ func (r *agentRun) cancelAndResend(sid sdk.SessionId) (bool, string) {
 		err  error
 	}
 	done := make(chan end, 1)
+	// Clear the last check's reply here, not only in prompt: prompt runs in
+	// the goroutine, and until it does, the loop below would see that old
+	// text as this turn streaming and cancel before the turn began (#239).
+	r.obs.mu.Lock()
+	r.obs.text.Reset()
+	r.obs.mu.Unlock()
 	go func() {
 		stop, _, err := r.prompt(sid, longPrompt)
 		done <- end{stop, err}
