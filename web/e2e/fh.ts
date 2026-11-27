@@ -1,5 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -50,17 +59,20 @@ export class Fh {
         }),
       );
     }
+    // fh's PATH starts with this folder: the agent guard, and the fake gh
+    // when a test asks for one.
+    const bin = path.join(fh.dir, "bin");
+    mkdirSync(bin);
+    installAgentGuard(bin, env.PATH ?? process.env.PATH ?? "");
     if (ghPRs) {
-      const bin = path.join(fh.dir, "bin");
-      mkdirSync(bin);
       writeFileSync(path.join(fh.dir, "prs.json"), JSON.stringify(ghPRs));
       writeFileSync(
         path.join(bin, "gh"),
         `#!/bin/sh\ncase "$*" in\n  *"auth status"*) exit 0 ;;\n  *"pr list"*) cat ${JSON.stringify(path.join(fh.dir, "prs.json"))} ;;\n  *) exit 1 ;;\nesac\n`,
       );
       chmodSync(path.join(bin, "gh"), 0o755);
-      fh.env = { ...fh.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` };
     }
+    fh.env = { ...fh.env, PATH: `${bin}${path.delimiter}${env.PATH ?? process.env.PATH ?? ""}` };
     let config = "";
     if (agentScript) {
       config += `[agents.claude]\ncommand = [${JSON.stringify(fakeAgent)}]\nenv = { FH_FAKE_SCRIPT = ${JSON.stringify(JSON.stringify(agentScript))} }\n`;
@@ -77,6 +89,18 @@ export class Fh {
     if (config) writeFileSync(path.join(fh.dir, "config.toml"), config);
     await fh.launch();
     return fh;
+  }
+
+  // guardCalls are the real Agent CLIs fh tried to run, each refused by the
+  // agent guard (see installAgentGuard).
+  guardCalls(): string[] {
+    try {
+      return readFileSync(path.join(this.dir, "bin", "calls.log"), "utf8")
+        .split("\n")
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 
   get origin(): string {
@@ -131,6 +155,38 @@ export class Fh {
         reject(new Error(`fh exited with code ${code} before printing a URL`));
       });
     });
+  }
+}
+
+// The CLIs a real Agent or the default turn-end classifier runs
+// (internal/agent Defaults, and `claude -p`). A test without agentScript or
+// verdict would otherwise start the developer's own Claude Code, Copilot CLI
+// or OpenCode and spend their tokens (#236).
+const realAgentCLIs = ["npx", "claude", "copilot", "opencode"];
+
+// installAgentGuard writes into bin, for each real Agent CLI found on
+// searchPath, a script that refuses to run and logs its name to
+// bin/calls.log. A CLI that isn't installed gets none, so fh still shows it
+// as missing. The fake agent and a fake classifier are absolute paths, which
+// the guard doesn't touch.
+function installAgentGuard(bin: string, searchPath: string): void {
+  for (const name of realAgentCLIs) {
+    const installed = searchPath.split(path.delimiter).some((d) => {
+      try {
+        accessSync(path.join(d, name), constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!installed) continue;
+    const guard = path.join(bin, name);
+    const log = JSON.stringify(path.join(bin, "calls.log"));
+    writeFileSync(
+      guard,
+      `#!/bin/sh\necho ${name} >>${log}\necho "fh e2e: refused to run the real ${name}: give the test agentScript or verdict" >&2\nexit 1\n`,
+    );
+    chmodSync(guard, 0o755);
   }
 }
 
