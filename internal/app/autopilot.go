@@ -23,8 +23,15 @@ const defaultAutopilotAgent = "claude"
 // newAutopilot builds Autopilot on fh's own parts: the board as tabs see
 // it, and Sessions started the way the board's buttons start them.
 // changed runs after Autopilot's history changed.
-func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
+func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
 	return autopilot.New(autopilot.Deps{
+		ScreenReview: func(path string, t tracker.Ticket) (stops, ok bool) {
+			p, found := d.projects.Get(path)
+			if !found {
+				return false, false
+			}
+			return screenReview(context.Background(), prc, p, t)
+		},
 		Projects: func() []autopilot.Project { return autopilotProjects(d.projects) },
 		Board: func(path string, refresh bool) ([]tracker.Feature, bool) {
 			board, ok := b.read(path, refresh)

@@ -54,7 +54,11 @@ type Deps struct {
 	// FollowUp sends skill on ref to a running Session as its next turn: a
 	// Queued message when the Agent is still busy (#93).
 	FollowUp func(id, skill, ref string) error
-	Classify func(context.Context, classify.Input) classify.Result
+	// ScreenReview reports whether Ticket t's PR, which Autopilot reviewed
+	// done, stops at Screenshot review (ADR-0014); ok is false when it
+	// can't tell yet. Nil means no PR ever does.
+	ScreenReview func(project string, t tracker.Ticket) (stops, ok bool)
+	Classify     func(context.Context, classify.Input) classify.Result
 	// Load and Save keep the Runner's record in fh's local state, so it
 	// survives a restart.
 	Load func(*Record) error
@@ -106,14 +110,16 @@ const (
 
 // What the user did at a Stop point (KindUser).
 const (
-	AnswerApprove = "approve" // Approve spec: the Spec is ready-for-agent
+	AnswerApprove   = "approve"    // Approve spec: the Spec is ready-for-agent
+	AnswerLooksGood = "looks-good" // Screenshot review: the screens are right
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
 const (
-	ReasonSpecApproval = "spec-approval" // an unapproved Spec in Now
-	ReasonMerge        = "merge"         // a reviewed Ticket's PR waits for the user's merge
-	ReasonExited       = "exited"        // the Session exited before its turn ended
+	ReasonSpecApproval = "spec-approval"     // an unapproved Spec in Now
+	ReasonScreenshot   = "screenshot-review" // a reviewed PR that changes a screen waits for the user's look
+	ReasonMerge        = "merge"             // a reviewed Ticket's PR waits for the user's merge
+	ReasonExited       = "exited"            // the Session exited before its turn ended
 )
 
 // Event is one entry in a Feature's history: its Step is the skill it
@@ -335,9 +341,12 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 				return true
 			}
 			// Autopilot's review ended done: the PR waits for the user's
-			// merge. A review that ended any other way is its own Stop point.
+			// Screenshot review if it changes a screen, then for the merge.
+			// A review that ended any other way is its own Stop point.
 			if r.finished(step) {
-				r.recordUnlessRepeated(Event{Step: step, Kind: KindStop, Reason: ReasonMerge})
+				if reason := r.reviewedStop(p, step, t); reason != "" {
+					r.recordUnlessRepeated(Event{Step: step, Kind: KindStop, Reason: reason})
+				}
 			}
 		}
 	}
@@ -465,6 +474,59 @@ func (r *Runner) recordUnlessRepeated(e Event) {
 	e.Time = time.Now().UTC()
 	r.rec.History = append(r.rec.History, e)
 	r.save()
+}
+
+// reviewedStop is the Stop point of a Ticket whose review, step, ended
+// done: Screenshot review until the user's Looks good when its PR changes
+// a screen, else merge; empty while fh can't tell. A Ticket already at
+// either Stop point stays there, so a wait reads gh once, not every look.
+func (r *Runner) reviewedStop(p Project, step Step, t tracker.Ticket) string {
+	if e, ok := r.Waiting(step.Project, step.Feature, step.Ticket); ok && e.Skill == step.Skill &&
+		(e.Reason == ReasonMerge || e.Reason == ReasonScreenshot) {
+		return e.Reason
+	}
+	if r.d.ScreenReview == nil || r.answered(step, AnswerLooksGood) {
+		return ReasonMerge
+	}
+	stops, ok := r.d.ScreenReview(p.Path, t)
+	switch {
+	case !ok:
+		return ""
+	case stops:
+		return ReasonScreenshot
+	default:
+		return ReasonMerge
+	}
+}
+
+// answered reports whether the user gave answer at a Stop point of step
+// since Autopilot last ran it.
+func (r *Runner) answered(step Step, answer string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		switch e := r.rec.History[i]; {
+		case e.Step != step:
+		case e.Kind == KindSkill:
+			return false
+		case e.Kind == KindUser && e.Answer == answer:
+			return true
+		}
+	}
+	return false
+}
+
+// Waiting returns the Stop point a Feature's Ticket ("" for the Feature
+// itself) waits at: its latest event, if that is a Stop point.
+func (r *Runner) Waiting(project, feature, ticket string) (Event, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		if e := r.rec.History[i]; e.Project == project && e.Feature == feature && e.Ticket == ticket {
+			return e, e.Kind == KindStop
+		}
+	}
+	return Event{}, false
 }
 
 // finished reports whether Autopilot's latest run of step ended done.

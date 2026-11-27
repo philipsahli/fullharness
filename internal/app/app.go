@@ -277,7 +277,8 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		log:      log,
 	}
 	registerSessionRoutes(srv, deps)
-	if pilot, err = newAutopilot(deps, boards, classifier, statuses.Kick); err != nil {
+	changes := newPRChanges()
+	if pilot, err = newAutopilot(deps, boards, changes, classifier, statuses.Kick); err != nil {
 		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
 	}
 	registerAutopilotRoutes(srv, reg, agents, pilot, inst.goBackground)

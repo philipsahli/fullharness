@@ -32,7 +32,8 @@ type Reason string
 const (
 	SpecApproval Reason = autopilot.ReasonSpecApproval // Approve spec
 	Merge        Reason = autopilot.ReasonMerge
-	Exited       Reason = autopilot.ReasonExited // the Session exited before its turn ended
+	Screenshot   Reason = autopilot.ReasonScreenshot // Screenshot review
+	Exited       Reason = autopilot.ReasonExited     // the Session exited before its turn ended
 	Asking       Reason = Reason(classify.Asking)
 	Stuck        Reason = Reason(classify.Stuck)
 	Unsure       Reason = Reason(classify.Unsure)
@@ -188,7 +189,7 @@ func stopHolds(f *tracker.Feature, e autopilot.Event, open bool) bool {
 	switch Reason(e.Reason) {
 	case SpecApproval:
 		return !f.Closed && f.Stage == tracker.StageSpec && !f.Approved
-	case Merge:
+	case Merge, Screenshot:
 		return slices.ContainsFunc(f.Tickets, func(t tracker.Ticket) bool {
 			return t.Number == e.Ticket && !t.Closed && t.Stage == tracker.StageReview
 		})
