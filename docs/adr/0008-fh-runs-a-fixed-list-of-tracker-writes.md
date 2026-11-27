@@ -16,6 +16,9 @@ ADR-0005 allowed one direct write, the Roadmap group. Everything else still mean
 | Create an Idea issue (label `idea`) | Board, Roadmap, File as Idea on a Retro |
 | Add the `idea` label to an existing issue | Once per Project, for issues titled `Idea: …` |
 | Close an Idea issue with "Continued in Spec #N" when its Spec is linked | Linking an Idea to its Spec |
+| Comment "Screen reviewed in fh" on a PR (`gh pr comment`, from ADR-0014) | Looks good on a Screenshot review Inbox item |
+| Comment on a PR with the user's note (`gh pr comment`, from ADR-0014) | Request changes on a Screenshot review Inbox item |
+| Comment on a Spec issue with the user's note (from ADR-0014) | Reject on an Approve spec item in the Inbox |
 
 Every write is started by the user, and the ones that change code or close work (merge, close or reopen a Spec) ask for confirmation first. Stage is still derived from the tracker, never stored: a write changes the tracker, and the board shows the new Stage on its next read.
 
@@ -31,5 +34,5 @@ Merge needs every check, not only the ones GitHub requires: today only the ubunt
 - An Idea is an issue in the Issue tracker, recognised by the `idea` label, not only a named Session in fh's state. It survives closing its Session and restarting fh. ADR-0004's "only local state is Idea-stage Features" no longer holds once the Ideas Spec is built.
 - A Retro's findings stay in its output until the user files one with File as Idea; the Retro never creates issues by itself.
 - Writing specs, tickets and code stays inside skills (ADR-0004). This list is for state changes a person would otherwise click in GitHub.
-- For a local-markdown tracker, fh offers only the writes the format defines (the `Roadmap:` line, the `Status:` line of a Spec or Ticket for the label writes, closing a Spec, a new Idea file in `ideas/`). A Spec without a `Status:` or `Roadmap:` line gets one, in bold, after its heading. Merge needs a GitHub remote.
+- For a local-markdown tracker, fh offers only the writes the format defines (the `Roadmap:` line, the `Status:` line of a Spec or Ticket for the label writes, closing a Spec, a new Idea file in `ideas/`, and the note of a Reject, quoted under a `## Review notes` heading at the end of `spec.md`, since local markdown has no comments). A Spec without a `Status:` or `Roadmap:` line gets one, in bold, after its heading. Merge needs a GitHub remote.
 - Adding a write to this list needs a new ADR.

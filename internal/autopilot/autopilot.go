@@ -34,6 +34,9 @@ type Start struct {
 	// the Project's main tree (a skill that writes issues).
 	Branch string
 	Link   tracker.Link
+	// Note is the user's review note, sent with the skill's prompt: a
+	// Spec's revision after Reject (ADR-0014). Empty for every other step.
+	Note string
 }
 
 // Sessions is what Autopilot reads of fh's Sessions.
@@ -52,9 +55,14 @@ type Deps struct {
 	// Start starts a Session and returns its ID.
 	Start func(Start) (string, error)
 	// FollowUp sends skill on ref to a running Session as its next turn: a
-	// Queued message when the Agent is still busy (#93).
-	FollowUp func(id, skill, ref string) error
-	Classify func(context.Context, classify.Input) classify.Result
+	// Queued message when the Agent is still busy (#93). note is as in
+	// Start.Note.
+	FollowUp func(id, skill, ref, note string) error
+	// ScreenReview reports whether Ticket t's PR, which Autopilot reviewed
+	// done, stops at Screenshot review (ADR-0014); ok is false when it
+	// can't tell yet. Nil means no PR ever does.
+	ScreenReview func(project string, t tracker.Ticket) (stops, ok bool)
+	Classify     func(context.Context, classify.Input) classify.Result
 	// Load and Save keep the Runner's record in fh's local state, so it
 	// survives a restart.
 	Load func(*Record) error
@@ -91,7 +99,30 @@ type Action struct {
 type Record struct {
 	Actions []Action `json:"actions"`
 	History []Event  `json:"history,omitempty"`
+	// Revisions are the user's notes waiting for their turn, oldest first:
+	// a Spec they rejected, or a PR they asked to change at Screenshot
+	// review. A revision starts once the Project isn't held, so a Project
+	// still never runs two Autopilot turns at once.
+	Revisions []Revision `json:"revisions,omitempty"`
 }
+
+// Revision is a turn the user asked for with a Note: its Step runs
+// SkillRevise on a rejected Spec, or SkillFix on a Ticket whose screens
+// the user asked to change. Ref names the Spec or Ticket, Branch is the
+// Ticket's (empty for a Spec).
+type Revision struct {
+	Step
+	Ref    string `json:"ref"`
+	Branch string `json:"branch,omitempty"`
+	Note   string `json:"note"`
+}
+
+// SkillRevise is the skill that revises a rejected Spec.
+const SkillRevise = "to-spec"
+
+// SkillFix is the skill that changes a Ticket's screens after Request
+// changes at Screenshot review (#227).
+const SkillFix = "implement"
 
 // EventKind says what Autopilot did.
 type EventKind string
@@ -106,14 +137,19 @@ const (
 
 // What the user did at a Stop point (KindUser).
 const (
-	AnswerApprove = "approve" // Approve spec: the Spec is ready-for-agent
+	AnswerApprove   = "approve"    // Approve spec: the Spec is ready-for-agent
+	AnswerLooksGood = "looks-good" // Screenshot review: the screens are right
+	AnswerReject    = "reject"     // Approve spec: the Spec goes back for a revision with the user's note
+	// Screenshot review: the PR goes back to its Session with the user's note.
+	AnswerRequestChanges = "request-changes"
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
 const (
-	ReasonSpecApproval = "spec-approval" // an unapproved Spec in Now
-	ReasonMerge        = "merge"         // a reviewed Ticket's PR waits for the user's merge
-	ReasonExited       = "exited"        // the Session exited before its turn ended
+	ReasonSpecApproval = "spec-approval"     // an unapproved Spec in Now
+	ReasonScreenshot   = "screenshot-review" // a reviewed PR that changes a screen waits for the user's look
+	ReasonMerge        = "merge"             // a reviewed Ticket's PR waits for the user's merge
+	ReasonExited       = "exited"            // the Session exited before its turn ended
 )
 
 // Event is one entry in a Feature's history: its Step is the skill it
@@ -274,6 +310,9 @@ func (r *Runner) Step(p Project, refresh bool) {
 	if r.holding(p.Path, board) {
 		return
 	}
+	if r.revise(p) {
+		return
+	}
 	if _, ok := board(); !ok {
 		return
 	}
@@ -335,9 +374,14 @@ func (r *Runner) stepFeature(p Project, f tracker.Feature, sessions []session.Su
 				return true
 			}
 			// Autopilot's review ended done: the PR waits for the user's
-			// merge. A review that ended any other way is its own Stop point.
-			if r.finished(step) {
-				r.recordUnlessRepeated(Event{Step: step, Kind: KindStop, Reason: ReasonMerge})
+			// Screenshot review if it changes a screen, then for the merge.
+			// A review that ended any other way is its own Stop point.
+			// A fix the user asked for that hasn't started yet answers the
+			// Stop point already.
+			if r.finished(step) && !r.revising(p.Path, f.ID, t.Number) {
+				if reason := r.reviewedStop(p, step, t); reason != "" {
+					r.recordUnlessRepeated(Event{Step: step, Kind: KindStop, Reason: reason})
+				}
 			}
 		}
 	}
@@ -375,7 +419,7 @@ func (r *Runner) review(p Project, step Step, t tracker.Ticket, sessions []sessi
 		return false
 	}
 	if s := sessions[i]; s.State != session.Exited {
-		if err := r.d.FollowUp(s.ID, step.Skill, t.Ref); err != nil {
+		if err := r.d.FollowUp(s.ID, step.Skill, t.Ref, ""); err != nil {
 			r.d.Log.Info("autopilot follow-up failed", "session", s.ID, "skill", step.Skill, "err", err)
 			r.recordUnlessRepeated(Event{Step: step, Kind: KindFailed, Session: s.ID, Error: err.Error()})
 			return false
@@ -467,6 +511,59 @@ func (r *Runner) recordUnlessRepeated(e Event) {
 	r.save()
 }
 
+// reviewedStop is the Stop point of a Ticket whose review, step, ended
+// done: Screenshot review until the user's Looks good when its PR changes
+// a screen, else merge; empty while fh can't tell. A Ticket already at
+// either Stop point stays there, so a wait reads gh once, not every look.
+func (r *Runner) reviewedStop(p Project, step Step, t tracker.Ticket) string {
+	if e, ok := r.Waiting(step.Project, step.Feature, step.Ticket); ok && e.Skill == step.Skill &&
+		(e.Reason == ReasonMerge || e.Reason == ReasonScreenshot) {
+		return e.Reason
+	}
+	if r.d.ScreenReview == nil || r.answered(step, AnswerLooksGood) {
+		return ReasonMerge
+	}
+	stops, ok := r.d.ScreenReview(p.Path, t)
+	switch {
+	case !ok:
+		return ""
+	case stops:
+		return ReasonScreenshot
+	default:
+		return ReasonMerge
+	}
+}
+
+// answered reports whether the user gave answer at a Stop point of step
+// since Autopilot last ran it.
+func (r *Runner) answered(step Step, answer string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		switch e := r.rec.History[i]; {
+		case e.Step != step:
+		case e.Kind == KindSkill:
+			return false
+		case e.Kind == KindUser && e.Answer == answer:
+			return true
+		}
+	}
+	return false
+}
+
+// Waiting returns the Stop point a Feature's Ticket ("" for the Feature
+// itself) waits at: its latest event, if that is a Stop point.
+func (r *Runner) Waiting(project, feature, ticket string) (Event, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		if e := r.rec.History[i]; e.Project == project && e.Feature == feature && e.Ticket == ticket {
+			return e, e.Kind == KindStop
+		}
+	}
+	return Event{}, false
+}
+
 // finished reports whether Autopilot's latest run of step ended done.
 func (r *Runner) finished(step Step) bool {
 	r.mu.Lock()
@@ -520,6 +617,129 @@ func (r *Runner) Answered(step Step, answer string) {
 	defer r.mu.Unlock()
 	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: answer})
 	r.save()
+}
+
+// Rejected records the user's Reject at Approve spec, and the revision it
+// asks for: SkillRevise on the Spec ref of Feature feature, with note. The
+// caller has already written the note to the Spec (ADR-0014) and steps the
+// Project next, which starts the revision.
+func (r *Runner) Rejected(project, feature, ref, note string) {
+	step := Step{Project: project, Feature: feature, Skill: SkillRevise}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: AnswerReject})
+	r.rec.Revisions = append(r.rec.Revisions, Revision{Step: step, Ref: ref, Note: note})
+	r.save()
+}
+
+// RequestedChanges records the user's Request changes at a Screenshot
+// review Stop point that waited before step, and the fix it asks for:
+// SkillFix on the Ticket ref, in its Worktree on branch, with note. The
+// caller has already posted the note on the PR (ADR-0014) and steps the
+// Project next, which starts the fix (#227).
+func (r *Runner) RequestedChanges(step Step, ref, branch, note string) {
+	fix := Step{Project: step.Project, Feature: step.Feature, Ticket: step.Ticket, Skill: SkillFix}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: AnswerRequestChanges})
+	r.rec.Revisions = append(r.rec.Revisions, Revision{Step: fix, Ref: ref, Branch: branch, Note: note})
+	r.save()
+}
+
+// AnsweredAt is when the user last gave answer at a Stop point of a
+// Feature's Ticket ("" for the Feature itself); ok is false when they
+// never did.
+func (r *Runner) AnsweredAt(project, feature, ticket, answer string) (at time.Time, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.rec.History) - 1; i >= 0; i-- {
+		if e := r.rec.History[i]; e.Kind == KindUser && e.Answer == answer &&
+			e.Project == project && e.Feature == feature && e.Ticket == ticket {
+			return e.Time, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// revising reports whether a revision of a Feature's Ticket waits to
+// start: its Stop point is answered, so Autopilot doesn't record it again.
+func (r *Runner) revising(project, feature, ticket string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.ContainsFunc(r.rec.Revisions, func(v Revision) bool {
+		return v.Project == project && v.Feature == feature && v.Ticket == ticket
+	})
+}
+
+// ticketSession is the Ticket's own Autopilot Session, if it hasn't
+// exited: where its change was made, as for its review.
+func (r *Runner) ticketSession(step Step) string {
+	for _, s := range r.d.Sessions.List() {
+		if s.Autopilot && s.Project == step.Project && s.State != session.Exited &&
+			s.Link != nil && s.Link.Feature == step.Feature && s.Link.Ticket == step.Ticket {
+			return s.ID
+		}
+	}
+	return ""
+}
+
+// revise starts p's oldest waiting revision, and reports whether it did:
+// as the next turn of the Autopilot Session that wrote the Spec, or the
+// Ticket's own Session for a fix, or in a new Session when that one is
+// gone or exited. A revision that fails to start stays, and the next look
+// tries again.
+func (r *Runner) revise(p Project) bool {
+	r.mu.Lock()
+	i := slices.IndexFunc(r.rec.Revisions, func(v Revision) bool { return v.Project == p.Path })
+	if i < 0 {
+		r.mu.Unlock()
+		return false
+	}
+	rev := r.rec.Revisions[i]
+	r.mu.Unlock()
+
+	id := r.specWriter(rev.Step)
+	if rev.Ticket != "" {
+		id = r.ticketSession(rev.Step)
+	}
+	var err error
+	if id != "" {
+		err = r.d.FollowUp(id, rev.Skill, rev.Ref, rev.Note)
+	} else {
+		id, err = r.d.Start(Start{Project: p.Path, Agent: p.Agent, Skill: rev.Skill, Ref: rev.Ref, Note: rev.Note,
+			Branch: rev.Branch, Link: tracker.Link{Feature: rev.Feature, Ticket: rev.Ticket}})
+	}
+	if err != nil {
+		r.d.Log.Info("autopilot revision failed", "project", p.Path, "feature", rev.Feature, "err", err)
+		r.recordUnlessRepeated(Event{Step: rev.Step, Kind: KindFailed, Session: id, Error: err.Error()})
+		return false
+	}
+	r.mu.Lock()
+	if j := slices.Index(r.rec.Revisions, rev); j >= 0 {
+		r.rec.Revisions = slices.Delete(r.rec.Revisions, j, j+1)
+	}
+	r.mu.Unlock()
+	r.record(rev.Step, id) // saves the record, with the revision gone
+	return true
+}
+
+// specWriter is the Autopilot Session that wrote step's Spec, if it hasn't
+// exited: the Session whose latest step was a revision of that Spec.
+func (r *Runner) specWriter(step Step) string {
+	for _, s := range r.d.Sessions.List() {
+		if !s.Autopilot || s.Project != step.Project || s.State == session.Exited ||
+			s.Link == nil || s.Link.Feature != step.Feature || s.Link.Ticket != "" {
+			continue
+		}
+		r.mu.Lock()
+		i := r.lastActionOf(s.ID)
+		wrote := i >= 0 && r.rec.Actions[i].Step == step
+		r.mu.Unlock()
+		if wrote {
+			return s.ID
+		}
+	}
+	return ""
 }
 
 func lastAgentMessage(items []session.Item) string {

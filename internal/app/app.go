@@ -262,6 +262,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	registerBoardRoutes(srv, reg, boards, sessions)
 	registerTrackerWrites(srv, reg, boards, statuses.Kick)
 	registerRoadmapRoutes(srv, reg, boards, sessions)
+	registerSwitcherRoutes(srv, reg, boards)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)
 	if err != nil {
@@ -277,11 +278,15 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 		log:      log,
 	}
 	registerSessionRoutes(srv, deps)
-	if pilot, err = newAutopilot(deps, boards, classifier, statuses.Kick); err != nil {
+	changes := newPRChanges()
+	if pilot, err = newAutopilot(deps, boards, changes, classifier, statuses.Kick); err != nil {
 		return fail(fmt.Errorf("read autopilot from state.json: %w", err))
 	}
 	registerAutopilotRoutes(srv, reg, agents, pilot, inst.goBackground)
 	registerAutopilotHistoryRoute(srv, pilot)
+	registerUIPathsRoute(srv, reg)
+	registerScreenshotReviewRoutes(srv, reg, boards, changes, sessions, pilot, inst.goBackground)
+	registerRequestChangesRoute(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerStopPointRoutes(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerAutopilotFlowRoute(srv, reg, boards, sessions, pilot, statuses)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)

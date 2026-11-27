@@ -90,12 +90,28 @@ const stageName = Object.fromEntries(columns.map((c) => [c.stage, c.name])) as R
 const refreshEvery = 60_000;
 const lastProjectKey = "fh.board.project";
 
+// boardProject is the Project the Software factory shows: the one last
+// picked in its Project picker, or else the first Project. The Switcher
+// finds that Project's Tickets (#195).
+export function boardProject(projects: Project[]): Project | undefined {
+  let stored = "";
+  try {
+    stored = localStorage.getItem(lastProjectKey) ?? "";
+  } catch {
+    // storage blocked: the first Project
+  }
+  return projects.find((p) => p.path === stored) ?? projects[0];
+}
+
 function mainTree(p: Project): string {
   return p.worktrees.find((w) => w.main)?.path ?? p.path;
 }
 
-// BoardFocus is a Feature the board opens on, as the Roadmap's Open asks.
-export type BoardFocus = { project: string; feature: string };
+// BoardFocus is what the board opens on: a Feature, as the Roadmap's Open
+// asks; with ticket, also that Ticket's row (#195); or, with triage, the
+// Ref of an Untriaged issue whose Needs triage row a Switcher pick marks
+// (#254).
+export type BoardFocus = { project: string; feature?: string; ticket?: string; triage?: string };
 
 // Board is the Software factory: one Project's Features by Stage. It reads
 // the board while it's shown, every 60 s and on Refresh; nothing is read
@@ -258,7 +274,10 @@ export function Board({
                 {board && board.untriaged.length > 0 && (
                   <NeedsTriage
                     issues={board.untriaged}
-                    open={triageOpen ?? board.untriaged.length <= triageOpenUpTo}
+                    open={
+                      triageOpen ?? (!!focus?.triage || board.untriaged.length <= triageOpenUpTo)
+                    }
+                    focusRef={focus?.triage}
                     onToggle={(o) => setTriageOpen(o)}
                     onTriage={(u) =>
                       onStart({
@@ -333,6 +352,7 @@ export function Board({
           mainTree={mainTree(chosen)}
           // fh expired its cached read with the write: a plain read shows it.
           onWritten={() => setReloads((n) => n + 1)}
+          focusTicket={focus?.feature === feature.id ? focus.ticket : undefined}
           flow={
             <FeatureFlow
               project={chosen.path}
@@ -387,14 +407,21 @@ function IdeaCard({ idea, onLinked }: { idea: Idea; onLinked: () => void }) {
 function NeedsTriage({
   issues,
   open,
+  focusRef,
   onToggle,
   onTriage,
 }: {
   issues: Untriaged[];
   open: boolean;
+  focusRef?: string; // the issue a Switcher pick landed on: its row glows
   onToggle: (open: boolean) => void;
   onTriage: (u: Untriaged) => void;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  const hasFocusRow = issues.some((u) => u.ref === focusRef);
+  useEffect(() => {
+    if (hasFocusRow) list.current?.querySelector(".sw-flash")?.scrollIntoView({ block: "nearest" });
+  }, [hasFocusRow]);
   return (
     <section className="triage" aria-label="Needs triage">
       <button
@@ -409,9 +436,9 @@ function NeedsTriage({
         Needs triage <span className="count">{issues.length}</span>
       </button>
       {open && (
-        <ul>
+        <ul ref={list}>
           {issues.map((u) => (
-            <li key={u.ref}>
+            <li key={u.ref} className={u.ref === focusRef ? "sw-flash" : undefined}>
               <span className="num">
                 <LinkOrText url={u.url}>{u.ref}</LinkOrText>
               </span>
@@ -483,6 +510,7 @@ function FeatureDetail({
   start,
   mainTree,
   onWritten,
+  focusTicket,
   flow,
 }: {
   feature: Feature;
@@ -490,8 +518,18 @@ function FeatureDetail({
   start: (from: Omit<StartFrom, "project">) => void;
   mainTree: string;
   onWritten: () => void;
+  focusTicket?: string; // the Ticket a Switcher pick landed on: its row glows
   flow: ReactNode; // the Feature's flow graph (Flow.tsx)
 }) {
+  // Bring the picked Ticket's row into view once, when it first shows;
+  // the board's later reads leave the scroll alone.
+  const tickets = useRef<HTMLUListElement>(null);
+  const hasFocusRow = feature.tickets.some((t) => t.number === focusTicket);
+  useEffect(() => {
+    if (hasFocusRow) {
+      tickets.current?.querySelector(".sw-flash")?.scrollIntoView({ block: "nearest" });
+    }
+  }, [hasFocusRow]);
   // A Spec is never Startable itself; it offers its Stage's next skill.
   const step = feature.next;
   return (
@@ -539,12 +577,15 @@ function FeatureDetail({
       )}
       {flow}
       {feature.tickets.length === 0 && <p className="empty">No Tickets yet.</p>}
-      <ul className="ticketlist">
+      <ul className="ticketlist" ref={tickets}>
         {feature.tickets.map((t) => {
           // The Board offers a Ticket's next step only while it's Startable.
           const next = t.startable ? t.next : undefined;
+          const cls = [t.closed && "closed", t.number === focusTicket && "sw-flash"].filter(
+            Boolean,
+          );
           return (
-            <li key={t.number} className={t.closed ? "closed" : undefined}>
+            <li key={t.number} className={cls.join(" ") || undefined}>
               <span className="num">
                 <LinkOrText url={t.url}>#{t.number}</LinkOrText>
               </span>

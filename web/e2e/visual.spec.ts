@@ -3,8 +3,9 @@ import { Fh } from "./fh";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
+import { reachScreenshotReview, startScreenshotReview } from "./screens";
 
-// Local pixel tests (ADR 0012): eight screens in light and dark, compared with
+// Local pixel tests (ADR 0012): ten screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -52,6 +53,22 @@ for (const scheme of ["light", "dark"] as const) {
         await page.getByRole("tab", { name: "Software factory" }).click();
         await expect(page.locator('.column[aria-label="Tickets"]')).toContainText("2 tickets");
         await expect(page).toHaveScreenshot(`board-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    test("Switcher with results by number", async ({ page }) => {
+      const fh = await Fh.start({ ghPRs: [] });
+      try {
+        await open(page, fh, shopRepo());
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        await expect(page.locator('.column[aria-label="Tickets"]')).toContainText("2 tickets");
+        await page.keyboard.press("ControlOrMeta+k");
+        const dialog = page.getByRole("dialog", { name: "Switcher" });
+        await dialog.getByLabel("Find a Session, Ticket or number").fill("#1");
+        await expect(dialog.getByRole("option")).toHaveCount(1);
+        await expect(dialog).toHaveScreenshot(`switcher-${scheme}.png`, { mask: dynamic(page) });
       } finally {
         await fh.dispose();
       }
@@ -195,6 +212,23 @@ for (const scheme of ["light", "dark"] as const) {
         });
       } finally {
         await fh.dispose();
+      }
+    });
+
+    // Screenshot review in the Inbox (#226): PR #5 changes web/src, so after
+    // Autopilot's review it waits here with the Agent's screenshot.
+    test("Inbox with Screenshot review", async ({ page }) => {
+      test.setTimeout(90_000);
+      const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+      const setup = await startScreenshotReview(path.join(tmpdir(), "fh-visual", slug));
+      try {
+        const item = await reachScreenshotReview(page, setup);
+        await expect(item.locator(".shot img")).toHaveJSProperty("complete", true);
+        await expect(page).toHaveScreenshot(`inbox-screenshot-review-${scheme}.png`, {
+          mask: dynamic(page),
+        });
+      } finally {
+        await setup.fh.dispose();
       }
     });
 

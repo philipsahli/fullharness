@@ -3,9 +3,9 @@ import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./Sessions";
 import { Switcher } from "./Switcher";
-import { Board, type BoardFocus } from "./Board";
+import { Board, boardProject, type BoardFocus } from "./Board";
 import { Roadmap } from "./Roadmap";
-import { awaitingApproval } from "./StopPoints";
+import { awaitingUser } from "./StopPoints";
 
 type View = "sessions" | "factory" | "roadmap" | "inbox";
 
@@ -38,9 +38,17 @@ export function App() {
   const [conn, update, reconnect] = useEventChannel(showNotification);
 
   const [switcher, setSwitcher] = useState(false);
-  // A Feature the Roadmap's Open asked the board to show. Picking a tab
-  // yourself drops it, so the board opens as you left it.
+  // A Feature the Roadmap's Open, or a Ticket a Switcher pick, asked the
+  // board to show. Picking a tab yourself drops it, so the board opens as
+  // you left it. The board reads focus only when it mounts, so each new
+  // focus remounts it (focusKey), even when the board is already shown.
   const [focus, setFocus] = useState<BoardFocus | undefined>();
+  const [focusKey, setFocusKey] = useState(0);
+  const showOnBoard = (f: BoardFocus) => {
+    setFocus(f);
+    setFocusKey((n) => n + 1);
+    setView("factory");
+  };
   const pickTab = (v: View) => {
     setFocus(undefined);
     setView(v);
@@ -58,8 +66,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const snapshot = conn.status === "open" ? conn.snapshot : undefined;
-  const inboxCount =
-    (snapshot?.inbox.length ?? 0) + awaitingApproval(snapshot?.autopilot ?? []).length;
+  const inboxCount = (snapshot?.inbox.length ?? 0) + awaitingUser(snapshot?.autopilot ?? []).length;
 
   return (
     <div className="app" data-connection={conn.status}>
@@ -84,7 +91,7 @@ export function App() {
           </button>
         )}
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
-          Jump to a Session… <kbd>{shortcutLabel}</kbd>
+          Find a Session, Ticket or number… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views">
           <Tab view="sessions" current={view} onSelect={pickTab}>
@@ -109,9 +116,20 @@ export function App() {
         <Switcher
           sessions={snapshot.sessions}
           projects={snapshot.projects}
+          boardProject={boardProject(snapshot.projects)}
           onOpen={(id) => {
             setView("sessions");
             setOpened(id);
+          }}
+          onOpenResult={(r) => {
+            const o = r.opens;
+            if (o.place === "github") {
+              if (o.url) window.open(o.url, "_blank", "noopener");
+            } else if (o.place === "triage") {
+              showOnBoard({ project: r.project, triage: o.ref });
+            } else {
+              showOnBoard({ project: r.project, feature: o.feature, ticket: o.ticket });
+            }
           }}
           onNew={() => newSession()}
           onClose={() => setSwitcher(false)}
@@ -137,6 +155,7 @@ export function App() {
           {view === "sessions" && sessionsView()}
           {view === "factory" && snapshot && (
             <Board
+              key={focusKey}
               projects={snapshot.projects}
               autopilot={snapshot.autopilot}
               onStart={newSession}
@@ -150,10 +169,7 @@ export function App() {
           {view === "roadmap" && (
             <Roadmap
               autopilot={snapshot?.autopilot ?? []}
-              onOpen={(project, feature) => {
-                setFocus({ project, feature });
-                setView("factory");
-              }}
+              onOpen={(project, feature) => showOnBoard({ project, feature })}
             />
           )}
           {view === "inbox" && snapshot && (

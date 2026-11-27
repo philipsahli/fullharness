@@ -37,6 +37,11 @@ var stageOrder = []string{StageIdea, StageSpec, StageTickets, StageImplementing,
 // and an approved Spec.
 const ReadyLabel = "ready-for-agent"
 
+// SpecLabel marks a GitHub issue as a Spec before it is approved or has
+// Tickets, so it waits at Approve spec instead of reading as an Untriaged
+// issue (#244).
+const SpecLabel = "spec"
+
 // RoadmapNow is the Roadmap group Autopilot works on (ADR-0009).
 const RoadmapNow = "now"
 

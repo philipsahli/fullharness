@@ -44,6 +44,7 @@ type action struct {
 	WaitCancel bool        `json:"waitCancel,omitempty"` // block until session/cancel, then end with cancelled
 	SleepMS    int         `json:"sleepMs,omitempty"`
 	WaitFile   string      `json:"waitFile,omitempty"` // block until this path exists, so a test holds the turn open as long as it needs
+	HoldMS     int         `json:"holdMs,omitempty"`   // sleep and ignore a cancel meanwhile, like a model call that can't be interrupted
 	Stderr     string      `json:"stderr,omitempty"`   // write a line to stderr
 	Exit       *int        `json:"exit,omitempty"`     // exit the process with this code
 	WriteFile  string      `json:"writeFile,omitempty"`
@@ -386,6 +387,8 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 					return true, nil
 				}
 			}
+		case s.HoldMS > 0:
+			time.Sleep(time.Duration(s.HoldMS) * time.Millisecond)
 		case s.Stderr != "":
 			fmt.Fprintln(os.Stderr, s.Stderr)
 		case s.Exit != nil:
@@ -421,6 +424,13 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			err = os.WriteFile(a.cwd+"/"+s.WriteFile, []byte("written by fakeagent\n"), 0o644)
 		}
 		if err != nil {
+			if ctx.Err() != nil {
+				// The step failed because session/cancel cancelled ctx (the
+				// SDK refuses to send on a cancelled ctx). ACP asks for a
+				// cancelled turn to end with stopReason cancelled, not an
+				// error, as the real Agents do (#239).
+				return true, nil
+			}
 			return false, err
 		}
 	}

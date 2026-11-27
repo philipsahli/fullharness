@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -95,7 +96,7 @@ const prLimit = "500"
 // recent, with what a PRRecord needs.
 func FetchPRs(ctx context.Context, repo string) ([]PR, error) {
 	out, err := gh(ctx, repo, "pr", "list", "--state", "all", "--limit", prLimit,
-		"--json", "number,headRefName,body,state,isDraft,url,statusCheckRollup")
+		"--json", "number,title,headRefName,body,state,isDraft,url,statusCheckRollup")
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +105,29 @@ func FetchPRs(ctx context.Context, repo string) ([]PR, error) {
 		return nil, fmt.Errorf("reading gh's PRs: %w", err)
 	}
 	return prs, nil
+}
+
+// FetchPRChanges reads PR n's changed files and description, which
+// FetchPRs leaves out: they decide Screenshot review (ADR-0014).
+func FetchPRChanges(ctx context.Context, repo string, n int) (PR, error) {
+	out, err := gh(ctx, repo, "pr", "view", strconv.Itoa(n), "--json", "files,body")
+	if err != nil {
+		return PR{}, err
+	}
+	var v struct {
+		Body  string `json:"body"`
+		Files []struct {
+			Path string `json:"path"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return PR{}, fmt.Errorf("reading gh's PR #%d: %w", n, err)
+	}
+	p := PR{Number: n, Body: v.Body, Files: []string{}}
+	for _, f := range v.Files {
+		p.Files = append(p.Files, f.Path)
+	}
+	return p, nil
 }
 
 func gh(ctx context.Context, repo string, args ...string) ([]byte, error) {

@@ -23,8 +23,15 @@ const defaultAutopilotAgent = "claude"
 // newAutopilot builds Autopilot on fh's own parts: the board as tabs see
 // it, and Sessions started the way the board's buttons start them.
 // changed runs after Autopilot's history changed.
-func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
+func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
 	return autopilot.New(autopilot.Deps{
+		ScreenReview: func(path string, t tracker.Ticket) (stops, ok bool) {
+			p, found := d.projects.Get(path)
+			if !found {
+				return false, false
+			}
+			return screenReview(context.Background(), prc, p, t)
+		},
 		Projects: func() []autopilot.Project { return autopilotProjects(d.projects) },
 		Board: func(path string, refresh bool) ([]tracker.Feature, bool) {
 			board, ok := b.read(path, refresh)
@@ -37,13 +44,20 @@ func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func
 			if err != nil {
 				return "", err
 			}
+			if err := excludeFh(s.Project); err != nil {
+				d.log.Info("add .fh/ to .git/info/exclude failed", "project", s.Project, "err", err)
+			}
+			if strings.HasPrefix(s.Skill, "implement") {
+				prompt += screenshotNote
+			}
+			prompt = withReviewNote(prompt, s.Skill, s.Note)
 			link := s.Link
 			req := newSession{Project: s.Project, Agent: s.Agent, Prompt: prompt, Link: &link, autopilot: true}
 			req.Worktree, req.Branch = d.worktreeFor(s.Project, s.Branch)
 			sum, err := d.start(req)
 			return sum.ID, err
 		},
-		FollowUp: func(id, skill, ref string) error {
+		FollowUp: func(id, skill, ref, note string) error {
 			det, err := d.sessions.Get(id)
 			if err != nil {
 				return err
@@ -52,7 +66,7 @@ func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func
 			if err != nil {
 				return err
 			}
-			return d.sessions.Prompt(id, prompt)
+			return d.sessions.Prompt(id, withReviewNote(prompt, skill, note))
 		},
 		Classify: c.Classify,
 		Load:     func(r *autopilot.Record) error { return d.state.Autopilot(r) },
@@ -74,6 +88,23 @@ func (d sessionDeps) skillPrompt(agentID, skill, ref string) (string, error) {
 		return "", err
 	}
 	return cmd + " " + ref, nil
+}
+
+// withReviewNote adds the user's note to a revision's prompt (ADR-0014),
+// so the Agent knows what to change: a Reject at Approve spec for
+// SkillRevise, Request changes at Screenshot review for SkillFix (#227).
+// No note leaves the prompt as the board's buttons write it.
+func withReviewNote(prompt, skill, note string) string {
+	switch {
+	case note == "":
+		return prompt
+	case skill == autopilot.SkillFix:
+		return prompt + "\n\nThe user looked at this Ticket's screens at Screenshot review and asked for changes. " +
+			"Change them as their note says, push to the same PR, and save a new PNG screenshot of each changed screen under " +
+			screenshotDir + "/ in this Worktree:\n\n" + note
+	default:
+		return prompt + "\n\nThe user rejected this Spec at Approve spec. Revise it with their note:\n\n" + note
+	}
 }
 
 // worktreeFor picks where a step runs: the main tree for no branch, the
@@ -137,6 +168,36 @@ func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents [
 			if p.Path == req.Path {
 				background(func(context.Context) { pilot.Step(p, true) })
 			}
+		}
+	})
+}
+
+// registerUIPathsRoute sets a Project's UI paths: the paths whose change
+// stops a PR at Screenshot review (ADR-0014). An empty list goes back to
+// the default.
+func registerUIPathsRoute(srv *server.Server, reg *project.Registry) {
+	srv.Handle("POST /api/projects/ui-paths", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path    string   `json:"path"`
+			UIPaths []string `json:"uiPaths"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"path": "…", "uiPaths": ["web/src/**", …]}`)
+			return
+		}
+		var paths []string
+		for _, p := range req.UIPaths {
+			if p = strings.TrimSpace(p); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		switch err := reg.SetUIPaths(strings.TrimSpace(req.Path), paths); {
+		case errors.Is(err, project.ErrNotFound):
+			server.WriteError(w, http.StatusNotFound, err.Error())
+		case err != nil:
+			server.WriteError(w, http.StatusInternalServerError, err.Error())
+		default:
+			w.WriteHeader(http.StatusNoContent)
 		}
 	})
 }

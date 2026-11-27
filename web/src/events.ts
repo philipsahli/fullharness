@@ -37,7 +37,13 @@ export type Project = {
   // (ADR-0009). agent is the Agent it starts; absent means Claude Code.
   autopilot: boolean;
   agent?: string;
+  // uiPaths: a PR that changes a file under one stops at Screenshot
+  // review (ADR-0014); absent means DEFAULT_UI_PATHS.
+  uiPaths?: string[];
 };
+
+// DEFAULT_UI_PATHS matches internal/project.DefaultUIPaths.
+export const DEFAULT_UI_PATHS = ["web/src/**"];
 
 // Link matches internal/tracker.Link: the Feature (and Ticket) a Session
 // was started from on the board.
@@ -152,6 +158,7 @@ export type AutopilotKind = "off" | "idle" | "running" | "waiting" | "failed" | 
 // or off, matching status.Reason.
 export type AutopilotReason =
   | "spec-approval"
+  | "screenshot-review"
   | "merge"
   | "exited"
   | "asking"

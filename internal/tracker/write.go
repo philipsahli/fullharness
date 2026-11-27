@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // The writes fh runs itself (ADR 0008), one function each. Every write
@@ -45,6 +48,17 @@ func MarkReady(ctx context.Context, repo, ref string) error {
 	default:
 		return ErrNoWrites
 	}
+}
+
+// CommentPR posts body as a comment on PR n, such as Looks good at
+// Screenshot review (ADR-0014). PRs are GitHub's only, so this runs gh in
+// the repo; a gh failure comes back with gh's own message.
+func CommentPR(ctx context.Context, repo string, n int, body string) error {
+	if kind, _ := Detect(repo); kind != KindGitHub {
+		return ErrNoWrites
+	}
+	_, err := gh(ctx, repo, "pr", "comment", strconv.Itoa(n), "--body", body)
+	return err
 }
 
 // ErrBadGroup: the group is not a Roadmap group fh knows.
@@ -95,6 +109,58 @@ func SetRoadmap(ctx context.Context, repo, ref, from, to string) error {
 	default:
 		return ErrNoWrites
 	}
+}
+
+// ErrEmptyNote: a review note must say something.
+var ErrEmptyNote = errors.New("write a note")
+
+// reviewNotes is the heading local markdown keeps review notes under.
+const reviewNotes = "## Review notes"
+
+// CommentSpec adds the user's review note to the Spec ref (ADR 0014,
+// Reject). On GitHub it is a comment on the Spec issue. Local markdown has
+// no comments, so the note goes into spec.md itself, quoted under a
+// "## Review notes" heading at the end, which the revision turn reads with
+// the Spec. A gh failure comes back with gh's own message.
+func CommentSpec(ctx context.Context, repo, ref, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return ErrEmptyNote
+	}
+	switch kind, _ := Detect(repo); kind {
+	case KindGitHub:
+		n, ok := issueNumber(ref)
+		if !ok {
+			return fmt.Errorf("%w: %q", ErrBadRef, ref)
+		}
+		_, err := gh(ctx, repo, "issue", "comment", n, "--body", "Rejected at Approve spec in fullharness:\n\n"+note)
+		return err
+	case KindLocal:
+		path, ok := localItem(repo, ref)
+		if !ok || filepath.Base(path) != "spec.md" {
+			return fmt.Errorf("%w: %q", ErrBadRef, ref)
+		}
+		return appendReviewNote(path, note)
+	default:
+		return ErrNoWrites
+	}
+}
+
+// appendReviewNote adds note to the end of the spec.md at path, quoted, as
+// one more entry under the Review notes heading; the first note adds the
+// heading. Every other byte stays.
+func appendReviewNote(path, note string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	text := strings.TrimRight(string(b), "\n")
+	if !slices.Contains(strings.Split(text, "\n"), reviewNotes) {
+		text += "\n\n" + reviewNotes
+	}
+	quoted := "> " + strings.ReplaceAll(note, "\n", "\n> ")
+	text += "\n\nRejected at Approve spec on " + time.Now().Format("2006-01-02") + ":\n\n" + quoted + "\n"
+	return replaceFile(path, []byte(text))
 }
 
 var issueRef = regexp.MustCompile(`^#?([1-9]\d*)$`)

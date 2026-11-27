@@ -14,7 +14,7 @@ import {
   tabID,
 } from "./events";
 import { AgentChip, stateNames } from "./Chips";
-import { StopPoints, awaitingApproval } from "./StopPoints";
+import { StopPoints, awaitingUser } from "./StopPoints";
 import type {
   AutopilotStatus,
   Command,
@@ -873,7 +873,7 @@ export function Inbox(props: {
   onOpen: (session: string) => void;
 }) {
   // Autopilot's Stop points come first: each holds a whole Feature.
-  const stops = awaitingApproval(props.autopilot).length;
+  const stops = awaitingUser(props.autopilot).length;
   return (
     <section className="panel inbox" aria-label="Inbox">
       <h2>Inbox</h2>
