@@ -91,6 +91,27 @@ export function AutopilotBadge({ status }: { status: AutopilotStatus }) {
   );
 }
 
+// AutopilotLive is the live pulse (#205): the tool call a running turn is
+// on, under its badge. fh puts the tool call in the Autopilot status; each
+// new one slides in (keyed on it). Nothing shows when the Feature isn't
+// running or its Agent is between tool calls.
+export function AutopilotLive({ status }: { status: AutopilotStatus }) {
+  if (status.kind !== "running" || !status.tool) return null;
+  return (
+    <span className="ap-live" data-ap="running">
+      <span className="ap-eq" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      {/* Not a live region: a busy Agent would talk over the screen reader. */}
+      <span key={status.tool} className="ap-tool tick">
+        {status.tool}
+      </span>
+    </span>
+  );
+}
+
 // showsBadge: a Feature outside Now that nothing runs for gets no badge on
 // its card; its Roadmap group already says why (the mockup).
 export function showsBadge(s: AutopilotStatus | undefined): s is AutopilotStatus {

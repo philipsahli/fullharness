@@ -53,6 +53,9 @@ type Status struct {
 	Reason  Reason `json:"reason,omitempty"`
 	Session string `json:"session,omitempty"`
 	Error   string `json:"error,omitempty"` // why the skill didn't start
+	// Tool is the tool call a running turn's Session is on (the live
+	// pulse, #205); empty for every other Kind.
+	Tool string `json:"tool,omitempty"`
 	// Since is when this Autopilot status began; Stamp sets it.
 	Since time.Time `json:"since,omitzero"`
 }
@@ -125,7 +128,9 @@ func of(in Input, id string, f *tracker.Feature, e autopilot.Event, hasEvent boo
 	// A turn that runs, runs on: neither the switch nor leaving Now stops
 	// it (ADR-0013).
 	if open && e.Kind == autopilot.KindSkill && s.State != session.Exited {
-		return fromEvent(Running, "")
+		st = fromEvent(Running, "")
+		st.Tool = s.Tool
+		return st
 	}
 	if f == nil {
 		st.Kind, st.Reason = Off, NotInNow
@@ -196,7 +201,8 @@ func retroSkill() string {
 
 // Stamp returns next with each Autopilot status's Since: kept from prev
 // while the Feature's Autopilot status is the same, now when it changed or
-// is new. It doesn't change next.
+// is new. A new tool call in the same turn is the same Autopilot status.
+// It doesn't change next.
 func Stamp(prev, next []Status, now time.Time) []Status {
 	type key struct{ project, feature string }
 	before := map[key]Status{}
@@ -208,7 +214,7 @@ func Stamp(prev, next []Status, now time.Time) []Status {
 		s.Since = now
 		if p, ok := before[key{s.Project, s.Feature}]; ok {
 			same := p
-			same.Since = now
+			same.Since, same.Tool = now, s.Tool
 			if same == s {
 				s.Since = p.Since
 			}
