@@ -61,7 +61,7 @@ The flow of skills (grilling, prototype, spec, tickets, implement, review, retro
 _Avoid_: pipeline, backlog, workflow
 
 **Spec**:
-The issue (or `spec.md`) describing a whole Feature, produced by `/to-spec`; its Tickets hang off it. A Spec is never a Ticket.
+The issue (or `spec.md`) describing a whole Feature, produced by `/to-spec`; its Tickets hang off it. A Spec is never a Ticket. On GitHub a Spec issue carries the `spec` label, so fullharness reads it as a Spec before it is approved or has Tickets, and it can wait at Approve spec.
 _Avoid_: PRD, epic, plan
 
 **Issue tracker**:
@@ -93,7 +93,7 @@ Where a Pull request is: **Draft**, **Open**, **Merged** or **Closed** (closed w
 _Avoid_: status (also avoided for Session state), CI status
 
 **Untriaged issue**:
-An open issue the Software factory can't place: it has no parent, no Tickets, and no `ready-for-agent` label. Any other label, such as `needs-triage` or `needs-info`, still leaves it Untriaged.
+An open issue the Software factory can't place: it has no parent, no Tickets, and neither the `ready-for-agent` nor the `spec` label. Any other label, such as `needs-triage` or `needs-info`, still leaves it Untriaged.
 
 A Ticket whose parent isn't on the board is Untriaged too, whatever its labels, `ready-for-agent` included: its parent is a `wayfinder:*` issue, or `Part of #N` names an issue outside the board. Its row carries the note "parent #N not on the board".
 

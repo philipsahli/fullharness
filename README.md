@@ -287,8 +287,8 @@ A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Impleme
 
 For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
-- A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
-- An open issue with no parent, no Tickets and no `ready-for-agent` label is an Untriaged issue. It goes under **Needs triage**, described below.
+- A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent` or `spec`. The `spec` label lets an unapproved Spec wait at Approve spec before it has Tickets.
+- An open issue with no parent, no Tickets and neither the `ready-for-agent` nor the `spec` label is an Untriaged issue. It goes under **Needs triage**, described below.
 - An open Ticket whose parent isn't on the board is an Untriaged issue too, whatever its labels. Its parent is a `wayfinder:*` issue, or `Part of #N` names an issue fh didn't read.
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.

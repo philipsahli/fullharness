@@ -89,7 +89,8 @@ func LinkIssues(b *Board, repo gitremote.GitHub) {
 // ReadGitHub builds a GitHub board's Features from a repository's issues and PRs
 // (#12). A Spec is an issue with sub-issues, or that others name with
 // "Part of #N" or a "## Parent" section; an issue with no Tickets is a Spec
-// only when open and labelled ready-for-agent. Wayfinder issues are left out.
+// only when open and labelled ready-for-agent or spec (#244), and has no
+// parent. Wayfinder issues are left out.
 // aheadBranches are the Project's branches with commits ahead of its base.
 // Stages are left to Derive.
 //
@@ -141,7 +142,9 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) Board {
 		// A Ticket whose parent is a wayfinder issue or outside the issue
 		// set is listed whatever its labels, so it isn't lost.
 		orphan := hasParent[i.Number] && !onBoard[i.Number]
-		if len(kids) == 0 && i.State != "CLOSED" && (orphan || !hasParent[i.Number] && !slices.Contains(labels(i), ReadyLabel)) {
+		// A Spec without Tickets: approved, or labelled spec before approval.
+		spec := slices.Contains(labels(i), ReadyLabel) || slices.Contains(labels(i), SpecLabel)
+		if len(kids) == 0 && i.State != "CLOSED" && (orphan || !hasParent[i.Number] && !spec) {
 			n := strconv.Itoa(i.Number)
 			u := Untriaged{Number: n, Ref: "#" + n, Title: i.Title, Labels: append([]string{}, labels(i)...)}
 			if orphan {
@@ -150,7 +153,7 @@ func ReadGitHub(issues []Issue, prs []PR, aheadBranches []string) Board {
 			untriaged = append(untriaged, u)
 			continue
 		}
-		if len(kids) == 0 && (hasParent[i.Number] || !slices.Contains(labels(i), ReadyLabel) || i.State == "CLOSED") {
+		if len(kids) == 0 && (hasParent[i.Number] || !spec || i.State == "CLOSED") {
 			// A Ticket, an issue outside the factory, or a closed one-off
 			// issue: without Tickets a closed issue was never a Feature
 			// worth showing, and they would pile up in Shipped (#12).
