@@ -1,6 +1,10 @@
 package tracker
 
-import "slices"
+import (
+	"path"
+	"slices"
+	"strings"
+)
 
 // PR is one pull request as `gh pr list --json` returns it (FetchPRs).
 type PR struct {
@@ -11,6 +15,38 @@ type PR struct {
 	IsDraft     bool    `json:"isDraft"`
 	URL         string  `json:"url"`
 	Checks      []Check `json:"statusCheckRollup"`
+	// Files are the paths the PR changes. `pr list` doesn't read them;
+	// FetchPRChanges does, for the one PR that needs them (#226).
+	Files []string `json:"-"`
+}
+
+// NoVisibleUIChange in a PR's description says the PR changes no screen,
+// even when it changes a file under a UI path (AGENTS.md, ADR-0014).
+const NoVisibleUIChange = "No visible UI change"
+
+// ChangesScreen reports whether p stops at Screenshot review: it changes
+// a file under one of uiPaths and its description doesn't say
+// NoVisibleUIChange. A path ending in /** covers everything under it; any
+// other path is a file or folder name, or a path.Match pattern.
+func (p PR) ChangesScreen(uiPaths []string) bool {
+	if strings.Contains(p.Body, NoVisibleUIChange) {
+		return false
+	}
+	return slices.ContainsFunc(p.Files, func(f string) bool {
+		return slices.ContainsFunc(uiPaths, func(pat string) bool { return underPath(f, pat) })
+	})
+}
+
+func underPath(file, pat string) bool {
+	pat = strings.TrimPrefix(strings.TrimSpace(pat), "./")
+	if dir, ok := strings.CutSuffix(pat, "/**"); ok {
+		return strings.HasPrefix(file, dir+"/")
+	}
+	if file == pat || strings.HasPrefix(file, strings.TrimSuffix(pat, "/")+"/") {
+		return true
+	}
+	ok, _ := path.Match(pat, file) // a bad pattern matches nothing
+	return ok
 }
 
 // Check is one item of a PR's check rollup: a CheckRun (GitHub Actions)
