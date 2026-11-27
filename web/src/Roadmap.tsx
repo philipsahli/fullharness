@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { get } from "./api";
+import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
+import type { AutopilotStatus } from "./events";
 import { LinkOrText } from "./LinkOrText";
 
 // These types match internal/app's roadmapView (GET /api/roadmap).
@@ -36,8 +38,16 @@ const refreshEvery = 60_000;
 
 // Roadmap is every Project's open Features in their Roadmap groups (ADR
 // 0005). It reads them in one request while it's shown, and every 60 s.
-// Open shows a Feature on the Software factory board (onOpen).
-export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string) => void }) {
+// Open shows a Feature on the Software factory board (onOpen). Each card's
+// Autopilot status comes from the snapshot and the autopilot event
+// (autopilot), as on the Feature card (#216, ADR 0013).
+export function Roadmap({
+  autopilot,
+  onOpen,
+}: {
+  autopilot: AutopilotStatus[];
+  onOpen: (project: string, feature: string) => void;
+}) {
   const [data, setData] = useState<RoadmapData | undefined>();
   const [failed, setFailed] = useState(false);
   // The chip filter: a Project's path, or undefined for All Projects.
@@ -59,6 +69,12 @@ export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string)
   const name = (path: string) => data?.projects.find((p) => p.path === path)?.name ?? path;
   const shown = (data?.features ?? []).filter((f) => !only || f.project === only);
   const notes = (data?.projects ?? []).filter((p) => p.note && (!only || p.path === only));
+  // badgeFor is a card's Autopilot status, if its card shows one: a Feature
+  // outside Now that nothing runs for shows none (showsBadge).
+  const badgeFor = (f: RoadmapFeature) => {
+    const found = autopilot.find((x) => x.project === f.project && x.feature === f.id);
+    return showsBadge(found) ? found : undefined;
+  };
 
   return (
     <section className="roadmap-view" aria-label="Roadmap">
@@ -123,7 +139,7 @@ export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string)
                 <ol className="rlist">
                   {items.length === 0 && <li className="rempty">No Features in {label}</li>}
                   {items.map((f) => (
-                    <li key={`${f.project} ${f.id}`} className="rcard">
+                    <li key={`${f.project} ${f.id}`} className="rcard" data-ap={badgeFor(f)?.kind}>
                       <div className="rtop">
                         <span className="n">{f.title}</span>
                         <span className={`stage ${f.stage}`}>{stageName[f.stage] ?? f.stage}</span>
@@ -139,6 +155,7 @@ export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string)
                           </>
                         )}
                       </span>
+                      <RoadmapBadge status={badgeFor(f)} />
                       <div className="rmove">
                         <button
                           type="button"
@@ -165,6 +182,7 @@ export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string)
                           →
                         </button>
                       </div>
+                      <OffLink status={badgeFor(f)} name={name(f.project)} />
                     </li>
                   ))}
                 </ol>
@@ -174,5 +192,27 @@ export function Roadmap({ onOpen }: { onOpen: (project: string, feature: string)
         </div>
       )}
     </section>
+  );
+}
+
+// RoadmapBadge is a card's Autopilot status badge, as on the Feature card
+// (#216).
+function RoadmapBadge({ status }: { status: AutopilotStatus | undefined }) {
+  if (!status) return null;
+  return (
+    <div className="rap">
+      <AutopilotBadge status={status} />
+    </div>
+  );
+}
+
+// OffLink ends a card in Now whose Project has Autopilot off: it takes the
+// user to the switch, which it focuses without turning it on.
+function OffLink({ status, name }: { status: AutopilotStatus | undefined; name: string }) {
+  if (status?.reason !== "autopilot-off") return null;
+  return (
+    <button type="button" className="ap-offlink" onClick={() => goToSwitch(status.project)}>
+      Autopilot off for {name} · <u>Turn on</u>
+    </button>
   );
 }

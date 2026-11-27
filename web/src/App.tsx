@@ -147,6 +147,7 @@ export function App() {
           )}
           {view === "roadmap" && (
             <Roadmap
+              autopilot={snapshot?.autopilot ?? []}
               onOpen={(project, feature) => {
                 setFocus({ project, feature });
                 setView("factory");

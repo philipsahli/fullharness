@@ -1866,6 +1866,37 @@ span.agent i {
 .rarrow {
   min-width: 30px;
 }
+/* A Roadmap card's Autopilot status (#216): the badge, and the same lit left
+   edge as the Feature card. */
+.rcard[data-ap] {
+  overflow: hidden;
+}
+.rcard[data-ap]::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--c);
+  box-shadow: 0 0 10px 1px var(--g);
+}
+.rcard[data-ap="off"]::before {
+  display: none;
+}
+.rcard[data-ap="running"] {
+  box-shadow: 0 6px 22px -14px var(--g);
+}
+.rap {
+  display: grid;
+  justify-items: start;
+}
+/* In Now with Autopilot off: the link to the switch is the card's last row,
+   edge to edge, as the mockup draws it under the card. */
+.rcard .ap-offlink {
+  margin: 0 -10px -9px -12px;
+  border: 0;
+  border-top: 1px dashed var(--line);
+  border-radius: 0 0 7px 7px;
+}
 .rempty {
   color: var(--muted);
   font-size: 12px;

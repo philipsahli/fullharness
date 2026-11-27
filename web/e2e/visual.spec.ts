@@ -106,7 +106,10 @@ for (const scheme of ["light", "dark"] as const) {
       }
     });
 
-    // The Roadmap (#214): two Projects' Features in Now, Next and Later.
+    // The Roadmap (#214): two Projects' Features in Now, Next and Later, with
+    // their Autopilot status (#216): shop has Autopilot off, so Login links to
+    // the switch; notes has it on, so its unapproved Themes waits at Approve
+    // spec. (Not shop: Login has a Ticket, and Autopilot would start an Agent.)
     test("Roadmap", async ({ page }) => {
       const fh = await Fh.start({ ghPRs: [] });
       try {
@@ -135,10 +138,14 @@ for (const scheme of ["light", "dark"] as const) {
         await projects.getByLabel("Path to a git repository").fill(notes);
         await projects.getByRole("button", { name: "Add", exact: true }).click();
         await expect(projects).toContainText("notes");
+        await projects.getByRole("checkbox", { name: "Autopilot" }).last().click();
         await page.getByRole("tab", { name: "Roadmap" }).click();
-        await expect(
-          page.getByRole("region", { name: "Now", exact: true }).getByRole("listitem"),
-        ).toHaveCount(2);
+        const now = page.getByRole("region", { name: "Now", exact: true });
+        await expect(now.getByRole("listitem")).toHaveCount(2);
+        await expect(now.getByRole("img", { name: /^Autopilot status/ })).toHaveText([
+          /Autopilot off/,
+          /Approve spec/,
+        ]);
         await expect(page).toHaveScreenshot(`roadmap-${scheme}.png`, { mask: dynamic(page) });
       } finally {
         await fh.dispose();
