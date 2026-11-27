@@ -1,9 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Fh } from "./fh";
-import { tempRepoWith } from "./repo";
+import { fakeGhPath, type GhIssue } from "./gh";
+import { tempRepo, tempRepoWith, withOrigin } from "./repo";
 
 // The Roadmap tab (#214): every Project's open Features in Now, Next and
-// Later, read only. Moving a card is #215.
+// Later. ← and → move a card and write its Roadmap group at once (#215).
 
 async function addProject(page: Page, repo: string) {
   const projects = page.getByRole("region", { name: "Projects" });
@@ -40,7 +41,7 @@ test("the Roadmap shows every Project's Features in their groups, and a chip fil
     // No group: Later, and the card says so. Billing is shipped: not here.
     await expect(cards("Later")).toHaveText([/Tags.*no Roadmap group/]);
     await expect(roadmap).not.toContainText("Billing");
-    // Read only for now: the arrows are there, but don't move anything.
+    // Now is the first group: there is nowhere further left to go.
     await expect(
       group("Now")
         .getByRole("button", { name: /^Move Login/ })
@@ -147,6 +148,75 @@ test("a Roadmap card's Autopilot badge changes without a reload", async ({ page 
       timeout: 10_000,
     });
     await expect(login).toHaveAttribute("data-ap", "waiting");
+  } finally {
+    await fh.dispose();
+  }
+});
+
+const login: GhIssue = { number: 10, title: "Login", labels: ["ready-for-agent", "roadmap:next"] };
+
+async function openGitHubRoadmap(page: Page, PATH: string): Promise<Fh> {
+  const fh = await Fh.start({ env: { PATH } });
+  await page.goto(fh.launchURL);
+  await addProject(page, withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+  await page.getByRole("tab", { name: "Roadmap" }).click();
+  return fh;
+}
+
+const cardsIn = (page: Page, name: string) =>
+  page
+    .getByRole("region", { name: "Roadmap" })
+    .getByRole("region", { name, exact: true })
+    .getByRole("listitem");
+
+test("→ moves a card to the next group and writes it, so it stays after a reload", async ({
+  page,
+}) => {
+  const fh = await openGitHubRoadmap(
+    page,
+    fakeGhPath([login], {
+      afterEdit: [{ ...login, labels: ["ready-for-agent", "roadmap:later"] }],
+    }),
+  );
+  try {
+    await expect(cardsIn(page, "Next")).toHaveText([/Login/]);
+
+    await cardsIn(page, "Next").getByRole("button", { name: "Move Login to Later" }).click();
+
+    const card = cardsIn(page, "Later").filter({ hasText: "Login" });
+    await expect(card).toBeVisible();
+    await expect(cardsIn(page, "Next")).toHaveText(["No Features in Next"]);
+    // The write has ended once the arrows work again; it didn't fail.
+    await expect(card.getByRole("button", { name: "Move Login to Next" })).toBeEnabled();
+    await expect(card.getByRole("alert")).toHaveCount(0);
+
+    await page.reload();
+    await page.getByRole("tab", { name: "Roadmap" }).click();
+    await expect(cardsIn(page, "Later")).toHaveText([/Login/]);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a move gh refuses goes back to its group with gh's error", async ({ page }) => {
+  const fh = await openGitHubRoadmap(
+    page,
+    fakeGhPath([login], {
+      editFails:
+        "HTTP 403: Resource not accessible by personal access token (addLabelsToLabelable)",
+    }),
+  );
+  try {
+    // ← from Next is towards Now: the groups run Now, Next, Later.
+    await cardsIn(page, "Next").getByRole("button", { name: "Move Login to Now" }).click();
+
+    const card = cardsIn(page, "Next").filter({ hasText: "Login" });
+    await expect(card.getByRole("alert")).toContainText("Not moved to Now.");
+    await expect(card.getByRole("alert")).toContainText("Resource not accessible");
+    await expect(cardsIn(page, "Now")).toHaveText(["No Features in Now"]);
+
+    await card.getByRole("button", { name: "Dismiss the error" }).click();
+    await expect(card.getByRole("alert")).toHaveCount(0);
   } finally {
     await fh.dispose();
   }
