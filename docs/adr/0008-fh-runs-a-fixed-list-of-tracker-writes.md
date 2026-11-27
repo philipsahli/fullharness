@@ -8,7 +8,7 @@ ADR-0005 allowed one direct write, the Roadmap group. Everything else still mean
 
 | Write | Where in fh |
 |---|---|
-| Merge a PR once every check on it has passed (`gh pr merge`, repo's default method) | Ticket row on the Feature page |
+| Merge a PR once every check on it has passed (`gh pr merge` with squash if the repo allows it, else merge, else rebase; no `--delete-branch`, #187) | Ticket row on the Feature page |
 | Close a Spec once all its Tickets are closed | Feature page, Review Stage |
 | Reopen a Spec that was closed while a Ticket is still open | Feature page warning |
 | Add or remove `ready-for-agent`, `needs-info`, `needs-triage` | Ticket row |
