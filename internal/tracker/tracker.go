@@ -45,6 +45,24 @@ type Board struct {
 	Tracker  string    `json:"tracker"`        // a Kind
 	Note     string    `json:"note,omitempty"` // why the board is empty, e.g. an unsupported tracker
 	Features []Feature `json:"features"`
+	// Untriaged are the open issues the Software factory can't place
+	// (GLOSSARY.md), newest first; never nil.
+	Untriaged []Untriaged `json:"untriaged"`
+}
+
+// Untriaged is one Untriaged issue, a row of the board's Needs triage group.
+type Untriaged struct {
+	// Number is the issue's number on GitHub; empty for a local markdown
+	// file, which has only a Ref.
+	Number string `json:"number,omitempty"`
+	// Ref is how a skill's prompt names the issue: "#42", or a file path.
+	Ref    string   `json:"ref"`
+	Title  string   `json:"title"`
+	Labels []string `json:"labels"` // never nil
+	URL    string   `json:"url,omitempty"`
+	// Note says why the issue is here when that isn't plain, such as a
+	// Ticket whose parent isn't on the board.
+	Note string `json:"note,omitempty"`
 }
 
 // Feature is one Spec and its Tickets.

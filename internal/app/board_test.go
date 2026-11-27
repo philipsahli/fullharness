@@ -207,6 +207,17 @@ func writeDoc(t *testing.T, repo, content string) {
 	writeFile(t, filepath.Join(repo, "docs", "agents", "issue-tracker.md"), content)
 }
 
+// joined lists field of each object in board[list], comma-separated, for a
+// test that checks which items a list holds and in what order.
+func joined(t *testing.T, board map[string]any, list, field string) string {
+	t.Helper()
+	var out []string
+	for _, o := range objects(t, board, list) {
+		out = append(out, o[field].(string))
+	}
+	return strings.Join(out, ",")
+}
+
 func asJSON(v any) string {
 	b, _ := json.Marshal(v) // test helper: values come from decoded JSON, which always re-encodes
 	return string(b)
@@ -252,5 +263,56 @@ func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T
 	}
 	if l := ticketByNumber(t, old, "01")["label"]; l != "ready-for-agent" {
 		t.Errorf("label from a plain Status: line = %v, want ready-for-agent", l)
+	}
+}
+
+func TestIssueFilesInAFolderWithoutASpecAreUntriaged(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "login/spec.md", "# Login\n")
+	scratch(t, repo, "login/issues/01-form.md", ticket("01", "Login form", "ready-for-agent", "None"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "Crash on start", "needs-triage", "None"))
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["needs-triage"],"ref":".scratch/x/issues/01-a.md","title":"Crash on start"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+}
+
+func TestAClosedIssueFileWithoutASpecIsNotUntriaged(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "Crash on start", "needs-triage", "None"))
+	scratch(t, repo, "x/issues/02-b.md", ticket("02", "Fixed already", "done", "None"))
+	scratch(t, repo, "x/issues/03-c.md", ticket("03", "Won't do", "closed", "None"))
+	f.addProject(c, repo)
+
+	if got := joined(t, f.board(c, repo), "untriaged", "ref"); got != ".scratch/x/issues/01-a.md" {
+		t.Errorf("untriaged refs = %s, want only the open 01-a.md", got)
+	}
+}
+
+func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
+	scratch(t, repo, "x/issues/01-a.md", ticket("01", "First", "needs-triage", "None"))
+	scratch(t, repo, "x/issues/03-c.md", ticket("03", "Third", "needs-info", "None"))
+	scratch(t, repo, "y/issues/02-b.md", ticket("02", "Second", "", "None"))
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := ".scratch/x/issues/03-c.md,.scratch/y/issues/02-b.md,.scratch/x/issues/01-a.md"
+	if got := joined(t, b, "untriaged", "ref"); got != want {
+		t.Errorf("untriaged refs = %s\nwant %s", got, want)
+	}
+	if note := b["note"]; note != "No Specs yet; 3 issues need triage" {
+		t.Errorf("note = %q, want %q", note, "No Specs yet; 3 issues need triage")
 	}
 }

@@ -433,11 +433,7 @@ func TestClosedIssuesWithoutTicketsAreLeftOff(t *testing.T) {
 
 	b := f.board(c, repo)
 
-	ids := []string{}
-	for _, ft := range objects(t, b, "features") {
-		ids = append(ids, ft["id"].(string))
-	}
-	if strings.Join(ids, ",") != "2,4" {
+	if ids := joined(t, b, "features", "id"); ids != "2,4" {
 		t.Errorf("features = %v, want 2 (closed with Tickets) and 4 (open), not 1", ids)
 	}
 }
@@ -484,5 +480,124 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 		if got := ticketByNumber(t, spec, n)["startable"]; got != want {
 			t.Errorf("#%s startable = %v, want %v", n, got, want)
 		}
+	}
+}
+
+func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
+		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
+		{Number: 20, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage", "bug"}},
+		{Number: 21, Title: "Old one-off", State: "CLOSED", Labels: []string{"needs-triage"}},
+		{Number: 22, Title: "Idea: dark mode", State: "OPEN"},
+		{Number: 23, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":[],"number":"22","ref":"#22","title":"Idea: dark mode","url":"https://github.com/someone/shop/issues/22"},` +
+		`{"labels":["needs-triage","bug"],"number":"20","ref":"#20","title":"A plain bug","url":"https://github.com/someone/shop/issues/20"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s (newest first; no closed one-off, no wayfinder)", got, want)
+	}
+	if ids := joined(t, b, "features", "id"); ids != "10" {
+		t.Errorf("features = %v, want only 10", ids)
+	}
+	if len(objects(t, featureByID(t, b, "10"), "tickets")) != 1 {
+		t.Error("Spec #10 lost its Ticket")
+	}
+}
+
+func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
+		{Number: 2, Title: "Idea: dark mode", State: "OPEN"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	if note := f.board(c, repo)["note"]; note != "No Specs yet; 2 issues need triage" {
+		t.Errorf("note = %q, want %q", note, "No Specs yet; 2 issues need triage")
+	}
+}
+
+func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, loginIssues, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	if got := asJSON(f.board(c, repo)["untriaged"]); got != "[]" {
+		t.Errorf("untriaged = %s, want []", got)
+	}
+}
+
+func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
+		{Number: 11, Title: "Form", State: "OPEN", Labels: []string{"ready-for-agent"}, Parent: 10},
+		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},
+		{Number: 31, Title: "Measure hit rate", State: "OPEN", Labels: []string{"needs-triage"}, Parent: 30},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["needs-triage"],"note":"parent #30 not on the board","number":"31","ref":"#31","title":"Measure hit rate","url":"https://github.com/someone/shop/issues/31"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+	if len(objects(t, b, "features")) != 1 || len(objects(t, featureByID(t, b, "10"), "tickets")) != 1 {
+		t.Errorf("features = %s, want only Spec #10 with its one Ticket", asJSON(b["features"]))
+	}
+}
+
+func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 40, Title: "Retry uploads", State: "OPEN", Labels: []string{"ready-for-agent"}, Body: "Part of #7"},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	want := `[{"labels":["ready-for-agent"],"note":"parent #7 not on the board","number":"40","ref":"#40","title":"Retry uploads","url":"https://github.com/someone/shop/issues/40"}]`
+	if got := asJSON(b["untriaged"]); got != want {
+		t.Errorf("untriaged = %s\nwant %s", got, want)
+	}
+	if got := asJSON(b["features"]); got != "[]" {
+		t.Errorf("features = %s, want none", got)
+	}
+}
+
+func TestAWayfinderChildOfAWayfinderIssueIsNowhereOnTheBoard(t *testing.T) {
+	repo := githubRepo(t)
+	fakeGh(t, []ghIssue{
+		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},
+		{Number: 31, Title: "Read the CDN docs", State: "OPEN", Labels: []string{"wayfinder:task"}, Parent: 30},
+	}, nil, true)
+	f := startFh(t, t.TempDir())
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+
+	b := f.board(c, repo)
+
+	if got := asJSON(b["untriaged"]); got != "[]" {
+		t.Errorf("untriaged = %s, want []", got)
+	}
+	if got := asJSON(b["features"]); got != "[]" {
+		t.Errorf("features = %s, want none", got)
 	}
 }

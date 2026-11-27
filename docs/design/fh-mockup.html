@@ -189,6 +189,18 @@ tr:last-child td { border-bottom: 0; }
 .stage.shipped { color: var(--good); } .stage.review { color: var(--accent); } .stage.implementing { color: var(--working); background: var(--working-soft); }
 .stage.startable { color: var(--on-accent); background: var(--accent); }
 .empty-note { padding: 14px 18px; color: var(--muted); }
+/* Needs triage (#180): the Untriaged issues, at the top of the Idea column. */
+.triage { border: 1px dashed var(--line); background: var(--surface); border-radius: 8px; padding: 7px 9px; display: grid; gap: 6px; }
+.triage-head { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--fg); text-align: left; cursor: pointer; }
+.triage-head .caret { color: var(--muted); width: 10px; }
+.triage-head .count { margin-left: auto; font-family: var(--f-mono); font-size: 11.5px; padding: 0 6px; border-radius: 10px; background: var(--sunken); color: var(--muted); }
+.triage ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.triage li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+.triage li .t { flex-basis: 100%; order: -1; font-size: 13px; }
+.triage li .mono { font-size: 12px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; } /* a local file path (#182) breaks anywhere */
+.triage li .note { flex-basis: 100%; color: var(--waiting); font-size: 12px; }
+.triage li .btn { margin-left: auto; }
+.notice.board-note { margin: 12px 18px 0; }
 .setup { margin: 24px 18px; border: 1px dashed var(--line); border-radius: 10px; padding: 22px; display: grid; gap: 10px; max-width: 60ch; }
 
 /* inbox */
@@ -525,7 +537,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
-    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option>
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="nospecs">No Specs, 7 issues need triage</option>
   </select></label></p>
 
 <div class="app">
@@ -761,10 +773,36 @@ const roadmap = {
   next:  [["fh","f-board"],["hf","f-hf2"],["fh","f-diff"]],
   later: [["io","f-io2"],["fh","f-inbox"],["hf","f-hf1"]],
 };
+/* Untriaged issues (#180): open, no parent, no Tickets, not ready-for-agent.
+   Or a Ticket whose parent isn't on the board, whatever its labels, with a note (#181). Newest first. */
+const untriaged = {
+  fh: [
+    { n: 66, t: "Idea: export the board as CSV", labels: [] },
+    { n: 64, t: "Retry a failed Worktree removal", labels: ["ready-for-agent"], note: "parent #40 not on the board" },
+    { n: 63, t: "Session list jumps when a Session ends", labels: ["needs-triage", "bug"] },
+    { n: 58, t: "Copilot CLI asks for permission twice", labels: ["needs-info"] },
+    { n: 52, t: "Inbox contrast in dark mode", labels: ["ready-for-human"] },
+  ],
+  /* Local markdown (#182): open issue files in a .scratch folder without spec.md. The ref is the file path; Status is the one tag. Newest first by file name. */
+  hf: [
+    { ref: ".scratch/bugs/issues/02-avatar-upload-fails.md", t: "Avatar upload fails on large images", labels: ["needs-triage"] },
+    { ref: ".scratch/bugs/issues/01-dark-mode-flicker.md", t: "Dark mode flickers on load", labels: ["needs-info"] },
+  ],
+};
+/* The "No Specs, 7 issues need triage" state: more than 5 rows, so the group starts collapsed. */
+const UNTRIAGED_MANY = [
+  { n: 77, t: "Idea: per-Project Agent defaults", labels: [] },
+  { n: 76, t: "Crash when a Worktree folder is renamed", labels: ["needs-triage", "bug"] },
+  { n: 74, t: "Idea: themes", labels: [] },
+  { n: 71, t: "Slow board on 500 issues", labels: ["needs-info"] },
+  { n: 70, t: "Typo in README", labels: [] },
+  { n: 69, t: "Export to CSV", labels: ["ready-for-human"] },
+  { n: 68, t: "Flaky login", labels: ["needs-triage"] },
+];
 const STAGES = [["Idea","/grill-with-docs"],["Spec","/to-spec"],["Tickets","/to-tickets"],["Implementing","/implement"],["Review","/code-review"],["Shipped","/retro"]];
 const BD_COLORS = { shipped: "var(--good)", review: "var(--accent)", implementing: "var(--working)", todo: "var(--idle)" };
 
-const ui = { view: "factory", current: "s1", factoryProject: "fh", feature: "f-acp", rmProject: "", demo: "", open: {} };
+const ui = { view: "factory", current: "s1", factoryProject: "fh", feature: "f-acp", rmProject: "", demo: "", open: {}, triageOpen: {} };
 const $ = (s, r = document) => r.querySelector(s);
 const proj = id => projects.find(p => p.id === id);
 const sess = id => sessions.find(s => s.id === id);
@@ -952,6 +990,31 @@ function featCard(f) {
     <span class="n">${esc(f.name)}</span><span class="ref">${f.ref}${f.trackerIdea && !featSessions(f.id).length ? " · not grilled yet" : ""}</span>${apCardBlock(pid, f, ap)}${rdBadge(f.id)}${bar(bd(f))}${sessSummary(f.id)}${ci}${early}
     <span class="next">${f.allClosed ? "Close Spec to ship" : f.next}${f.skill ? ` · <span class="mono">${f.skill}</span>` : ""}</span></button>${apOffLink(pid, f, ap)}</div>`;
 }
+/* Needs triage (#180): count always shows; collapsed above 5 rows until toggled. Triage opens the Start dialog; Autopilot never triages.
+   A GitHub row has a number (#N link); a local markdown row (#182) has only a ref, the file path, shown as text. */
+function triageGroup(p, unt) {
+  if (!unt.length) return "";
+  const key = p.id + ":" + ui.demo, open = ui.triageOpen[key] ?? unt.length <= 5;
+  const rows = unt.map(u => `<li><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}${u.note ? `<span class="note">${esc(u.note)}</span>` : ""}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
+  return `<section class="triage" aria-label="Needs triage"><button class="triage-head" aria-expanded="${open}" data-triagetoggle="${key}"><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>Needs triage<span class="count">${unt.length}</span></button>${open ? `<ul>${rows}</ul>` : ""}</section>`;
+}
+function openTriage(pid, ref) {
+  const p = proj(pid), main = p.worktrees[0].path;
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-label="Triage ${esc(ref)}">
+    <form id="triage-form"><h3>Triage ${esc(ref)}</h3><p class="crumb" style="margin:-8px 0 0">Runs the triage skill on the issue, in ${p.name}'s main tree.</p>
+      <div class="field"><span>Agent</span><div class="radios">${Object.entries(AGENTS).map(([k, a], i) => `<label><input type="radio" name="agent" value="${k}" ${i === 0 ? "checked" : ""}>${a.name}</label>`).join("")}</div></div>
+      <div class="field"><span>Worktree</span><input type="text" value="${main} (main tree)" readonly></div>
+      <div class="field"><span>Starting prompt</span><input type="text" id="tr-prompt" value="/triage ${esc(ref)}"></div>
+      <div class="acts" style="justify-content:flex-end"><button type="button" class="btn" data-close="1">Cancel</button><button type="submit" class="btn primary">Start Session</button></div>
+    </form></div></div>`;
+  $("#triage-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const agent = new FormData(e.target).get("agent"), id = "tr" + Date.now();
+    sessions.push({ id, title: `Triage ${ref}`, project: pid, wt: main, agent, state: "starting", acp: "—", started: "just now",
+      git: { ahead: 0, behind: 0, files: [], pr: null }, msgs: [{ r: "user", t: $("#tr-prompt").value }] });
+    closeOverlay(); toast(`Session started in ${main}`); go(id);
+  });
+}
 function renderFactory() {
   const p = proj(ui.factoryProject);
   const chips = projects.map(x => `<button class="pchip" data-fproj="${x.id}" aria-pressed="${x.id === p.id}">${x.name}<small>${x.tracker ?? "set up tracker"}</small></button>`).join("");
@@ -966,12 +1029,18 @@ function renderFactory() {
     <p style="margin:0">fh reads <code>docs/agents/issue-tracker.md</code> to find this Project's Specs, Tickets and Ideas. It isn't there.</p>
     <div class="acts"><button class="btn primary" data-toast="Session started: /setup-matt-pocock-skills in ${p.name}">Set up tracker</button></div>
     <p class="hint" style="margin:0">Starts a Session that runs <code>/setup-matt-pocock-skills</code>.</p></div>`;
-  const feats = factory[p.id] || [];
+  const noSpecs = ui.demo === "nospecs";
+  const feats = noSpecs ? [] : factory[p.id] || [];
+  const unt = noSpecs ? UNTRIAGED_MANY : untriaged[p.id] || [];
+  const note = !feats.length && unt.length ? `<p class="notice board-note" role="status">No Specs yet; ${unt.length} issue${unt.length === 1 ? " needs" : "s need"} triage</p>` : "";
   const cols = STAGES.map(([st, skill]) => {
     const fs = feats.filter(f => f.stage === st);
-    return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${fs.map(featCard).join("") || `<p class="hint" style="margin:4px">—</p>`}</div></div>`;
+    const top = st === "Idea" ? triageGroup(p, unt) : "";
+    /* The empty Idea column names Ideas, so "one" can't read as an issue of the Needs triage group above it. */
+    const empty = st === "Idea" ? `<p class="hint" style="margin:4px">No Ideas yet: start one with Grill new idea.</p>` : `<p class="hint" style="margin:4px">—</p>`;
+    return `<div class="col"><h4><span>${st}</span><span class="skill">${skill}</span></h4><div class="col-body">${top + (fs.map(featCard).join("") || empty)}</div></div>`;
   }).join("");
-  $("#main").innerHTML = head + apLegend() + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
+  $("#main").innerHTML = head + apLegend() + note + `<div class="board-wrap"><div class="board">${cols}</div></div><p class="empty-note">Open a Feature to follow each Ticket from Session to PR, checks and merge. Read 40 s ago · <button class="btn small" data-toast="Board read again">Refresh</button></p>`;
 }
 
 /* ---------- Feature page ---------- */
@@ -1397,6 +1466,8 @@ document.addEventListener("click", e => {
   if (d.rmwt) { const s = sess(d.rmwt); return confirmModal("Remove Worktree?", `<p style="margin:0">Closes the Session and deletes <span class="mono">${s.wt}</span>. The branch is merged, so nothing is lost. Ignored files deleted with it: <span class="mono">.env.local</span></p>`, "Remove Worktree", () => toast(`Removed ${s.wt}`), true); }
   if (d.fproj) { ui.factoryProject = d.fproj; ui.view = "factory"; return render(); }
   if (d.start) { const [fid, n] = d.start.split(":"); return openStart(fid, +n); }
+  if (d.triagetoggle) { ui.triageOpen[d.triagetoggle] = b.getAttribute("aria-expanded") !== "true"; return render(); }
+  if (d.triage) return openTriage(d.triage, d.triageref);
   if (d.merge) { const { f, t } = ticketOf(d.merge); const pr = t.pr;
     return confirmModal(`Merge PR #${pr.n}?`, `<p style="margin:0">fh runs <code>gh pr merge ${pr.n}</code> with squash if the repo allows it, else merge, else rebase. Checks: ${pr.checks}. Review: ${pr.review}. Merging closes #${t.n}.</p>`, "Merge",
       () => { pr.state = "merged"; t.stage = "Shipped"; const s = t.sid && sess(t.sid); if (s) s.git.pr.state = "merged";
@@ -1453,7 +1524,7 @@ document.addEventListener("keydown", e => {
     ui.view = n.dataset.view; render(); n.focus(); e.preventDefault();
   }
 });
-$("#demo").addEventListener("change", e => { ui.demo = e.target.value; if (ui.demo === "loading" || ui.demo === "error") ui.view = "factory"; render(); });
+$("#demo").addEventListener("change", e => { ui.demo = e.target.value; if (ui.demo === "loading" || ui.demo === "error" || ui.demo === "nospecs") ui.view = "factory"; render(); });
 let dragKey = null;
 document.addEventListener("dragstart", e => { const c = e.target.closest?.(".rcard"); if (!c) return; dragKey = c.dataset.rm; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", dragKey); } catch (_) {} });
 document.addEventListener("dragend", () => { dragKey = null; document.querySelectorAll(".dragging, .over").forEach(el => el.classList.remove("dragging", "over")); });

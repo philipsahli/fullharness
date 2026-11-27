@@ -280,12 +280,15 @@ fh reads the Issue tracker named in the Project's `docs/agents/issue-tracker.md`
 - No skill writes that line yet: add it yourself when a Ticket is done.
 - A `**Status:** done` line in `spec.md` closes the Spec and ships the Feature.
 - `**Blocked by:** 01, 02` names blocking Tickets in the same folder: the number starting each comma-separated item counts, so `01 (the form), 03` means 01 and 03.
+- A folder without `spec.md` isn't a Feature. Each open issue file in its `issues/` is an Untriaged issue, under **Needs triage**. A closed one is left off the board.
 
 A Feature's Stage is the earliest Stage of its open Tickets. A Ticket is Implementing once a branch `<N>-<slug>…` (e.g. `1-form` for `01-form.md`) has commits ahead of the Project's base (`origin/<default branch>`, or the local default branch without a remote), or once you started a Session from it, even if that Session has Exited. A Feature whose Tickets are all closed but whose Spec is open waits in Review until you close the Spec.
 
 For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through your own `gh` login (`brew install gh`, then `gh auth login`):
 
 - A Spec is an issue with sub-issues, or one that other issues name with `Part of #N` or a `## Parent` section. An issue without Tickets counts as a Spec only while open and labelled `ready-for-agent`.
+- An open issue with no parent, no Tickets and no `ready-for-agent` label is an Untriaged issue. It goes under **Needs triage**, described below.
+- An open Ticket whose parent isn't on the board is an Untriaged issue too, whatever its labels. Its parent is a `wayfinder:*` issue, or `Part of #N` names an issue fh didn't read.
 - A closed issue without Tickets is left off the board.
 - Issues labelled `wayfinder:*` are left out.
 - Blockers are GitHub's issue dependencies. Without them, fh reads a `Blocked by: #N` line or a `## Blocked by` section's `- #N` list in the body.
@@ -300,7 +303,18 @@ For GitHub, fh reads issues, labels, sub-issues, blocking links and PRs through 
 
 A local markdown Project with a GitHub remote gets its PRs the same way, matched by branch `<N>-<slug>…`.
 
-A board with no Specs says so, with a hint to run `/to-spec` in a Session.
+A board with no Specs says so, with a hint to run `/to-spec` in a Session. When it has Untriaged issues, the note reads "No Specs yet; N issues need triage" instead.
+
+The **Needs triage** group at the top of the Idea column lists the Project's Untriaged issues:
+
+- On GitHub, each row shows the issue's `#N` link, its title, and its labels as tags (`needs-triage`, `needs-info`, or none).
+- On local markdown, each row shows the file's path, such as `.scratch/x/issues/01-a.md`, its title, and its `**Status:**` as a tag.
+- `Idea: …` issues are listed here too.
+- A Ticket whose parent isn't on the board shows the note "parent #N not on the board".
+- Rows are newest first: by issue number on GitHub, by file name on local markdown.
+- The heading shows how many there are, even while the group is collapsed.
+- The group starts collapsed when it has more than 5 rows. Once you open or close it, it stays that way across board refreshes, until you reload the page.
+- **Triage** on a row opens New Session with the `triage` skill on that issue: `#N`, or the file's path. You start triage yourself: Autopilot never does.
 
 Other trackers (GitLab, Jira, …) show a "not supported in v1" note.
 
@@ -316,6 +330,7 @@ Each button opens New Session, prefilled with a Worktree, an Agent and a startin
 | **Retro** | a Shipped Feature | `retro` | the main tree |
 | **Grill new idea** | the board header | `grill-with-docs` | new, on `idea/<name>`; the dialog asks for the Idea's name |
 | **Write spec** | the board header | `to-spec` | the main tree |
+| **Triage** | a row under Needs triage | `triage` | the main tree |
 | **Set up tracker** | a Project without a tracker | `setup-matt-pocock-skills` | the main tree |
 
 A Session started from a Ticket or Feature shows that link in its header. A Session started from a Ticket makes that Ticket Implementing; an Implement spec Session does the same for every open Ticket of its Feature that isn't in Review. Both hold once the Session has Exited. Closing the Session removes the link, so a start you abandon leaves the Ticket Startable again.
@@ -361,6 +376,7 @@ Tick **Autopilot** under a Project in the left rail, and fh moves that Project's
 - A Startable Ticket gets `/implement` in a new Worktree, as **Start Session** does.
 - A Ticket whose PR is open gets `/code-review` as the next message in its own Autopilot Session, or in a new Session in its Worktree once that one has exited.
 - A Feature Autopilot worked on gets `/retro` once its Spec is closed.
+- An Untriaged issue gets nothing, even one labelled `roadmap:now`: use its **Triage** button.
 
 fh runs one Autopilot Session per Project at a time. It looks for new work every minute, and again when a turn of its own Session ends. It waits for you at these Stop points:
 

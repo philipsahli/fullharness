@@ -1268,6 +1268,75 @@ span.agent i {
 .fcard .note {
   color: var(--waiting);
 }
+/* The Needs triage group at the top of the Idea column (#180). */
+.triage {
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--surface);
+}
+.triage-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-weight: 600;
+  text-align: left;
+  color: var(--fg);
+}
+.triage-head .caret {
+  color: var(--muted);
+  width: 10px;
+}
+.triage-head .count {
+  margin-left: auto;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--sunken);
+  color: var(--muted);
+}
+.triage ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.triage li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.triage .num {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--muted);
+  /* A local row's ref is a file path with no spaces: break it anywhere
+     rather than overflow the column (#182). */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.triage .t {
+  flex-basis: 100%;
+  order: -1;
+}
+.triage .note {
+  flex-basis: 100%;
+  color: var(--waiting);
+  font-size: 12px;
+}
+.triage li .btn {
+  margin-left: auto;
+}
 .fdetail {
   border-top: 1px solid var(--line);
   padding-top: 10px;

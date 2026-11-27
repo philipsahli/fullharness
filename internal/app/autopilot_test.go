@@ -259,6 +259,24 @@ func TestAutopilotNeverMergesOrClosesASpec(t *testing.T) {
 	}
 }
 
+func TestAutopilotLeavesUntriagedIssuesToTheUser(t *testing.T) {
+	// Untriaged issues, one even labelled Now: triage is the user's to start.
+	fakeGh(t, []ghIssue{
+		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"roadmap:now", "needs-triage"}},
+		{Number: 2, Title: "Idea: dark mode", State: "OPEN"},
+	}, nil, true)
+	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "ok"}}}, "done")
+	c := f.authorisedClient()
+	repo := githubRepo(t)
+	f.addProject(c, repo)
+	if n := len(objects(t, f.board(c, repo), "untriaged")); n != 2 {
+		t.Fatalf("untriaged has %d issues, want 2: the check below would pass for nothing", n)
+	}
+
+	f.setAutopilot(c, repo, true)
+	f.noAutopilotSessionFor(c, 500*time.Millisecond)
+}
+
 func TestAutopilotTurnsAnApprovedSpecInNowIntoTickets(t *testing.T) {
 	f := startAutopilotFh(t, script{"default": []any{map[string]any{"say": "Wrote the tickets."}}}, "asking")
 	c := f.authorisedClient()

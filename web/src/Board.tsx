@@ -50,7 +50,26 @@ type Idea = {
   name: string;
   suggest: { id: string; title: string; ref: string }[];
 };
-type BoardData = { tracker: string; note?: string; features: Feature[]; ideas: Idea[] };
+// Untriaged is an open issue the Software factory can't place
+// (GLOSSARY.md), a row of the Needs triage group.
+type Untriaged = {
+  number?: string; // GitHub only
+  ref: string; // "#42", or a local markdown file's path
+  title: string;
+  labels: string[];
+  url?: string;
+  note?: string; // e.g. a Ticket whose parent isn't on the board
+};
+type BoardData = {
+  tracker: string;
+  note?: string;
+  features: Feature[];
+  ideas: Idea[];
+  untriaged: Untriaged[]; // newest first
+};
+
+// A Needs triage group with more rows than this starts collapsed.
+const triageOpenUpTo = 5;
 
 const columns: { stage: Stage; name: string }[] = [
   { stage: "idea", name: "Idea" },
@@ -92,6 +111,9 @@ export function Board({
   const chosen = projects.find((p) => p.path === project) ?? projects[0];
   const [board, setBoard] = useState<BoardData | undefined>();
   const [open, setOpen] = useState<string | undefined>();
+  // The Needs triage group's toggle; undefined until clicked, so its size
+  // decides. Kept across board refreshes, not across reloads or Projects.
+  const [triageOpen, setTriageOpen] = useState<boolean | undefined>();
 
   // Refresh bumps reloads to read again, past fh's GitHub cache; the ref
   // marks that next read alone, so later Project switches use the cache.
@@ -134,6 +156,7 @@ export function Board({
           onChange={(e) => {
             setProject(e.target.value);
             setOpen(undefined);
+            setTriageOpen(undefined);
             try {
               localStorage.setItem(lastProjectKey, e.target.value);
             } catch {
@@ -218,8 +241,24 @@ export function Board({
             <h3>{c.name}</h3>
             {c.stage === "idea" && (
               <>
+                {board && board.untriaged.length > 0 && (
+                  <NeedsTriage
+                    issues={board.untriaged}
+                    open={triageOpen ?? board.untriaged.length <= triageOpenUpTo}
+                    onToggle={(o) => setTriageOpen(o)}
+                    onTriage={(u) =>
+                      onStart({
+                        title: `Triage ${u.ref}`,
+                        project: chosen.path,
+                        worktree: mainTree(chosen),
+                        skill: "triage",
+                        ref: u.ref,
+                      })
+                    }
+                  />
+                )}
                 {board?.ideas.length === 0 && (
-                  <p className="empty">Start one with Grill new idea.</p>
+                  <p className="empty">No Ideas yet: start one with Grill new idea.</p>
                 )}
                 {board?.ideas.map((i) => (
                   <IdeaCard
@@ -289,6 +328,58 @@ function IdeaCard({ idea, onLinked }: { idea: Idea; onLinked: () => void }) {
         </span>
       )}
     </div>
+  );
+}
+
+// NeedsTriage lists the Project's Untriaged issues at the top of the Idea
+// column. Its count shows while it is collapsed. Triage is the user's to
+// start: the button opens the Start dialog, and Autopilot never runs it.
+function NeedsTriage({
+  issues,
+  open,
+  onToggle,
+  onTriage,
+}: {
+  issues: Untriaged[];
+  open: boolean;
+  onToggle: (open: boolean) => void;
+  onTriage: (u: Untriaged) => void;
+}) {
+  return (
+    <section className="triage" aria-label="Needs triage">
+      <button
+        type="button"
+        className="triage-head"
+        aria-expanded={open}
+        onClick={() => onToggle(!open)}
+      >
+        <span className="caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        Needs triage <span className="count">{issues.length}</span>
+      </button>
+      {open && (
+        <ul>
+          {issues.map((u) => (
+            <li key={u.ref}>
+              <span className="num">
+                <LinkOrText url={u.url}>{u.ref}</LinkOrText>
+              </span>
+              <span className="t">{u.title}</span>
+              {u.labels.map((l) => (
+                <span key={l} className="lbl">
+                  {l}
+                </span>
+              ))}
+              {u.note && <span className="s note">{u.note}</span>}
+              <button className="btn small" type="button" onClick={() => onTriage(u)}>
+                Triage
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
