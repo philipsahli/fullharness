@@ -3,7 +3,7 @@ import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./Sessions";
 import { Switcher } from "./Switcher";
-import { Board, type BoardFocus } from "./Board";
+import { Board, boardProject, type BoardFocus } from "./Board";
 import { Roadmap } from "./Roadmap";
 import { awaitingUser } from "./StopPoints";
 
@@ -38,9 +38,17 @@ export function App() {
   const [conn, update, reconnect] = useEventChannel(showNotification);
 
   const [switcher, setSwitcher] = useState(false);
-  // A Feature the Roadmap's Open asked the board to show. Picking a tab
-  // yourself drops it, so the board opens as you left it.
+  // A Feature the Roadmap's Open, or a Ticket a Switcher pick, asked the
+  // board to show. Picking a tab yourself drops it, so the board opens as
+  // you left it. The board reads focus only when it mounts, so each new
+  // focus remounts it (focusKey), even when the board is already shown.
   const [focus, setFocus] = useState<BoardFocus | undefined>();
+  const [focusKey, setFocusKey] = useState(0);
+  const showOnBoard = (f: BoardFocus) => {
+    setFocus(f);
+    setFocusKey((n) => n + 1);
+    setView("factory");
+  };
   const pickTab = (v: View) => {
     setFocus(undefined);
     setView(v);
@@ -83,7 +91,7 @@ export function App() {
           </button>
         )}
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
-          Jump to a Session… <kbd>{shortcutLabel}</kbd>
+          Find a Session or Ticket… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views">
           <Tab view="sessions" current={view} onSelect={pickTab}>
@@ -108,10 +116,12 @@ export function App() {
         <Switcher
           sessions={snapshot.sessions}
           projects={snapshot.projects}
+          boardProject={boardProject(snapshot.projects)}
           onOpen={(id) => {
             setView("sessions");
             setOpened(id);
           }}
+          onOpenTicket={(project, feature, ticket) => showOnBoard({ project, feature, ticket })}
           onNew={() => newSession()}
           onClose={() => setSwitcher(false)}
         />
@@ -136,6 +146,7 @@ export function App() {
           {view === "sessions" && sessionsView()}
           {view === "factory" && snapshot && (
             <Board
+              key={focusKey}
               projects={snapshot.projects}
               autopilot={snapshot.autopilot}
               onStart={newSession}
@@ -149,10 +160,7 @@ export function App() {
           {view === "roadmap" && (
             <Roadmap
               autopilot={snapshot?.autopilot ?? []}
-              onOpen={(project, feature) => {
-                setFocus({ project, feature });
-                setView("factory");
-              }}
+              onOpen={(project, feature) => showOnBoard({ project, feature })}
             />
           )}
           {view === "inbox" && snapshot && (

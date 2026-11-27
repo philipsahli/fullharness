@@ -1,14 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { get } from "./api";
 import { byListOrder, projectName, type Project, type SessionSummary } from "./events";
 
-type Entry = { key: string; label: string; detail: string; state?: string; pick: () => void };
+// SwitcherTicket is one open Ticket /api/switcher matched (internal/switcher).
+type SwitcherTicket = { number: string; title: string; feature: string; featureTitle: string };
 
-// Switcher is ⌘K (Ctrl+K off macOS): find a Session by words in its title,
-// Project or Agent, in any order, or start a New Session.
+type Entry = {
+  key: string;
+  label: ReactNode;
+  detail: string;
+  state?: string;
+  pick: () => void;
+};
+
+// Switcher is ⌘K (Ctrl+K off macOS), GLOSSARY.md: find a Session by words in
+// its title, Project or Agent, in any order; an open Ticket of the board's
+// Project by number or by words in its title (#195); or start a New Session.
+// fh works out which Tickets match (GET /api/switcher), from the board it
+// already has, so typing never calls GitHub per key press.
 export function Switcher(props: {
   sessions: SessionSummary[];
   projects: Project[];
+  // boardProject is the Project the Software factory shows, whose Tickets
+  // the Switcher finds; none lists Sessions only.
+  boardProject?: Project;
   onOpen: (id: string) => void;
+  onOpenTicket: (project: string, feature: string, ticket: string) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
@@ -17,7 +34,29 @@ export function Switcher(props: {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
 
+  // The Tickets for the query, kept with the query they answer, so a late
+  // answer to an older query is never shown under a newer one.
+  const [found, setFound] = useState<{ query: string; tickets: SwitcherTicket[] }>();
+  const projectPath = props.boardProject?.path;
+  useEffect(() => {
+    const q = query.trim();
+    if (!projectPath || !q) return;
+    let current = true;
+    // A short pause, so a fast typist sends one request, not one per key.
+    const timer = window.setTimeout(() => {
+      void get<{ tickets: SwitcherTicket[] }>(
+        `/api/switcher?project=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(q)}`,
+      ).then((r) => {
+        if (current) setFound({ query: q, tickets: r?.tickets ?? [] });
+      });
+    }, 80);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [query, projectPath]);
   const entries = useMemo(() => {
+    const tickets = projectPath && found?.query === query.trim() ? found.tickets : [];
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     const matches = (text: string) => words.every((w) => text.includes(w));
     const sessions: Entry[] = [...props.sessions]
@@ -34,11 +73,24 @@ export function Switcher(props: {
         state: s.state,
         pick: () => props.onOpen(s.id),
       }));
+    const ticketEntries: Entry[] = tickets.map((t) => ({
+      key: `ticket:${t.feature}:${t.number}`,
+      label: (
+        <>
+          <span className="ptag">Ticket</span>
+          <span className="pnum">#{t.number}</span>
+          {t.title}
+          <span className="s"> · {t.featureTitle}</span>
+        </>
+      ),
+      detail: "→ Ticket row",
+      pick: () => projectPath && props.onOpenTicket(projectPath, t.feature, t.number),
+    }));
     const extra: Entry[] = matches("new session")
       ? [{ key: "new", label: "New Session", detail: "start an Agent", pick: props.onNew }]
       : [];
-    return [...sessions, ...extra];
-  }, [query, props]);
+    return [...sessions, ...ticketEntries, ...extra];
+  }, [query, props, found, projectPath]);
 
   const choose = (e: Entry | undefined) => {
     if (!e) return;
@@ -51,14 +103,14 @@ export function Switcher(props: {
       <div
         className="switcher"
         role="dialog"
-        aria-label="Jump to a Session"
+        aria-label="Switcher"
         onClick={(e) => e.stopPropagation()}
       >
         <input
           ref={input}
           value={query}
-          placeholder="Jump to a Session…"
-          aria-label="Search Sessions"
+          placeholder="Find a Session, or a Ticket by number or title…"
+          aria-label="Find a Session or Ticket"
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
