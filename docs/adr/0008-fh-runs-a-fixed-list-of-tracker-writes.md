@@ -1,5 +1,5 @@
 ---
-status: accepted, amends ADR-0004 and ADR-0005
+status: accepted, amends ADR-0004 and ADR-0005, amended by ADR-0009 and ADR-0014
 ---
 
 # fullharness runs a fixed list of Issue tracker writes itself
@@ -31,5 +31,5 @@ Merge needs every check, not only the ones GitHub requires: today only the ubunt
 - An Idea is an issue in the Issue tracker, recognised by the `idea` label, not only a named Session in fh's state. It survives closing its Session and restarting fh. ADR-0004's "only local state is Idea-stage Features" no longer holds once the Ideas Spec is built.
 - A Retro's findings stay in its output until the user files one with File as Idea; the Retro never creates issues by itself.
 - Writing specs, tickets and code stays inside skills (ADR-0004). This list is for state changes a person would otherwise click in GitHub.
-- For a local-markdown tracker, fh offers only the writes the format defines (the `Roadmap:` line, closing a Spec, a new Idea file in `ideas/`). Merge needs a GitHub remote.
+- For a local-markdown tracker, fh offers only the writes the format defines (the `Roadmap:` line, the `Status:` line of a Spec or Ticket for the label writes, closing a Spec, a new Idea file in `ideas/`). A Spec without a `Status:` line gets one, in bold, after its heading. Merge needs a GitHub remote.
 - Adding a write to this list needs a new ADR.

@@ -566,6 +566,70 @@ test("on a GitHub board the Spec, Ticket and blocker numbers link to their issue
   }
 });
 
+// A Spec in needs-triage with one Ticket in needs-info: both offer Mark
+// ready-for-agent (#192).
+const triage = [
+  { number: 10, title: "Login", labels: ["needs-triage"], subIssues: [11] },
+  { number: 11, title: "Login form", labels: ["needs-info"], parent: 10 },
+];
+
+async function openGitHubFeature(page: Page, PATH: string): Promise<Fh> {
+  const fh = await Fh.start({ env: { PATH } });
+  await page.goto(fh.launchURL);
+  const projects = page.getByRole("region", { name: "Projects" });
+  await projects.getByRole("button", { name: "+ Add Project" }).click();
+  await projects
+    .getByLabel("Path to a git repository")
+    .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+  await projects.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(projects).toContainText("main tree");
+  await page.getByRole("tab", { name: "Software factory" }).click();
+  await page.locator(".column").getByRole("button", { name: /Login/ }).click();
+  return fh;
+}
+
+test("Mark ready-for-agent on a Ticket relabels it on the board", async ({ page }) => {
+  const fh = await openGitHubFeature(
+    page,
+    fakeGhPath(triage, {
+      afterEdit: [triage[0], { ...triage[1], labels: ["ready-for-agent"] }],
+    }),
+  );
+  try {
+    const form = page
+      .getByRole("region", { name: "Feature Login" })
+      .getByRole("listitem")
+      .filter({ hasText: "Login form" });
+    await expect(form).toContainText("needs-info");
+
+    await form.getByRole("button", { name: "Mark ready-for-agent" }).click();
+
+    await expect(form).toContainText("ready-for-agent");
+    await expect(form.getByRole("button", { name: "Mark ready-for-agent" })).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+test("a failed Mark ready-for-agent shows gh's error beside the button", async ({ page }) => {
+  const fh = await openGitHubFeature(
+    page,
+    fakeGhPath(triage, { editFails: "could not add label: 'ready-for-agent' not found" }),
+  );
+  try {
+    const detail = page.getByRole("region", { name: "Feature Login" });
+    // The Spec's own action: Login is not approved yet.
+    await detail.getByRole("button", { name: "Mark ready-for-agent" }).first().click();
+
+    await expect(detail.getByRole("alert")).toContainText("'ready-for-agent' not found");
+    await expect(detail.getByRole("listitem").filter({ hasText: "Login form" })).toContainText(
+      "needs-info",
+    );
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a Ticket row shows its PRs with PR state and checks, or No PR yet", async ({ page }) => {
   const pr = (number: number, branch: string, state: string, conclusion: string) => ({
     number,
