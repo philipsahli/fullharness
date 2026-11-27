@@ -497,6 +497,7 @@ func TestATicketAlreadyInProgressIsNotStartable(t *testing.T) {
 }
 
 func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
@@ -526,6 +527,7 @@ func TestOpenIssuesTheFactoryCantPlaceAreUntriaged(t *testing.T) {
 }
 
 func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"needs-triage"}},
@@ -541,6 +543,7 @@ func TestABoardWithNoSpecsCountsTheIssuesThatNeedTriage(t *testing.T) {
 }
 
 func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, loginIssues, nil, true)
 	f := startFh(t, t.TempDir())
@@ -553,6 +556,7 @@ func TestUntriagedIsAnEmptyListWhenEveryIssueIsPlaced(t *testing.T) {
 }
 
 func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 10, Title: "Spec: Login", State: "OPEN", Labels: []string{"ready-for-agent"}, SubIssues: []int{11}},
@@ -576,6 +580,7 @@ func TestATicketWhoseParentIsAWayfinderIssueIsUntriagedWithANote(t *testing.T) {
 }
 
 func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 40, Title: "Retry uploads", State: "OPEN", Labels: []string{"ready-for-agent"}, Body: "Part of #7"},
@@ -596,6 +601,7 @@ func TestAReadyTicketWhoseParentIsOutsideTheIssueSetIsUntriagedWithANote(t *test
 }
 
 func TestAWayfinderChildOfAWayfinderIssueIsNowhereOnTheBoard(t *testing.T) {
+	t.Parallel()
 	repo := githubRepo(t)
 	fakeGh(t, []ghIssue{
 		{Number: 30, Title: "Explore caching", State: "OPEN", Labels: []string{"wayfinder:map"}, SubIssues: []int{31}},

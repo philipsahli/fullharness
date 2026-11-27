@@ -273,6 +273,7 @@ func TestAClosedSpecShipsEvenWithOpenTicketsAndPlainStatusLinesWork(t *testing.T
 }
 
 func TestIssueFilesInAFolderWithoutASpecAreUntriaged(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -290,6 +291,7 @@ func TestIssueFilesInAFolderWithoutASpecAreUntriaged(t *testing.T) {
 }
 
 func TestAClosedIssueFileWithoutASpecIsNotUntriaged(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -304,6 +306,7 @@ func TestAClosedIssueFileWithoutASpecIsNotUntriaged(t *testing.T) {
 }
 
 func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
+	t.Parallel()
 	f := startFh(t, t.TempDir())
 	c := f.authorisedClient()
 	repo := realPath(t, newRepo(t, t.TempDir(), "shop"))
@@ -324,6 +327,7 @@ func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
 }
 
 func TestLocalSpecAndTicketNumbersLinkToTheirFilesInVSCode(t *testing.T) {
+	t.Parallel()
 	// The links name files on this machine, so the remote doesn't matter
 	// (#102): no remote, a GitLab remote and a GitHub remote all get them.
 	for name, origin := range map[string]string{

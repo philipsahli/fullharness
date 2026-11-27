@@ -266,6 +266,7 @@ func TestAutopilotNeverMergesOrClosesASpec(t *testing.T) {
 }
 
 func TestAutopilotLeavesUntriagedIssuesToTheUser(t *testing.T) {
+	t.Parallel()
 	// Untriaged issues, one even labelled Now: triage is the user's to start.
 	fakeGh(t, []ghIssue{
 		{Number: 1, Title: "A plain bug", State: "OPEN", Labels: []string{"roadmap:now", "needs-triage"}},
