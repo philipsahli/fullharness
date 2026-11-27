@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
 
-// Local pixel tests (ADR 0012): seven screens in light and dark, compared with
+// Local pixel tests (ADR 0012): eight screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -160,6 +160,39 @@ for (const scheme of ["light", "dark"] as const) {
           /Approve spec/,
         ]);
         await expect(page).toHaveScreenshot(`roadmap-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    // Approve spec in the Inbox (#229): Search, in Now and unapproved, waits
+    // at Approve spec once Autopilot is on. Nothing is Startable, so
+    // Autopilot starts no Agent.
+    test("Inbox with Approve spec", async ({ page }) => {
+      const fh = await Fh.start({ ghPRs: [] });
+      try {
+        const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+        const repo = tempRepoWith(
+          "shop",
+          {
+            ".scratch/search/spec.md": "# Search\n\n**Roadmap:** now\n\n**Status:** needs-triage\n",
+          },
+          path.join(tmpdir(), "fh-visual", slug),
+        );
+        await open(page, fh, repo);
+        await page
+          .getByRole("region", { name: "Projects" })
+          .getByRole("checkbox", { name: "Autopilot" })
+          .click();
+        await page.getByRole("tab", { name: /^Inbox/ }).click();
+        await expect(
+          page
+            .getByRole("group", { name: "Approve spec: Search" })
+            .getByText(".scratch/search/spec.md"),
+        ).toBeVisible();
+        await expect(page).toHaveScreenshot(`inbox-approve-spec-${scheme}.png`, {
+          mask: dynamic(page),
+        });
       } finally {
         await fh.dispose();
       }

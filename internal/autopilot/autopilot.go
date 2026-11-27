@@ -101,6 +101,12 @@ const (
 	KindClassified EventKind = "classified" // the turn-end classifier decided how a turn ended
 	KindStop       EventKind = "stop"       // Autopilot reached a Stop point and waits for the user
 	KindFailed     EventKind = "failed"     // a skill didn't start: the Session or follow-up turn failed; Autopilot retries
+	KindUser       EventKind = "user"       // the user acted at a Stop point; Answer says how (ADR-0014)
+)
+
+// What the user did at a Stop point (KindUser).
+const (
+	AnswerApprove = "approve" // Approve spec: the Spec is ready-for-agent
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
@@ -129,6 +135,9 @@ type Event struct {
 	// Error is why a skill didn't start (KindFailed): the first try's
 	// error; fh.log has every retry.
 	Error string `json:"error,omitempty"`
+	// Answer is what the user did at a Stop point (KindUser): one of the
+	// Answer constants. By stays the classifier's: it never names the user.
+	Answer string `json:"answer,omitempty"`
 }
 
 // FeatureHistory is one Feature's Events, oldest first.
@@ -500,6 +509,17 @@ func (r *Runner) save() {
 	if r.d.Changed != nil {
 		r.d.Changed()
 	}
+}
+
+// Answered records what the user did at a Stop point: step is the step
+// the Stop point waited before, answer one of the Answer constants. The
+// caller has already written what the answer changes (ADR-0014) and steps
+// the Project next.
+func (r *Runner) Answered(step Step, answer string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: answer})
+	r.save()
 }
 
 func lastAgentMessage(items []session.Item) string {

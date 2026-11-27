@@ -411,6 +411,8 @@ td .btn { white-space: nowrap; }
 .fcard-wrap, .fcard, .fcard > * { min-width: 0; }
 .fcard > .ap { justify-self: start; }
 .fcard .ap-outside { white-space: normal; justify-self: start; }
+/* Names every open Ticket (#66), so it wraps instead of running past the card. */
+.fcard .warn { white-space: normal; justify-self: start; }
 .ap b { font-weight: 600; }
 .ap b.mono { font-size: 11px; }
 .ap .ap-k { font-size: 9.5px; text-transform: uppercase; letter-spacing: .09em; opacity: .75; }
@@ -1060,7 +1062,7 @@ function sessSummary(fid) {
   return `<span class="bd">${ss.map(s => `<span class="dot ${s.state}" style="display:inline-block;margin-right:3px"></span>`).join("")} ${ss.length} Session${ss.length > 1 ? "s" : ""}${w ? ` · ${w} waiting` : ""}</span>`;
 }
 function featCard(f) {
-  const early = f.closedEarly ? `<span class="warn">Spec closed, #${f.closedEarly} still open</span>` : "";
+  const early = f.closedEarly ? `<span class="warn">Spec closed with Ticket #${f.closedEarly} open</span>` : "";
   const ci = (f.tickets || []).some(t => t.pr && t.pr.ci === "fail") ? `<span class="ci fail">✗ checks failing</span>` : "";
   const pid = feat(f.id).pid, ap = apStatus(pid, f);
   return `<div class="fcard-wrap"><button class="fcard${apChanged(f.id + ":card", ap) ? " changed" : ""}" data-feat="${f.id}" data-ap="${ap.st}">

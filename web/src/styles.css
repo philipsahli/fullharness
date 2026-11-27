@@ -1971,6 +1971,8 @@ span.agent i {
 .rap {
   display: grid;
   justify-items: start;
+  gap: 4px;
+  min-width: 0;
 }
 /* In Now with Autopilot off: the link to the switch is the card's last row,
    edge to edge, as the mockup draws it under the card. */
@@ -2296,5 +2298,115 @@ svg.flow .fl-node[role="button"]:hover circle {
   }
   svg.flow .fl-ring {
     display: none;
+  }
+}
+
+/* Stop points in the Inbox (#199, ADR 0014), as the mockup draws them: an
+   Approve spec item in the waiting colour with ◉, and a "Just now" row
+   under the items for what fh did after the user acted. */
+.ibox {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ibox .meta {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.ibox.stop {
+  position: relative;
+  border-color: color-mix(in srgb, var(--ap-waiting) 45%, var(--line));
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--ap-waiting-tint) 70%, var(--surface)) 0%,
+    var(--surface) 46%
+  );
+  box-shadow: 0 10px 28px -20px var(--ap-waiting-glow);
+  padding-left: 18px;
+  animation: stop-in 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.1);
+}
+.ibox.stop::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--ap-waiting);
+  box-shadow: 0 0 10px var(--ap-waiting-glow);
+}
+.ibox.stop .kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.ibox.stop .kind strong {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.ibox.stop .kind a {
+  color: var(--accent);
+}
+.ibox.stop .why {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.ibox.stop .acts {
+  align-self: start;
+  padding-top: 4px;
+}
+.justnow {
+  margin: 4px 0 12px;
+  display: grid;
+  gap: 8px;
+}
+.justnow h3 {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.jn {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  animation: ap-slide 0.35s ease-out;
+}
+.jn .what {
+  color: var(--muted);
+}
+.jn .ok {
+  color: var(--ap-done);
+  font-weight: 600;
+}
+@keyframes stop-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibox.stop,
+  .jn {
+    animation: none;
   }
 }

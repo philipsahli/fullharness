@@ -500,7 +500,7 @@ function FeatureDetail({
       <p className="crumb">
         Spec <LinkOrText url={feature.url}>{feature.ref}</LinkOrText> ·{" "}
         <span className={`stage ${feature.stage}`}>{stageName[feature.stage]}</span>
-        {feature.tickets.length > 0 && " (earliest open Ticket)"}
+        {!feature.closed && feature.tickets.length > 0 && " (earliest open Ticket)"}
         {feature.idea && ` · from Idea "${feature.idea}"`}
       </p>
       {!feature.closed && !feature.approved && (

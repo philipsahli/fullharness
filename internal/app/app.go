@@ -260,7 +260,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	boards := &boards{cache: map[string]*ghEntry{}}
 	reg.ReadPRs(boards.prs)
 	registerBoardRoutes(srv, reg, boards, sessions)
-	registerTrackerWrites(srv, reg, boards)
+	registerTrackerWrites(srv, reg, boards, statuses.Kick)
 	registerRoadmapRoutes(srv, reg, boards, sessions)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)
@@ -282,6 +282,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 	registerAutopilotRoutes(srv, reg, agents, pilot, inst.goBackground)
 	registerAutopilotHistoryRoute(srv, pilot)
+	registerStopPointRoutes(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerAutopilotFlowRoute(srv, reg, boards, sessions, pilot, statuses)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
 	// Nothing refreshes while no tab is open, so a tab that connects after a
