@@ -81,8 +81,10 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 // (ADR 0008), each taking {"project", "ref", …}, with ref a Spec's or
 // Ticket's Ref from the board. After a write the repo's cached gh read is
 // expired and its PRs fetched again, so the board read the UI makes next
-// shows the change. A failed write answers with gh's own message.
-func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *boards) {
+// shows the change, and changed is called: a label or Roadmap group can
+// change a Feature's Autopilot status, which must not wait for Autopilot's
+// next look (#217, ADR-0013). A failed write answers with gh's own message.
+func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *boards, changed func()) {
 	srv.Handle("POST /api/tracker/mark-ready", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Project string `json:"project"`
@@ -109,6 +111,7 @@ func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *bo
 		}
 		b.expire(p.Path)
 		projects.FetchPRs(p.Path)
+		changed()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -153,6 +156,7 @@ func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *bo
 			return
 		}
 		b.expire(p.Path)
+		changed()
 		w.WriteHeader(http.StatusNoContent)
 	})
 }

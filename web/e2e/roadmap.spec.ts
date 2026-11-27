@@ -221,3 +221,50 @@ test("a move gh refuses goes back to its group with gh's error", async ({ page }
     await fh.dispose();
   }
 });
+
+// Leaving Now from the Roadmap (#217, ADR-0013): a card moved out of Now
+// mid-turn keeps running, marked "Session running outside Now", until its
+// turn ends. The move itself makes fh work the Autopilot status out again.
+test("a card moved out of Now mid-turn shows Session running outside Now until the turn ends", async ({
+  page,
+}) => {
+  const shop = tempRepoWith("shop", {
+    ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+  });
+  const fh = await Fh.start({
+    ghPRs: [],
+    agentScript: { default: [{ sleepMs: 5000 }, { say: "Which labels should the tickets get?" }] },
+    verdict: "asking",
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    await addProject(page, shop);
+    await page.getByRole("tab", { name: "Roadmap" }).click();
+    await page
+      .getByRole("region", { name: "Projects" })
+      .getByRole("checkbox", { name: "Autopilot" })
+      .click();
+
+    const inNow = cardsIn(page, "Now").filter({ hasText: "Login" });
+    await expect(inNow.getByRole("img", { name: /^Autopilot status/ })).toHaveAccessibleName(
+      "Autopilot status: Running /to-tickets",
+    );
+    await expect(inNow.getByText("Session running outside Now")).toHaveCount(0);
+
+    await inNow.getByRole("button", { name: "Move Login to Next" }).click();
+
+    const inNext = cardsIn(page, "Next").filter({ hasText: "Login" });
+    const mark = inNext.getByText("Session running outside Now");
+    await expect(mark).toBeVisible();
+    await expect(inNext.getByRole("img", { name: /^Autopilot status/ })).toHaveAccessibleName(
+      "Autopilot status: Running /to-tickets",
+    );
+
+    // The turn ends: outside Now and nothing runs, so the card is quiet.
+    await expect(mark).toHaveCount(0, { timeout: 15_000 });
+    await expect(inNext.getByRole("img", { name: /^Autopilot status/ })).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
