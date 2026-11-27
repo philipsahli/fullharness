@@ -184,6 +184,39 @@ func TestARejectAfterTheWritingSessionExitedStartsANewOne(t *testing.T) {
 	f.waitBackAtApproveSpec(c, repo, "search", len(events))
 }
 
+func TestRejectingAGitHubSpecCommentsOnItsIssue(t *testing.T) {
+	t.Parallel()
+	repo := githubRepo(t)
+	g := newFakeGh(t, []ghIssue{
+		{Number: 30, Title: "Spec: Search", State: "OPEN", Labels: []string{"spec", "roadmap:now"}},
+	}, nil, true)
+	f := startSlowAutopilotFh(t, script{"default": []any{map[string]any{"say": "Revised the Spec."}}}, "done")
+	c := f.authorisedClient()
+	f.addProject(c, repo)
+	f.waitApproveSpec(c, repo, "30")
+
+	status, body := f.rejectSpec(c, repo, "30", "Name the index.")
+
+	if status != http.StatusNoContent {
+		t.Fatalf("reject: status %d, body %v", status, body)
+	}
+	if got := g.issueComments(); !strings.Contains(got, "issue comment 30 --body Rejected at Approve spec in fullharness:") ||
+		!strings.Contains(got, "Name the index.") {
+		t.Errorf("gh issue comments %q, want one on #30 with the note", got)
+	}
+	id, _ := f.waitAutopilotSessions(c, 1)[0]["id"].(string)
+	want := "/to-spec #30\n\nThe user rejected this Spec at Approve spec. Revise it with their note:\n\nName the index."
+	if got := f.waitPrompts(c, id, 1); got[0] != want {
+		t.Errorf("prompt %q, want %q", got[0], want)
+	}
+	if user := lastUserEvent(historyOf(t, f.autopilotFeatures(c, repo), "30")); user < 0 {
+		t.Error("history has no event for the user's Reject")
+	}
+	if extra := g.unexpected(); extra != "" {
+		t.Errorf("gh got commands fh shouldn't run: %s", extra)
+	}
+}
+
 func TestARejectWithoutANoteOrOnASpecThatDoesNotWaitIsRefused(t *testing.T) {
 	t.Parallel()
 	f := startSlowAutopilotFh(t, script{"default": []any{map[string]any{"say": "ok"}}}, "done")
