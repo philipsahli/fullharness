@@ -35,6 +35,8 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 Create a GitHub issue.
 
+A **Spec** (from `/to-spec`) gets the `spec` label: `gh issue create --label spec --title "Spec: ..." ...`. Don't add `ready-for-agent` to a new Spec, even where the skill says to: in this repo the user approves a Spec, with Approve spec in fullharness or by adding the label by hand, and Autopilot waits for that (ADR 0014). Without `spec`, fullharness reads an unapproved Spec with no Tickets as an Untriaged issue. If the label is missing from the repo, create it once with `gh label create spec --description "A Spec: one Feature's issue, with its Tickets as sub-issues"`.
+
 ## When a skill says "fetch the relevant ticket"
 
 Read it as in **Read an issue** above.
