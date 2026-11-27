@@ -1484,10 +1484,13 @@ func (s *session) Update(n sdk.SessionNotification) {
 			}
 			cmds = append(cmds, cmd)
 		}
-		s.change(func(sum *Summary) { sum.Commands = cmds })
+		// Save the Agent's commands before the summary that lists them is
+		// published: a tab that sees the new list can resolve a skill at
+		// once, and must get the same list (#234).
 		if s.m.cfg.Commands != nil {
 			s.m.cfg.Commands(s.def.ID, names)
 		}
+		s.change(func(sum *Summary) { sum.Commands = cmds })
 	}
 }
 
