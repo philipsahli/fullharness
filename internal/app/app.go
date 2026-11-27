@@ -21,6 +21,7 @@ import (
 
 	"github.com/philipsahli/fullharness/internal/agent"
 	"github.com/philipsahli/fullharness/internal/autopilot"
+	"github.com/philipsahli/fullharness/internal/autopilot/status"
 	"github.com/philipsahli/fullharness/internal/classify"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/server"
@@ -297,7 +298,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	}
 	inst.goBackground(func(ctx context.Context) { pilot.Run(ctx, pilotInterval) })
 	inst.goBackground(func(ctx context.Context) {
-		statuses.run(ctx, pilotInterval, func(prev []autopilot.Status) []autopilot.Status {
+		statuses.run(ctx, pilotInterval, func(prev []status.Status) []status.Status {
 			return computeAutopilotStatuses(reg, boards, sessions, pilot, prev)
 		}, srv.Broadcast)
 	})

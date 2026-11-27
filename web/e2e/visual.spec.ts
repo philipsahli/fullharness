@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
 
-// Local pixel tests (ADR 0012): four screens in light and dark, compared with
+// Local pixel tests (ADR 0012): five screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -57,8 +57,9 @@ for (const scheme of ["light", "dark"] as const) {
       }
     });
 
-    // Autopilot status badges (#203): one Feature running, one waiting at
-    // Spec approval, one outside Now without a badge.
+    // Autopilot status badges (#203): first with Autopilot off, then one
+    // Feature running, one waiting at Spec approval, one outside Now
+    // without a badge.
     test("Software factory board with Autopilot badges", async ({ page }) => {
       const fh = await Fh.start({
         ghPRs: [],
@@ -80,6 +81,11 @@ for (const scheme of ["light", "dark"] as const) {
         );
         await open(page, fh, repo);
         await page.getByRole("tab", { name: "Software factory" }).click();
+        // Autopilot off: the Features in Now link to the switch.
+        await expect(page.getByRole("button", { name: /Turn on/ })).toHaveCount(2);
+        await expect(page).toHaveScreenshot(`board-autopilot-off-${scheme}.png`, {
+          mask: dynamic(page),
+        });
         await page
           .getByRole("region", { name: "Projects" })
           .getByRole("checkbox", { name: "Autopilot" })

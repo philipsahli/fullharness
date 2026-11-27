@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { command, get } from "./api";
 import type { AutopilotStatus, Project } from "./events";
-import { AutopilotBadge, type BadgeStatus } from "./Autopilot";
+import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
 import { PRPart, type PR } from "./PR";
 import { LinkOrText } from "./LinkOrText";
 import type { StartFrom } from "./Sessions";
@@ -279,21 +279,35 @@ export function Board({
             {board?.features
               .filter((f) => f.stage === c.stage)
               .map((f) => {
-                const ap = badgeStatus(chosen, f, autopilot);
+                const found = autopilot.find(
+                  (x) => x.project === chosen.path && x.feature === f.id,
+                );
+                const ap = showsBadge(found) ? found : undefined;
                 return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className="fcard"
-                    data-ap={ap?.kind}
-                    aria-pressed={f.id === open}
-                    onClick={() => setOpen(f.id === open ? undefined : f.id)}
-                  >
-                    <span className="t">{f.title}</span>
-                    {ap && <AutopilotBadge status={ap} />}
-                    <span className="s">{breakdown(f)}</span>
-                    {f.note && <span className="s note">{f.note}</span>}
-                  </button>
+                  <div key={f.id} className="fcard-wrap">
+                    <button
+                      type="button"
+                      className="fcard"
+                      data-ap={ap?.kind}
+                      aria-pressed={f.id === open}
+                      onClick={() => setOpen(f.id === open ? undefined : f.id)}
+                    >
+                      <span className="t">{f.title}</span>
+                      {ap && <AutopilotBadge status={ap} />}
+                      <span className="s">{breakdown(f)}</span>
+                      {f.note && <span className="s note">{f.note}</span>}
+                    </button>
+                    {/* Outside the card's button: a button can't hold one. */}
+                    {ap?.reason === "autopilot-off" && (
+                      <button
+                        type="button"
+                        className="ap-offlink"
+                        onClick={() => goToSwitch(chosen.path)}
+                      >
+                        Autopilot off for {chosen.name} · <u>Turn on</u>
+                      </button>
+                    )}
+                  </div>
                 );
               })}
           </div>
@@ -390,17 +404,6 @@ function NeedsTriage({
       )}
     </section>
   );
-}
-
-// badgeStatus is the Autopilot status a Feature card shows, or none. A
-// Feature outside Now that nothing runs for is off without a badge: its
-// Roadmap group already says why. One in Now whose Project has Autopilot
-// off says so.
-function badgeStatus(p: Project, f: Feature, statuses: AutopilotStatus[]): BadgeStatus | undefined {
-  const s = statuses.find((x) => x.project === p.path && x.feature === f.id);
-  if (s && s.kind !== "off") return s;
-  if (f.roadmap === "now" && !p.autopilot) return { kind: "off", projectOff: true };
-  return undefined;
 }
 
 function breakdown(f: Feature): string {

@@ -1533,7 +1533,49 @@ span.agent i {
   font-size: 11px;
   line-height: 1;
 }
-/* The Feature card takes the status as a lit left edge. */
+/* A Feature in Now whose Project has Autopilot off: a link to the switch
+   under the card. It takes the user to the switch; it doesn't turn it on. */
+.fcard-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.fcard-wrap:has(.ap-offlink) .fcard {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ap-offlink {
+  border: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
+  background: var(--ap-off-tint);
+  color: var(--ap-off);
+  border-radius: 0 0 7px 7px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ap-offlink u {
+  text-underline-offset: 2px;
+}
+.ap-offlink:hover {
+  color: var(--fg);
+}
+.autopilot label.flash {
+  animation: ap-callout 1.2s ease-out 2;
+  border-radius: 6px;
+}
+@keyframes ap-callout {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  40% {
+    box-shadow: 0 0 0 3px var(--ap-running-glow);
+  }
+}
+/* The Feature card takes the Autopilot status as a lit left edge. */
 .fcard[data-ap] {
   position: relative;
   overflow: hidden;
@@ -1609,7 +1651,8 @@ span.agent i {
   .ap::before,
   .ap *,
   .ap *::before,
-  .ap *::after {
+  .ap *::after,
+  .autopilot label.flash {
     animation: none !important;
     transition: none !important;
   }

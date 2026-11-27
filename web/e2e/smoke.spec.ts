@@ -143,18 +143,21 @@ test("the Autopilot switch is per Project and stays on after a reload", async ({
 });
 
 // Autopilot status (#203, ADR-0013): the Feature card's badge follows fh's
-// status live, without a reload, and a fresh tab draws it from the snapshot.
-test("the Autopilot badge goes from running to waiting at Spec approval without a reload", async ({
+// Autopilot status live, without a reload, and a fresh tab draws it from the
+// snapshot. The path is the normal one through Approve spec: a Spec in Now
+// waits for approval; once approved, Autopilot runs to-tickets
+// (tracker.FeatureStep at StageSpec), whose turn here ends asking.
+test("the Autopilot badge follows a Feature through Approve spec without a reload", async ({
   page,
   context,
 }) => {
   const spec = (status: string) => `# Search\n\n**Roadmap:** now\n\n**Status:** ${status}\n`;
-  const repo = tempRepoWith("shop", { ".scratch/search/spec.md": spec("ready-for-agent") });
-  // The to-tickets turn runs long enough to see it, then ends done.
+  const repo = tempRepoWith("shop", { ".scratch/search/spec.md": spec("needs-triage") });
+  // The to-tickets turn runs long enough to see it, then ends asking.
   const fh = await Fh.start({
     ghPRs: [],
-    agentScript: { default: [{ sleepMs: 3000 }, { say: "Wrote the tickets." }] },
-    verdict: "done",
+    agentScript: { default: [{ sleepMs: 3000 }, { say: "Which labels should the tickets get?" }] },
+    verdict: "asking",
   });
   try {
     await page.goto(fh.launchURL);
@@ -166,29 +169,47 @@ test("the Autopilot badge goes from running to waiting at Spec approval without 
     await expect(projects).toContainText("main tree");
 
     await page.getByRole("tab", { name: "Software factory" }).click();
-    const card = page.locator('.column[aria-label="Spec"]').getByRole("button", { name: /Search/ });
+    const column = page.locator('.column[aria-label="Spec"]');
+    const card = column.getByRole("button", { name: /^Search/ });
     const badge = card.getByRole("img", { name: /^Autopilot status/ });
-    // In Now, with Autopilot off for the Project.
+    // In Now, with Autopilot off for the Project: the card links to the
+    // switch, which it focuses without turning it on.
     await expect(badge).toHaveAccessibleName("Autopilot status: Autopilot off");
+    const toggle = projects.getByRole("checkbox", { name: "Autopilot" });
+    await column.getByRole("button", { name: "Autopilot off for shop · Turn on" }).click();
+    await expect(toggle).toBeFocused();
+    await expect(toggle).not.toBeChecked();
 
-    await projects.getByRole("checkbox", { name: "Autopilot" }).click();
+    await toggle.click();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Waiting at Approve spec");
+    await expect(card).toHaveAttribute("data-ap", "waiting");
+    await expect(column.getByRole("button", { name: /Turn on/ })).toHaveCount(0);
+
+    // Approve the Spec with Mark ready-for-agent. Autopilot picks it up on
+    // its next look; stepping at once after Approve is #199 (ADR 0014), so
+    // here the switch, which steps the Project when turned on, does it.
+    await card.click();
+    await page
+      .getByRole("region", { name: "Feature Search" })
+      .getByRole("button", { name: "Mark ready-for-agent" })
+      .click();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Idle");
+    await toggle.click();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Autopilot off");
+    await toggle.click();
     await expect(badge).toHaveAccessibleName("Autopilot status: Running /to-tickets");
-    await expect(card).toHaveAttribute("data-ap", "running");
+    await expect(badge).toHaveClass(/changed/);
 
-    // The Spec loses its approval while the turn runs: when the turn ends,
-    // the Feature waits at Spec approval.
-    writeFileSync(path.join(repo, ".scratch/search/spec.md"), spec("needs-triage"));
-    await expect(badge).toHaveAccessibleName("Autopilot status: Waiting at Approve spec", {
+    await expect(badge).toHaveAccessibleName("Autopilot status: Waiting at Agent asking", {
       timeout: 10_000,
     });
-    await expect(badge).toHaveClass(/changed/);
 
     const fresh = await context.newPage();
     await fresh.goto(fh.origin);
     await fresh.getByRole("tab", { name: "Software factory" }).click();
     await expect(
       fresh.locator('.column[aria-label="Spec"]').getByRole("img", { name: /^Autopilot status/ }),
-    ).toHaveAccessibleName("Autopilot status: Waiting at Approve spec");
+    ).toHaveAccessibleName("Autopilot status: Waiting at Agent asking");
   } finally {
     await fh.dispose();
   }

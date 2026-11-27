@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/philipsahli/fullharness/internal/autopilot"
+	"github.com/philipsahli/fullharness/internal/autopilot/status"
 	"github.com/philipsahli/fullharness/internal/project"
 	"github.com/philipsahli/fullharness/internal/session"
 	"github.com/philipsahli/fullharness/internal/tracker"
@@ -16,16 +17,17 @@ import (
 // the snapshot, and sends an "autopilot" event with all of them when one
 // changes. It works them out again in its own goroutine whenever it is
 // kicked: the history, a Session or a Project changed. The snapshot reads
-// the last result, so a tab connecting never waits on a gh call.
+// the last result, so a tab connecting never waits on a gh call. Each
+// Autopilot status keeps the time it began (status.Stamp).
 type autopilotStatuses struct {
 	kick chan struct{}
 
 	mu  sync.Mutex
-	all []autopilot.Status
+	all []status.Status
 }
 
 func newAutopilotStatuses() *autopilotStatuses {
-	return &autopilotStatuses{kick: make(chan struct{}, 1), all: []autopilot.Status{}}
+	return &autopilotStatuses{kick: make(chan struct{}, 1), all: []status.Status{}}
 }
 
 // Kick asks for the statuses to be worked out again. It never blocks:
@@ -37,17 +39,17 @@ func (a *autopilotStatuses) Kick() {
 	}
 }
 
-// List is the last statuses worked out; never nil.
-func (a *autopilotStatuses) List() []autopilot.Status {
+// List is the last Autopilot statuses worked out; never nil.
+func (a *autopilotStatuses) List() []status.Status {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.all
 }
 
-// run works the statuses out on each kick, and each interval for tracker
-// changes nobody kicks for, until ctx ends. It broadcasts them only when
-// they changed.
-func (a *autopilotStatuses) run(ctx context.Context, interval time.Duration, compute func(prev []autopilot.Status) []autopilot.Status, broadcast func(any)) {
+// run works the Autopilot statuses out on each kick, and each interval for
+// tracker changes nobody kicks for, until ctx ends. It broadcasts them only
+// when they changed.
+func (a *autopilotStatuses) run(ctx context.Context, interval time.Duration, compute func(prev []status.Status) []status.Status, broadcast func(any)) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -57,7 +59,8 @@ func (a *autopilotStatuses) run(ctx context.Context, interval time.Duration, com
 		case <-a.kick:
 		case <-t.C:
 		}
-		next := compute(a.List())
+		prev := a.List()
+		next := status.Stamp(prev, compute(prev), time.Now().UTC())
 		a.mu.Lock()
 		same := reflect.DeepEqual(a.all, next)
 		if !same {
@@ -70,36 +73,33 @@ func (a *autopilotStatuses) run(ctx context.Context, interval time.Duration, com
 	}
 }
 
-// computeAutopilotStatuses works out the statuses of every Project. Only a
-// Project with Autopilot on has its board read; in the others every
-// Feature is off but one whose turn still runs, which needs no board. A
-// board that can't be read (gh failed) keeps the Project's prev statuses,
-// rather than turning every badge off until gh answers again.
-func computeAutopilotStatuses(reg *project.Registry, b *boards, sessions *session.Manager, pilot *autopilot.Runner, prev []autopilot.Status) []autopilot.Status {
-	out := []autopilot.Status{}
+// computeAutopilotStatuses works out the Autopilot status of every
+// Feature in every Project, with Autopilot on or off. A board that can't be
+// read (gh failed) keeps the Project's prev Autopilot statuses, rather than
+// dropping every badge until gh answers again.
+func computeAutopilotStatuses(reg *project.Registry, b *boards, sessions *session.Manager, pilot *autopilot.Runner, prev []status.Status) []status.Status {
+	out := []status.Status{}
 	all := sessions.List()
 	for _, p := range reg.List() {
 		if p.Missing {
 			continue
 		}
-		in := autopilot.StatusInput{Project: p.Path, On: p.Autopilot, Sessions: all}
+		in := status.Input{Project: p.Path, On: p.Autopilot, Sessions: all}
 		for _, h := range pilot.History(p.Path) {
 			in.History = append(in.History, h.Events...)
 		}
-		if p.Autopilot {
-			board, ok := b.read(p.Path, false)
-			if !ok {
-				for _, s := range prev {
-					if s.Project == p.Path {
-						out = append(out, s)
-					}
+		board, ok := b.read(p.Path, false)
+		if !ok {
+			for _, s := range prev {
+				if s.Project == p.Path {
+					out = append(out, s)
 				}
-				continue
 			}
-			tracker.Derive(board.Features, sessions.Links(p.Path))
-			in.Features = board.Features
+			continue
 		}
-		out = append(out, autopilot.Statuses(in)...)
+		tracker.Derive(board.Features, sessions.Links(p.Path))
+		in.Features = board.Features
+		out = append(out, status.Of(in)...)
 	}
 	return out
 }
