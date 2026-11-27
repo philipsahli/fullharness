@@ -193,7 +193,11 @@ function Mark({ n, x, y, label }: { n: FlowNode; x: number; y: number; label: bo
       {label && (n.current || n.state === "waiting") && (
         <text className={n.current ? "curlbl" : "lbl"} x={x + 14} y={y + 4}>
           {text}
-          {n.state === "waiting" && !n.current && n.name === "merge" ? " · yours" : ""}
+          {n.state === "waiting" &&
+          !n.current &&
+          (n.name === "merge" || n.name === "screenshot-review")
+            ? " · yours"
+            : ""}
         </text>
       )}
     </g>

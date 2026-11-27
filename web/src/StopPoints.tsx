@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { command, get } from "./api";
 import { AutopilotBadge, AutopilotLive } from "./Autopilot";
 import type { AutopilotStatus } from "./events";
+import { ScreenshotReview, awaitingScreens } from "./ScreenshotReview";
 
 // Autopilot's Stop points in the Inbox (#199, ADR-0014), as the mockup
 // draws them. fh works out which Feature waits where (the Autopilot
@@ -19,6 +20,11 @@ export function awaitingApproval(statuses: AutopilotStatus[]): AutopilotStatus[]
   return statuses.filter((s) => s.kind === "waiting" && s.reason === "spec-approval");
 }
 
+// awaitingUser is every Stop point item the Inbox shows.
+export function awaitingUser(statuses: AutopilotStatus[]): AutopilotStatus[] {
+  return [...awaitingApproval(statuses), ...awaitingScreens(statuses)];
+}
+
 // What the user did just now, under the items: the row keeps the Feature's
 // live Autopilot status, so the user sees it move on.
 type Done = { key: string; project: string; feature: string; text: string; what: string };
@@ -27,9 +33,10 @@ const keyOf = (s: { project: string; feature: string }) => `${s.project}\n${s.fe
 
 export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
   const waiting = awaitingApproval(statuses);
+  const screens = awaitingScreens(statuses);
   const [names, setNames] = useState<RoadmapData>();
   const [done, setDone] = useState<Done[]>([]);
-  const want = waiting.map(keyOf).join("|");
+  const want = [...waiting, ...screens].map(keyOf).join("|");
   // Read the names again whenever another Feature starts to wait.
   useEffect(() => {
     if (!want) return;
@@ -44,7 +51,7 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
     names?.projects.find((p) => p.path === path)?.name ?? path.split("/").pop() ?? path;
   const statusOf = (d: Done) => statuses.find((s) => keyOf(s) === d.key);
 
-  if (waiting.length === 0 && done.length === 0) return null;
+  if (waiting.length === 0 && screens.length === 0 && done.length === 0) return null;
   return (
     <>
       {waiting.map((s) => {
@@ -65,6 +72,29 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
                   feature: s.feature,
                   text: `Approved ${f?.title ?? s.feature}`,
                   what: `ready-for-agent set · Autopilot stepped ${projectName(s.project)} now`,
+                },
+                ...d.filter((x) => x.key !== keyOf(s)),
+              ])
+            }
+          />
+        );
+      })}
+      {screens.map((s) => {
+        const title = feature(s)?.title ?? s.feature;
+        return (
+          <ScreenshotReview
+            key={`${keyOf(s)}\n${s.ticket ?? ""}`}
+            status={s}
+            title={title}
+            project={projectName(s.project)}
+            onLooksGood={(pr) =>
+              setDone((d) => [
+                {
+                  key: keyOf(s),
+                  project: s.project,
+                  feature: s.feature,
+                  text: `Looks good: ${pr ? `PR #${pr}` : `#${s.ticket ?? ""}`}`,
+                  what: "Screen reviewed in fh, posted on the PR · now at merge",
                 },
                 ...d.filter((x) => x.key !== keyOf(s)),
               ])

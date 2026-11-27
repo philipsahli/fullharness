@@ -9,6 +9,7 @@ import type { AutopilotKind, AutopilotReason, AutopilotStatus } from "./events";
 // the flow graph (Flow.tsx) names its Stop points the same way.
 export const reasonName: Record<AutopilotReason, string> = {
   "spec-approval": "Approve spec",
+  "screenshot-review": "Screenshot review",
   merge: "Merge",
   exited: "Session exited",
   asking: "Agent asking",

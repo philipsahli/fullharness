@@ -166,6 +166,9 @@ func TestScreenshotsAreServedOnlyFromTheTicketsWorktree(t *testing.T) {
 	if pr, _ := list["pr"].(map[string]any); pr["number"] != float64(5) {
 		t.Errorf("pr %v, want PR #5", list["pr"])
 	}
+	if got, want := asJSON(list["files"]), `[{"path":"web/src/Board.tsx","ui":true}]`; got != want {
+		t.Errorf("files %s, want %s", got, want)
+	}
 
 	shot := func(name string) (int, string) {
 		q := url.Values{"project": {repo}, "feature": {"10"}, "ticket": {"11"}, "name": {name}}

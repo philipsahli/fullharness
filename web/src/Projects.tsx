@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { command, get } from "./api";
-import type { Project, SessionState, SessionSummary, Worktree } from "./events";
+import {
+  DEFAULT_UI_PATHS,
+  type Project,
+  type SessionState,
+  type SessionSummary,
+  type Worktree,
+} from "./events";
 import { WorktreeDot, mostUrgent } from "./Chips";
 import { LinkOrText } from "./LinkOrText";
 
@@ -84,6 +90,8 @@ function ProjectItem({ project, sessions }: { project: Project; sessions: Sessio
           )}
         </div>
       )}
+      {/* Screenshot review needs a PR, so only a GitHub Project has UI paths. */}
+      {!project.missing && project.url && <UIPaths project={project} />}
       {project.missing ? (
         <p className="warning">
           Folder not found: <code>{project.path}</code>
@@ -102,6 +110,79 @@ function ProjectItem({ project, sessions }: { project: Project; sessions: Sessio
       )}
       {error && <p className="error">{error}</p>}
     </li>
+  );
+}
+
+// UIPaths is the Project's UI paths line under its Autopilot switch, as
+// the mockup draws it, and the dialog that edits them (#226, ADR-0014).
+function UIPaths({ project }: { project: Project }) {
+  const paths = project.uiPaths?.length ? project.uiPaths : DEFAULT_UI_PATHS;
+  const [draft, setDraft] = useState<string>();
+  const [error, setError] = useState("");
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    const uiPaths = (draft ?? "")
+      .split("\n")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const r = await command("/api/projects/ui-paths", { path: project.path, uiPaths });
+    setError(r.ok ? "" : r.error);
+    if (r.ok) setDraft(undefined);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="uipaths"
+        title="A PR that touches one of these paths stops at Screenshot review"
+        aria-label={`UI paths of ${project.name}: ${paths.join(", ")}`}
+        onClick={() => setDraft(paths.join("\n"))}
+      >
+        UI paths <span className="mono">{paths.join(", ")}</span>
+      </button>
+      {draft !== undefined && (
+        <div className="overlay" onClick={() => setDraft(undefined)}>
+          <form
+            className="modal"
+            role="dialog"
+            aria-label={`UI paths for ${project.name}`}
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => void save(e)}
+          >
+            <h3>UI paths for {project.name}</h3>
+            <p className="hint2">
+              A PR that touches one of these paths changes a screen, so Autopilot stops it at
+              Screenshot review before merge, unless its description says “No visible UI change”.
+              One path per line; <span className="mono">/**</span> at the end covers everything
+              under a folder. Leave it empty for <span className="mono">{DEFAULT_UI_PATHS[0]}</span>
+              .
+            </p>
+            <label className="field">
+              <span>Paths</span>
+              <textarea
+                className="paths"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+              />
+            </label>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="row">
+              <button type="button" className="btn" onClick={() => setDraft(undefined)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn primary">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
   );
 }
 

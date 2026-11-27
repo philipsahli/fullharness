@@ -154,7 +154,7 @@ func screenshots(dir string) []string {
 // registerScreenshotReviewRoutes adds Screenshot review to the Inbox
 // (#226, ADR-0014): the Agent's screenshots, served from the Ticket's
 // Worktree only and never uploaded, and Looks good.
-func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b *boards, sessions *session.Manager, pilot *autopilot.Runner, background func(func(context.Context))) {
+func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b *boards, changes *prChanges, sessions *session.Manager, pilot *autopilot.Runner, background func(func(context.Context))) {
 	// The screenshots of one Ticket's PR, and the PR.
 	srv.Handle("GET /api/autopilot/screenshots", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -166,6 +166,16 @@ func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b
 		out := map[string]any{"screenshots": screenshots(screenshotFolder(p, t))}
 		if pr, ok := openPR(t); ok {
 			out["pr"] = pr
+			// The PR's changed files, each marked when it is under a UI
+			// path: why the PR stops here.
+			if changed, ok := changes.read(r.Context(), p.Path, pr.Number); ok {
+				files := []map[string]any{}
+				for _, f := range changed.Files {
+					one := tracker.PR{Files: []string{f}}
+					files = append(files, map[string]any{"path": f, "ui": one.ChangesScreen(p.ScreenPaths())})
+				}
+				out["files"] = files
+			}
 		}
 		server.WriteJSON(w, http.StatusOK, out)
 	})
