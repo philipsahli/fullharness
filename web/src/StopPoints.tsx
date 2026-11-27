@@ -119,6 +119,19 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
                 ...d.filter((x) => x.key !== keyOf(s)),
               ])
             }
+            onRequestedChanges={(pr) =>
+              setDone((d) => [
+                {
+                  key: keyOf(s),
+                  project: s.project,
+                  feature: s.feature,
+                  mark: "↩",
+                  text: `Changes requested on ${pr ? `PR #${pr}` : `#${s.ticket ?? ""}`}`,
+                  what: `note posted on the PR · sent to #${s.ticket ?? ""}'s Session as its next turn`,
+                },
+                ...d.filter((x) => x.key !== keyOf(s)),
+              ])
+            }
           />
         );
       })}

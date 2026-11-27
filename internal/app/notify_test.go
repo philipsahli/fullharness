@@ -43,12 +43,14 @@ func notifyOnWaiting(t *testing.T, tab *websocket.Conn, id string) map[string]an
 }
 
 // fakeOsascript puts an osascript first on PATH that appends its arguments
-// to a file, and returns a function that waits for them.
+// to a file, and returns a function that waits for them. Each call is one
+// printf, so a read never sees part of a call: one line per argument let a
+// loaded machine read "-e" alone (#242).
 func fakeOsascript(t *testing.T) func() string {
 	t.Helper()
 	bin := t.TempDir()
 	calls := filepath.Join(t.TempDir(), "osascript-calls")
-	writeFile(t, filepath.Join(bin, "osascript"), "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \""+calls+"\"\n")
+	writeFile(t, filepath.Join(bin, "osascript"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+calls+"\"\n")
 	if err := os.Chmod(filepath.Join(bin, "osascript"), 0o755); err != nil {
 		t.Fatal(err)
 	}

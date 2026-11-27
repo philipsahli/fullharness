@@ -163,7 +163,13 @@ func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b
 			server.WriteError(w, status, msg)
 			return
 		}
-		out := map[string]any{"screenshots": screenshots(screenshotFolder(p, t))}
+		dir := screenshotFolder(p, t)
+		out := map[string]any{"screenshots": screenshots(dir)}
+		// After Request changes, the screenshots the Agent saved since then
+		// are new: what the user asked to see (#227).
+		if at, ok := pilot.AnsweredAt(p.Path, q.Get("feature"), q.Get("ticket"), autopilot.AnswerRequestChanges); ok {
+			out["new"] = newScreenshots(dir, at)
+		}
 		if pr, ok := openPR(t); ok {
 			out["pr"] = pr
 			// The PR's changed files, each marked when it is under a UI
@@ -251,6 +257,71 @@ func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b
 // looksGoodComment is what Looks good says on the PR, so GitHub shows
 // that someone looked (ADR-0014).
 const looksGoodComment = "Screen reviewed in fh"
+
+// changesComment is what Request changes says on the PR, before the
+// user's note (#227).
+const changesComment = "Screen reviewed in fh: changes requested.\n\n"
+
+// newScreenshots are the screenshots in dir written after at: a plain
+// .png file whose modification time is later than the user's Request
+// changes. A screenshot the Agent took again counts as new.
+func newScreenshots(dir string, at time.Time) []string {
+	out := []string{}
+	for _, name := range screenshots(dir) {
+		info, err := os.Lstat(filepath.Join(dir, name))
+		if err == nil && info.ModTime().After(at) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// registerRequestChangesRoute adds Request changes to a Screenshot review
+// item (#227, ADR-0014): fh posts the user's note on the PR, records it as
+// the user's, queues the fix in the Ticket's Session, and steps the
+// Project. When the fix ends done, the PR is back at Screenshot review.
+func registerRequestChangesRoute(srv *server.Server, reg *project.Registry, b *boards, sessions *session.Manager, pilot *autopilot.Runner, background func(func(context.Context))) {
+	srv.Handle("POST /api/autopilot/request-changes", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Feature string `json:"feature"`
+			Ticket  string `json:"ticket"`
+			Note    string `json:"note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Project == "" || req.Feature == "" || req.Ticket == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"project": "…", "feature": "…", "ticket": "…", "note": "…"}`)
+			return
+		}
+		note := strings.TrimSpace(req.Note)
+		if note == "" {
+			server.WriteError(w, http.StatusBadRequest, "write a note: fh posts it on the PR and sends it to the Agent")
+			return
+		}
+		p, t, status, msg := reviewedTicket(reg, b, sessions, req.Project, req.Feature, req.Ticket)
+		if status != 0 {
+			server.WriteError(w, status, msg)
+			return
+		}
+		stop, waits := pilot.Waiting(p.Path, req.Feature, req.Ticket)
+		pr, hasPR := openPR(t)
+		if !waits || stop.Reason != autopilot.ReasonScreenshot || !hasPR {
+			server.WriteError(w, http.StatusConflict, "this Ticket's PR doesn't wait at Screenshot review")
+			return
+		}
+		// The write runs to the end even if the tab goes away (#215).
+		if err := tracker.CommentPR(context.WithoutCancel(r.Context()), p.Path, pr.Number, changesComment+note); err != nil {
+			server.WriteError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		pilot.RequestedChanges(stop.Step, t.Ref, t.Branch, note)
+		w.WriteHeader(http.StatusNoContent)
+		for _, ap := range autopilotProjects(reg) {
+			if ap.Path == p.Path {
+				background(func(context.Context) { pilot.Step(ap, false) })
+			}
+		}
+	})
+}
 
 // openPR is t's Open or Draft PR, the newest; ok is false when it has none.
 func openPR(t tracker.Ticket) (tracker.PRRecord, bool) {

@@ -262,6 +262,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	registerBoardRoutes(srv, reg, boards, sessions)
 	registerTrackerWrites(srv, reg, boards, statuses.Kick)
 	registerRoadmapRoutes(srv, reg, boards, sessions)
+	registerSwitcherRoutes(srv, reg, boards)
 	registerWorktreeRoutes(srv, worktreeDeps{projects: reg, sessions: sessions, state: st, log: log, beforeRemove: opts.BeforeWorktreeRemove})
 	classifier, err := classify.New(cfg.Classifier.provider(), opts.Dir, log)
 	if err != nil {
@@ -285,6 +286,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	registerAutopilotHistoryRoute(srv, pilot)
 	registerUIPathsRoute(srv, reg)
 	registerScreenshotReviewRoutes(srv, reg, boards, changes, sessions, pilot, inst.goBackground)
+	registerRequestChangesRoute(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerStopPointRoutes(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerAutopilotFlowRoute(srv, reg, boards, sessions, pilot, statuses)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)

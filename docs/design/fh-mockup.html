@@ -611,6 +611,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 .note-box textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; font-size: 13px; background: var(--bg); color: var(--fg); }
 .note-box .goes { font-size: 12px; color: var(--muted); }
 .note-box .row { display: flex; gap: 8px; justify-content: flex-end; }
+.shot span .new { margin-left: 6px; padding: 0 5px; border-radius: 5px; font-family: var(--f-body); font-size: 10.5px; font-weight: 600; color: var(--ap-waiting); background: var(--ap-waiting-tint); } /* #227: saved since Request changes */
 .ibox.stop .acts { align-self: start; padding-top: 4px; }
 .justnow { margin-top: 4px; display: grid; gap: 8px; }
 .justnow h3 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -639,7 +640,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
 
 <p class="mock-note"><strong>fullharness (fh) — design mockup, factory first.</strong> <span>All Projects, Sessions and issues are example data. Start on the Software factory board, open a Feature to follow each Ticket from Session to PR, checks and merge, then open a Session from the rail. Press ⌘K / Ctrl+K to jump.</span>
   <label>Show state <select class="demo" id="demo">
-    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option><option value="sp-reject">Inbox: Reject a Spec, note open</option><option value="sp-changes">Inbox: Request changes, note open</option><option value="sp-shot">Inbox: a screenshot at full size</option><option value="sp-approved">Inbox: after Approve and Looks good</option><option value="sp-rejected">Inbox: after Reject and Request changes</option><option value="sp-paths">Projects: edit UI paths</option>
+    <option value="">Normal</option><option value="loading">Board loading</option><option value="error">Tracker read failed</option><option value="lost">Connection lost</option><option value="restarted">fh restarted</option><option value="apflow">Autopilot: play status changes</option><option value="rmfail">Roadmap: the next move fails</option><option value="nospecs">No Specs, 7 issues need triage</option><option value="sp-reject">Inbox: Reject a Spec, note open</option><option value="sp-changes">Inbox: Request changes, note open</option><option value="sp-shot">Inbox: a screenshot at full size</option><option value="sp-approved">Inbox: after Approve and Looks good</option><option value="sp-rejected">Inbox: after Reject and Request changes</option><option value="sp-back">Inbox: Screenshot review back with a new screenshot</option><option value="sp-paths">Projects: edit UI paths</option>
   </select></label>
   <span class="browser-tab" id="browser-tab" title="The browser tab: the Waiting indicator and the Waiting count (#251). Answer a Waiting Session to see them change."><img id="browser-tab-icon" alt="" src="../../web/public/favicon.svg"><span id="browser-tab-title">fullharness</span></span></p>
 
@@ -1510,6 +1511,7 @@ const STOPS = () => [
 ];
 let stops = STOPS(), justNow = [];
 const stopNote = {}; // a Stop point item's open note box (Reject, Request changes): id -> text
+let shotsBack = false; // #227: PR #21 is back at Screenshot review after Request changes; its first screenshot is new
 const AP_IO4 = AP["f-io4"], T10 = () => feat("f-acp").f.tickets.find(t => t.n === 10);
 
 /* A screenshot the Agent saved, drawn as a small picture of the changed screen: a Session with the permission card. */
@@ -1544,16 +1546,16 @@ function stopItem(sp) {
     <textarea id="note-${sp.id}" data-note="${sp.id}" placeholder="${approve ? "What the Spec gets wrong or leaves out" : "What to change on the screen"}">${esc(stopNote[sp.id])}</textarea>
     <span class="goes">${approve
       ? `Then fh sends it to the Autopilot Session that wrote the Spec. That Session has exited, so fh starts a new Autopilot Session with <b class="mono">/to-spec</b>, your note and the Spec. When the revision ends, a new Approve spec item comes back here.`
-      : `Then fh sends it to #${sp.t}'s Autopilot Session as its next turn. When the Agent saves a new screenshot, a new Screenshot review item comes back here.`}</span>
+      : `Then fh sends it to #${sp.t}'s Autopilot Session as its next turn, or starts a new one with <b class="mono">/implement</b> if that Session is gone. When the turn ends, a new Screenshot review item comes back here.`}</span>
     <div class="row"><button class="btn" data-notecancel="${sp.id}">Cancel</button><button class="btn primary" data-notesend="${sp.id}">${approve ? "Post and send" : "Post and send"}</button></div></div>`;
   const body = approve
     ? `<div class="kind"><strong>Approve spec</strong>${issueLink(sp.pid, sp.spec, `Spec #${sp.spec}`, "ext")}${f.unapproved ? `<span class="lbl">${f.unapproved}</span>` : ""}</div>
       <div class="why">Autopilot wrote this Spec and stops here before it makes Tickets. Approve labels it <span class="mono">ready-for-agent</span> and starts <b class="mono">/to-tickets</b> at once.</div>
       <div class="spec-peek"><span><b>Problem</b> · Drift between clusters shows only on the next full reconcile, up to 10 minutes later.</span><span><b>Solution</b> · Watch the inventory CRDs and raise a DriftAlert within 30 s.</span><span><b>User stories</b> · 6 · <b>Open questions</b> · none</span></div>`
     : `<div class="kind"><strong>Screenshot review</strong>${issueLink(sp.pid, sp.pr, `PR #${sp.pr}`, "ext")}<span class="crumb">checks passed · code review done</span></div>
-      <div class="why">This PR changes files under ${esc(p.name)}'s UI paths, so it stops here before the merge Stop point. Look at the ${SHOTS.length} screens the Agent saved.</div>
+      <div class="why">This PR changes files under ${esc(p.name)}'s UI paths, so it stops here before the merge Stop point. Look at the ${SHOTS.length} screens the Agent saved.${shotsBack ? " One is new since your Request changes." : ""}</div>
       <div class="files">${sp.files.map(([x, ui]) => `<span class="mono${ui ? " ui" : ""}" title="${ui ? "Under a UI path" : "Not a UI path"}">${esc(x)}</span>`).join("")}</div>
-      <div class="shots">${SHOTS.map((s, i) => `<button class="shot" data-shot="${sp.id}:${i}" aria-label="Show ${esc(s.file)} full size">${shotSvg(s)}<span>${esc(s.file.replace(".fh/screenshots/", ""))}</span></button>`).join("")}</div>`;
+      <div class="shots">${SHOTS.map((s, i) => `<button class="shot" data-shot="${sp.id}:${i}" aria-label="Show ${esc(s.file)} full size">${shotSvg(s)}<span>${esc(s.file.replace(".fh/screenshots/", ""))}${shotsBack && i === 0 ? `<b class="new">new</b>` : ""}</span></button>`).join("")}</div>`;
   const acts = approve
     ? `<button class="btn primary" data-spok="${sp.id}">Approve</button><button class="btn" data-spno="${sp.id}" aria-expanded="${open}">Reject</button>`
     : `<button class="btn primary" data-spok="${sp.id}">Looks good</button><button class="btn" data-spno="${sp.id}" aria-expanded="${open}">Request changes</button>`;
@@ -1596,7 +1598,7 @@ function stopAct(id, ok) {
   }
 }
 function stopReset() {
-  stops = STOPS(); justNow = []; for (const k in stopNote) delete stopNote[k];
+  stops = STOPS(); justNow = []; shotsBack = false; for (const k in stopNote) delete stopNote[k];
   AP["f-io4"] = AP_IO4; feat("f-io4").f.unapproved = "needs-triage"; T10().pr.screens = "wait";
   sessions = sessions.filter(s => s.id !== "s12"); const s10 = sess("s10"); if (s10) s10.state = "idle";
 }
@@ -1641,6 +1643,8 @@ $("#demo").addEventListener("change", e => {
   if (v === "sp-changes") stopNote.sp2 = "The Deny button sits too close to Allow on the phone layout. Give it more room.";
   if (v === "sp-approved") { stopAct("sp1", true); stopAct("sp2", true); }
   if (v === "sp-rejected") { stopNote.sp1 = "Only the inventory CRDs."; stopNote.sp2 = "More room for Deny on phone."; stopAct("sp1", false); stopAct("sp2", false); }
+  // #227: the fix turn ended with a new screenshot, so PR #21 is back at Screenshot review.
+  if (v === "sp-back") { stopNote.sp2 = "More room for Deny on phone."; stopAct("sp2", false); stops.push(STOPS().find(x => x.id === "sp2")); shotsBack = true; }
   render();
   if (v === "sp-shot") openShot("sp2", 0);
   if (v === "sp-paths") openUiPaths("fh");
