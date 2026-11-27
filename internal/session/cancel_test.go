@@ -192,3 +192,41 @@ func TestACancelThatOvertakesThePromptStillEndsTheTurn(t *testing.T) {
 		t.Errorf("state = %v, want Idle", st)
 	}
 }
+
+// A cancel that reaches the Agent while it is busy with something it can't
+// interrupt (a model call, here a hold) must still end the turn as
+// "cancelled". The fake Agent's next message then fails on the cancelled
+// context; it used to answer the prompt with that RPC error, "context
+// canceled", which fh shows as a failed turn (#239).
+func TestACancelDuringAStepTheAgentCantInterruptEndsTheTurnCancelled(t *testing.T) {
+	m, id, ends := startHooked(t, map[string]any{"default": []any{
+		map[string]any{"say": "started"},
+		map[string]any{"holdMs": 2000},
+		map[string]any{"say": "late"},
+	}}, func(*session.Manager, string) {})
+	if err := m.Prompt(id, "go"); err != nil {
+		t.Fatal(err)
+	}
+	// Cancel once the Agent is in the hold: "started" comes just before it.
+	said := func() bool {
+		for _, it := range detail(t, m, id).Transcript {
+			if it.Type == "agent" && it.Text == "started" {
+				return true
+			}
+		}
+		return false
+	}
+	// A generous bound: it only limits a wait, so a loaded machine can't fail it.
+	for deadline := time.Now().Add(30 * time.Second); !said(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the Agent never said started")
+		}
+	}
+	if err := m.Cancel(id); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	if e := nextEnd(t, ends, "the turn"); e.StopReason != "cancelled" || e.Err != nil {
+		t.Errorf("turn end = %+v, want cancelled with no error", e)
+	}
+}
