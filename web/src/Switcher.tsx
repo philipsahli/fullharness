@@ -1,9 +1,36 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get } from "./api";
 import { byListOrder, projectName, type Project, type SessionSummary } from "./events";
 
-// SwitcherTicket is one open Ticket /api/switcher matched (internal/switcher).
-type SwitcherTicket = { number: string; title: string; feature: string; featureTitle: string };
+// SwitcherResult is one item /api/switcher found (internal/switcher): a
+// Spec, Ticket, PR or issue, with its Project and where picking it goes.
+export type SwitcherResult = {
+  kind: "spec" | "ticket" | "pr" | "issue";
+  project: string;
+  projectName: string;
+  number: string;
+  title: string;
+  detail?: string;
+  opens: {
+    place: "feature" | "ticket" | "triage" | "github";
+    feature?: string;
+    ticket?: string;
+    ref?: string;
+    url?: string;
+  };
+};
+
+const kindName = { spec: "Spec", ticket: "Ticket", pr: "PR", issue: "Issue" } as const;
+const placeName = {
+  feature: "→ Feature page",
+  ticket: "→ Ticket row",
+  triage: "→ Needs triage",
+  github: "GitHub ↗",
+} as const;
+
+// A query that is a number, with or without "#", searches every Project;
+// the list then comes grouped under Sessions and each Project's name.
+const isNumber = (q: string) => /^#?\d+$/.test(q.trim());
 
 type Entry = {
   key: string;
@@ -11,21 +38,24 @@ type Entry = {
   detail: string;
   state?: string;
   pick: () => void;
+  group?: ReactNode; // the heading above this entry, when it starts a group
 };
 
-// Switcher is ⌘K (Ctrl+K off macOS), GLOSSARY.md: find a Session by words in
-// its title, Project or Agent, in any order; an open Ticket of the board's
-// Project by number or by words in its title (#195); or start a New Session.
-// fh works out which Tickets match (GET /api/switcher), from the board it
-// already has, so typing never calls GitHub per key press.
+// Switcher is ⌘K (Ctrl+K off macOS), GLOSSARY.md. Words find a Session by
+// its title, Project or Agent, in any order, and an open Ticket of the
+// board's Project by its title (#195). A number finds every open Spec,
+// Ticket, PR and issue with that number in all Projects, the board's
+// Project first (#254). New Session starts an Agent. fh works out the
+// items (GET /api/switcher) from the boards it already has, so typing
+// never calls GitHub per key press.
 export function Switcher(props: {
   sessions: SessionSummary[];
   projects: Project[];
-  // boardProject is the Project the Software factory shows, whose Tickets
-  // the Switcher finds; none lists Sessions only.
+  // boardProject is the Project the Software factory shows: its Tickets
+  // match by words, and its items come first for a number.
   boardProject?: Project;
   onOpen: (id: string) => void;
-  onOpenTicket: (project: string, feature: string, ticket: string) => void;
+  onOpenResult: (r: SwitcherResult) => void;
   onNew: () => void;
   onClose: () => void;
 }) {
@@ -34,9 +64,9 @@ export function Switcher(props: {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
 
-  // The Tickets for the query, kept with the query they answer, so a late
+  // The items for the query, kept with the query they answer, so a late
   // answer to an older query is never shown under a newer one.
-  const [found, setFound] = useState<{ query: string; tickets: SwitcherTicket[] }>();
+  const [found, setFound] = useState<{ query: string; results: SwitcherResult[] }>();
   const projectPath = props.boardProject?.path;
   useEffect(() => {
     const q = query.trim();
@@ -44,10 +74,10 @@ export function Switcher(props: {
     let current = true;
     // A short pause, so a fast typist sends one request, not one per key.
     const timer = window.setTimeout(() => {
-      void get<{ tickets: SwitcherTicket[] }>(
+      void get<{ results: SwitcherResult[] }>(
         `/api/switcher?project=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(q)}`,
       ).then((r) => {
-        if (current) setFound({ query: q, tickets: r?.tickets ?? [] });
+        if (current) setFound({ query: q, results: r?.results ?? [] });
       });
     }, 80);
     return () => {
@@ -56,9 +86,10 @@ export function Switcher(props: {
     };
   }, [query, projectPath]);
   const entries = useMemo(() => {
-    const tickets = projectPath && found?.query === query.trim() ? found.tickets : [];
+    const results = projectPath && found?.query === query.trim() ? found.results : [];
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     const matches = (text: string) => words.every((w) => text.includes(w));
+    const grouped = isNumber(query);
     const sessions: Entry[] = [...props.sessions]
       .sort(byListOrder)
       .filter((s) =>
@@ -66,30 +97,38 @@ export function Switcher(props: {
           `${s.title} ${projectName(props.projects, s.project)} ${s.agentName}`.toLowerCase(),
         ),
       )
-      .map((s) => ({
+      .map((s, i) => ({
         key: s.id,
         label: s.title,
         detail: `${projectName(props.projects, s.project)} · ${s.agentName}`,
         state: s.state,
         pick: () => props.onOpen(s.id),
+        group: grouped && i === 0 ? "Sessions" : undefined,
       }));
-    const ticketEntries: Entry[] = tickets.map((t) => ({
-      key: `ticket:${t.feature}:${t.number}`,
+    const items: Entry[] = results.map((r, i) => ({
+      key: `${r.project}:${r.kind}:${r.opens.feature ?? ""}:${r.number}`,
       label: (
         <>
-          <span className="ptag">Ticket</span>
-          <span className="pnum">#{t.number}</span>
-          {t.title}
-          <span className="s"> · {t.featureTitle}</span>
+          <span className="ptag">{kindName[r.kind]}</span>
+          <span className="pnum">#{r.number}</span>
+          {r.title}
+          {r.detail && <span className="s"> · {r.detail}</span>}
         </>
       ),
-      detail: "→ Ticket row",
-      pick: () => projectPath && props.onOpenTicket(projectPath, t.feature, t.number),
+      detail: placeName[r.opens.place],
+      pick: () => props.onOpenResult(r),
+      group:
+        grouped && (i === 0 || results[i - 1].project !== r.project) ? (
+          <>
+            {r.projectName}
+            {r.project === projectPath && <small>· this Project</small>}
+          </>
+        ) : undefined,
     }));
     const extra: Entry[] = matches("new session")
       ? [{ key: "new", label: "New Session", detail: "start an Agent", pick: props.onNew }]
       : [];
-    return [...sessions, ...ticketEntries, ...extra];
+    return [...sessions, ...items, ...extra];
   }, [query, props, found, projectPath]);
 
   const choose = (e: Entry | undefined) => {
@@ -109,8 +148,8 @@ export function Switcher(props: {
         <input
           ref={input}
           value={query}
-          placeholder="Find a Session, or a Ticket by number or title…"
-          aria-label="Find a Session or Ticket"
+          placeholder="Find a Session, a Ticket by title, or anything by number…"
+          aria-label="Find a Session, Ticket or number"
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
@@ -132,17 +171,23 @@ export function Switcher(props: {
         />
         <ul role="listbox" aria-label="Matches">
           {entries.map((e, i) => (
-            <li
-              key={e.key}
-              role="option"
-              aria-selected={i === active}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => choose(e)}
-            >
-              {e.state && <span className={`dot ${e.state}`} aria-hidden="true" />}
-              <span className="t">{e.label}</span>
-              <span className="s">{e.detail}</span>
-            </li>
+            <Fragment key={e.key}>
+              {e.group && (
+                <li className="pgroup" role="presentation">
+                  {e.group}
+                </li>
+              )}
+              <li
+                role="option"
+                aria-selected={i === active}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(e)}
+              >
+                {e.state && <span className={`dot ${e.state}`} aria-hidden="true" />}
+                <span className="t">{e.label}</span>
+                <span className="s">{e.detail}</span>
+              </li>
+            </Fragment>
           ))}
           {entries.length === 0 && <li className="empty">No match.</li>}
         </ul>

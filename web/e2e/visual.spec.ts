@@ -5,7 +5,7 @@ import path from "node:path";
 import { tempRepoWith } from "./repo";
 import { reachScreenshotReview, startScreenshotReview } from "./screens";
 
-// Local pixel tests (ADR 0012): nine screens in light and dark, compared with
+// Local pixel tests (ADR 0012): ten screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -53,6 +53,22 @@ for (const scheme of ["light", "dark"] as const) {
         await page.getByRole("tab", { name: "Software factory" }).click();
         await expect(page.locator('.column[aria-label="Tickets"]')).toContainText("2 tickets");
         await expect(page).toHaveScreenshot(`board-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    test("Switcher with results by number", async ({ page }) => {
+      const fh = await Fh.start({ ghPRs: [] });
+      try {
+        await open(page, fh, shopRepo());
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        await expect(page.locator('.column[aria-label="Tickets"]')).toContainText("2 tickets");
+        await page.keyboard.press("ControlOrMeta+k");
+        const dialog = page.getByRole("dialog", { name: "Switcher" });
+        await dialog.getByLabel("Find a Session, Ticket or number").fill("#1");
+        await expect(dialog.getByRole("option")).toHaveCount(1);
+        await expect(dialog).toHaveScreenshot(`switcher-${scheme}.png`, { mask: dynamic(page) });
       } finally {
         await fh.dispose();
       }

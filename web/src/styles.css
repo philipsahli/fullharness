@@ -1245,6 +1245,25 @@ span.agent i {
 .switcher li[aria-selected="true"] > .s {
   color: var(--fg);
 }
+/* A number lists its results grouped (#254), as the mockup's Switcher
+   does: Sessions, then the board's Project, then the others by name. */
+.switcher li.pgroup {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 8px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: default;
+}
+.switcher li.pgroup small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
 /* Where a Switcher pick landed: a short glow on the Ticket's row. */
 .sw-flash {
   animation: sw-flash 1.8s ease-out;
