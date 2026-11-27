@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { get } from "./api";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { command, get } from "./api";
 import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
 import type { AutopilotStatus } from "./events";
 import { LinkOrText } from "./LinkOrText";
@@ -36,6 +36,20 @@ const trackerName: Record<string, string> = { github: "GitHub", local: "Local ma
 
 const refreshEvery = 60_000;
 
+// A failed move shows on the card that went back: the group it was meant
+// for and gh's own message.
+type MoveError = { to: Group; msg: string };
+// The card waits this long in its new group before a failed write slides it
+// back, so the move is seen before it is undone (#197: it moves first).
+const bounceAfter = 600;
+
+const cardKey = (f: RoadmapFeature) => `${f.project} ${f.id}`;
+const without = <T,>(m: Record<string, T>, key: string) => {
+  const next = { ...m };
+  delete next[key];
+  return next;
+};
+
 // Roadmap is every Project's open Features in their Roadmap groups (ADR
 // 0005). It reads them in one request while it's shown, and every 60 s.
 // Open shows a Feature on the Software factory board (onOpen). Each card's
@@ -52,6 +66,16 @@ export function Roadmap({
   const [failed, setFailed] = useState(false);
   // The chip filter: a Project's path, or undefined for All Projects.
   const [only, setOnly] = useState<string | undefined>();
+  // A move shows at once (no confirm step, #197): placed holds a card's new
+  // group until the Roadmap is read again after its write.
+  const [placed, setPlaced] = useState<Record<string, Group>>({});
+  const [moving, setMoving] = useState<Record<string, true>>({});
+  const [moveErrors, setMoveErrors] = useState<Record<string, MoveError>>({});
+  const board = useRef<HTMLDivElement>(null);
+  // flip is the card to slide after the next render, from where it was.
+  const flip = useRef<{ key: string; cls: "moved" | "bounced"; before: Map<string, DOMRect> }>(
+    undefined,
+  );
 
   useEffect(() => {
     const read = () =>
@@ -65,6 +89,67 @@ export function Roadmap({
     }, refreshEvery);
     return () => window.clearInterval(timer);
   }, []);
+
+  const snap = () => {
+    const at = new Map<string, DOMRect>();
+    board.current
+      ?.querySelectorAll<HTMLElement>(".rcard[data-rm]")
+      .forEach((el) => at.set(el.dataset.rm ?? "", el.getBoundingClientRect()));
+    return at;
+  };
+
+  // A moved card slides from its old place to its new one (FLIP), then
+  // lands with a glow; one that went back shakes once. No motion under
+  // prefers-reduced-motion: the classes' animations are off there too.
+  useLayoutEffect(() => {
+    const f = flip.current;
+    if (!f) return;
+    flip.current = undefined;
+    const el = board.current?.querySelector<HTMLElement>(`.rcard[data-rm="${CSS.escape(f.key)}"]`);
+    if (!el) return;
+    const was = f.before.get(f.key);
+    if (was && el.animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const now = el.getBoundingClientRect();
+      el.animate(
+        [
+          { transform: `translate(${was.left - now.left}px, ${was.top - now.top}px)`, zIndex: 2 },
+          { transform: "none", zIndex: 2 },
+        ],
+        { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" },
+      );
+    }
+    el.classList.remove("moved", "bounced");
+    void el.offsetWidth; // restart the class's animation
+    el.classList.add(f.cls);
+  });
+
+  const groupOf = (f: RoadmapFeature) => placed[cardKey(f)] ?? f.roadmap;
+
+  // move writes the new group at once. When the write fails, the card goes
+  // back to its group and says why, with gh's own message.
+  const move = async (f: RoadmapFeature, to: Group) => {
+    const key = cardKey(f);
+    const from = groupOf(f);
+    const started = Date.now();
+    flip.current = { key, cls: "moved", before: snap() };
+    setMoveErrors((e) => without(e, key));
+    setMoving((m) => ({ ...m, [key]: true }));
+    setPlaced((p) => ({ ...p, [key]: to }));
+    const r = await command("/api/tracker/roadmap", { project: f.project, ref: f.ref, group: to });
+    if (r.ok) {
+      const d = await get<RoadmapData>("/api/roadmap");
+      if (d) {
+        setData(d);
+        setPlaced((p) => without(p, key));
+      }
+    } else {
+      await new Promise((done) => window.setTimeout(done, bounceAfter - (Date.now() - started)));
+      flip.current = { key, cls: "bounced", before: snap() };
+      setPlaced((p) => ({ ...p, [key]: from }));
+      setMoveErrors((e) => ({ ...e, [key]: { to, msg: r.error } }));
+    }
+    setMoving((m) => without(m, key));
+  };
 
   const name = (path: string) => data?.projects.find((p) => p.path === path)?.name ?? path;
   const shown = (data?.features ?? []).filter((f) => !only || f.project === only);
@@ -81,8 +166,9 @@ export function Roadmap({
       <header className="board-head">
         <h2>Roadmap</h2>
         <p className="crumb">
-          Every Feature with a Spec, across all Projects, in its Roadmap group. Autopilot works only
-          on Features in Now.
+          Every Feature with a Spec, across all Projects. ← and → move a Feature to another Roadmap
+          group and save it on the Spec at once: a roadmap:* label on GitHub, the Roadmap: line in
+          spec.md on local markdown. Autopilot works only on Features in Now.
         </p>
       </header>
       {failed && (
@@ -124,9 +210,9 @@ export function Roadmap({
         </p>
       ))}
       {data && (
-        <div className="roadmap">
+        <div className="roadmap" ref={board}>
           {groups.map(({ group, name: label, hint }, i) => {
-            const items = shown.filter((f) => f.roadmap === group);
+            const items = shown.filter((f) => groupOf(f) === group);
             return (
               <section key={group} className="rcol" aria-label={label}>
                 <h3>
@@ -138,53 +224,79 @@ export function Roadmap({
                 </h3>
                 <ol className="rlist">
                   {items.length === 0 && <li className="rempty">No Features in {label}</li>}
-                  {items.map((f) => (
-                    <li key={`${f.project} ${f.id}`} className="rcard" data-ap={badgeFor(f)?.kind}>
-                      <div className="rtop">
-                        <span className="n">{f.title}</span>
-                        <span className={`stage ${f.stage}`}>{stageName[f.stage] ?? f.stage}</span>
-                      </div>
-                      <span className="ref">
-                        {name(f.project)} · <LinkOrText url={f.url}>{f.ref}</LinkOrText>
-                        {f.noGroup && (
-                          <>
-                            {" · "}
-                            <span className="rnog" title="The Spec names no Roadmap group">
-                              no Roadmap group
-                            </span>
-                          </>
+                  {items.map((f) => {
+                    const key = cardKey(f);
+                    const err = moveErrors[key];
+                    return (
+                      <li
+                        key={key}
+                        className={err ? "rcard rfail" : "rcard"}
+                        data-rm={key}
+                        data-ap={badgeFor(f)?.kind}
+                      >
+                        <div className="rtop">
+                          <span className="n">{f.title}</span>
+                          <span className={`stage ${f.stage}`}>
+                            {stageName[f.stage] ?? f.stage}
+                          </span>
+                        </div>
+                        <span className="ref">
+                          {name(f.project)} · <LinkOrText url={f.url}>{f.ref}</LinkOrText>
+                          {f.noGroup && (
+                            <>
+                              {" · "}
+                              <span className="rnog" title="The Spec names no Roadmap group">
+                                no Roadmap group
+                              </span>
+                            </>
+                          )}
+                        </span>
+                        <RoadmapBadge status={badgeFor(f)} />
+                        {err && (
+                          <div className="rerr" role="alert">
+                            <b>Not moved to {groups.find((g) => g.group === err.to)?.name}.</b>
+                            <button
+                              type="button"
+                              className="btn small"
+                              aria-label="Dismiss the error"
+                              onClick={() => setMoveErrors((e) => without(e, key))}
+                            >
+                              ✕
+                            </button>
+                            <span className="mono">{err.msg}</span>
+                          </div>
                         )}
-                      </span>
-                      <RoadmapBadge status={badgeFor(f)} />
-                      <div className="rmove">
-                        <button
-                          type="button"
-                          className="btn small"
-                          onClick={() => onOpen(f.project, f.id)}
-                        >
-                          Open
-                        </button>
-                        {/* Moving a card isn't built yet; the arrows show where it goes. */}
-                        <button
-                          type="button"
-                          className="btn small rarrow"
-                          disabled
-                          aria-label={`Move ${f.title} to ${i > 0 ? groups[i - 1].name : "the previous group"}`}
-                        >
-                          ←
-                        </button>
-                        <button
-                          type="button"
-                          className="btn small rarrow"
-                          disabled
-                          aria-label={`Move ${f.title} to ${i < 2 ? groups[i + 1].name : "the next group"}`}
-                        >
-                          →
-                        </button>
-                      </div>
-                      <OffLink status={badgeFor(f)} name={name(f.project)} />
-                    </li>
-                  ))}
+                        <div className="rmove">
+                          <button
+                            type="button"
+                            className="btn small"
+                            onClick={() => onOpen(f.project, f.id)}
+                          >
+                            Open
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small rarrow"
+                            disabled={i === 0 || !!moving[key]}
+                            aria-label={`Move ${f.title} to ${i > 0 ? groups[i - 1].name : "the previous group"}`}
+                            onClick={() => void move(f, groups[i - 1].group)}
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small rarrow"
+                            disabled={i === 2 || !!moving[key]}
+                            aria-label={`Move ${f.title} to ${i < 2 ? groups[i + 1].name : "the next group"}`}
+                            onClick={() => void move(f, groups[i + 1].group)}
+                          >
+                            →
+                          </button>
+                        </div>
+                        <OffLink status={badgeFor(f)} name={name(f.project)} />
+                      </li>
+                    );
+                  })}
                 </ol>
               </section>
             );
