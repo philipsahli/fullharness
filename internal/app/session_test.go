@@ -29,9 +29,12 @@ func startFhWithAgent(t *testing.T, s script) *fh {
 }
 
 // appOptions starts fh on a free port with periodic refresh effectively off,
-// so tests see only the refreshes they cause.
+// so tests see only the refreshes they cause. The fake Agent starts in
+// milliseconds, but a loaded machine can take seconds to run it (#220), so
+// its start gets 30 s: well inside waitBudget, so a start that never ends
+// still fails the test that waits on it.
 func appOptions(dir string) app.Options {
-	return app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour, AgentStartTimeout: 2 * time.Second}
+	return app.Options{Dir: dir, Port: new(int), RefreshInterval: time.Hour, AgentStartTimeout: 30 * time.Second}
 }
 
 // startSession posts a New Session and returns the new Session's ID.
@@ -66,7 +69,7 @@ func waitEnded(t *testing.T, tab *websocket.Conn, id string) map[string]any {
 // waitFor reads events from tab until a summary of Session id matches ok.
 func waitFor(t *testing.T, tab *websocket.Conn, id, what string, ok func(map[string]any) bool) map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(waitBudget)
 	for time.Now().Before(deadline) {
 		ev := nextEvent(t, tab, time.Until(deadline))
 		if ev == nil {

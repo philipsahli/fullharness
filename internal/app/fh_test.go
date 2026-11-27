@@ -20,6 +20,24 @@ import (
 	"github.com/philipsahli/fullharness/internal/app"
 )
 
+// waitBudget bounds how long a test waits for something fh does in the
+// background: an event, a turn, a PR. A passing test goes on the moment the
+// thing happens, so it never waits the budget out; the budget only decides
+// how long a broken test hangs before it fails. It is generous because make
+// stress runs this package in parallel, often beside other stress runs, and
+// on such a machine one Autopilot step took 3-4 s (#220).
+const waitBudget = 60 * time.Second
+
+// turnGate returns a path for the fake Agent's waitFile step and a function
+// that opens it. A turn that waits on the gate holds still until the test
+// has done what must happen during the turn, however slow the machine is,
+// where a sleepMs step only gives the test a window it can miss (#220).
+func turnGate(t *testing.T) (path string, open func()) {
+	t.Helper()
+	path = filepath.Join(t.TempDir(), "gate")
+	return path, func() { writeFile(t, path, "") }
+}
+
 // fh is one in-process fh launch against a temp config/state folder. Tests
 // drive it only over HTTP and WebSocket, the way the UI does.
 type fh struct {
@@ -121,7 +139,7 @@ func (f *fh) dialWSPath(c *http.Client, origin, path string) (*websocket.Conn, i
 		h.Set("Origin", origin)
 	}
 	wsURL := "ws" + strings.TrimPrefix(f.origin(), "http") + path
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), waitBudget)
 	defer cancel()
 	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPClient: c, HTTPHeader: h})
 	status := 0
@@ -137,7 +155,7 @@ func (f *fh) dialWSPath(c *http.Client, origin, path string) (*websocket.Conn, i
 // readEvent reads one JSON event from the event channel.
 func readEvent(t *testing.T, conn *websocket.Conn) map[string]any {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), waitBudget)
 	defer cancel()
 	var ev map[string]any
 	if err := wsjson.Read(ctx, conn, &ev); err != nil {

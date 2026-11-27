@@ -43,8 +43,9 @@ type action struct {
 	Permission *toolAction `json:"permission,omitempty"` // request permission, then say the chosen option
 	WaitCancel bool        `json:"waitCancel,omitempty"` // block until session/cancel, then end with cancelled
 	SleepMS    int         `json:"sleepMs,omitempty"`
-	Stderr     string      `json:"stderr,omitempty"` // write a line to stderr
-	Exit       *int        `json:"exit,omitempty"`   // exit the process with this code
+	WaitFile   string      `json:"waitFile,omitempty"` // block until this path exists, so a test holds the turn open as long as it needs
+	Stderr     string      `json:"stderr,omitempty"`   // write a line to stderr
+	Exit       *int        `json:"exit,omitempty"`     // exit the process with this code
 	WriteFile  string      `json:"writeFile,omitempty"`
 	ReadFile   string      `json:"readFile,omitempty"` // ask the client for fs/read_text_file of this path, which fh refuses
 
@@ -373,6 +374,17 @@ func (a *agent) run(ctx context.Context, sid acp.SessionId, steps []action) (boo
 			case <-time.After(time.Duration(s.SleepMS) * time.Millisecond):
 			case <-ctx.Done():
 				return true, nil
+			}
+		case s.WaitFile != "":
+			for {
+				if _, err := os.Stat(s.WaitFile); err == nil {
+					break
+				}
+				select {
+				case <-time.After(10 * time.Millisecond):
+				case <-ctx.Done():
+					return true, nil
+				}
 			}
 		case s.Stderr != "":
 			fmt.Fprintln(os.Stderr, s.Stderr)
