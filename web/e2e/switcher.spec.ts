@@ -53,8 +53,11 @@ test("⌘K finds a Ticket of the board's Project and opens its Feature at the ro
     await search.fill("#12");
     await expect(options).toHaveCount(1);
     await expect(options.first()).toContainText("Shop session cookie · Login");
+    // The closed #13 comes after the pause, dimmed (#255).
     await search.fill("13");
-    await expect(dialog.getByText("No match.")).toBeVisible();
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveClass(/closed/);
+    await expect(options.first()).toContainText("Shop logout · Login · Closed");
 
     await search.fill("#12");
     await expect(options).toHaveCount(1);
@@ -71,6 +74,117 @@ test("⌘K finds a Ticket of the board's Project and opens its Feature at the ro
     await expect(
       detail.getByRole("listitem").filter({ hasText: "Shop login form" }),
     ).not.toHaveClass(/sw-flash/);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// Closed and merged items come dimmed, once typing stops (#255). A shipped
+// Spec opens its Feature page, a closed Ticket its row; what fh doesn't
+// show (a closed issue off the board, a merged PR) opens on GitHub.
+test("⌘K lists closed and merged items dimmed and opens each where fh shows it", async ({
+  page,
+  context,
+}) => {
+  const PATH = fakeGhPath(
+    [
+      { number: 10, title: "Login", state: "CLOSED", labels: ["spec"], subIssues: [11] },
+      { number: 11, title: "Login form", state: "CLOSED", labels: ["ready-for-agent"], parent: 10 },
+      { number: 20, title: "Search", labels: ["ready-for-agent"], subIssues: [21] },
+      { number: 21, title: "Search box", labels: ["ready-for-agent"], parent: 20 },
+    ],
+    {
+      prs: [{ number: 12, title: "Add the login form", headRefName: "11-form", state: "MERGED" }],
+      numbered: {
+        77: {
+          title: "Board read fails behind a proxy",
+          state: "closed",
+          url: "https://github.com/someone/shop/issues/77",
+        },
+      },
+    },
+  );
+  // A pick that opens GitHub opens a tab; it never leaves this machine.
+  await context.route("https://github.com/**", (r) => r.fulfill({ body: "GitHub" }));
+  const fh = await Fh.start({ env: { PATH } });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects
+      .getByLabel("Path to a git repository")
+      .fill(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"));
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+    await page.getByRole("tab", { name: "Software factory" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByLabel("Find a Session, Ticket or number");
+    const options = dialog.getByRole("option");
+    const open = async (q: string) => {
+      await page.keyboard.press("ControlOrMeta+k");
+      await search.fill(q);
+    };
+
+    // A closed issue no board has: GitHub's answer, dimmed.
+    await open("#77");
+    await expect(dialog.getByText("Looking up closed and merged #77 on GitHub…")).toBeVisible();
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveClass(/closed/);
+    await expect(options.first()).toContainText("Issue#77Board read fails behind a proxy · Closed");
+    await expect(options.first()).toContainText("GitHub ↗");
+    await expect(dialog.locator(".pal-foot")).toContainText("cached for 5 min · 1 closed");
+    const tab = page.waitForEvent("popup");
+    await page.keyboard.press("Enter");
+    expect((await tab).url()).toBe("https://github.com/someone/shop/issues/77");
+    await (await tab).close();
+
+    // owner/repo#N with a type word works on a looked-up item too (#256).
+    await open("Issue someone/shop#77");
+    await expect(
+      dialog.getByText("Looking up closed and merged someone/shop#77 on GitHub…"),
+    ).toBeVisible();
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveClass(/closed/);
+    await expect(options.first()).toContainText("Issue#77Board read fails behind a proxy");
+    await search.fill("PR someone/shop#77");
+    await expect(
+      dialog.getByText("Nothing numbered someone/shop#77 in your Projects."),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // A number nobody has.
+    await open("404");
+    await expect(dialog.getByText("Nothing numbered 404 in your Projects.")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // A shipped Spec opens its Feature page.
+    await open("10");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveClass(/closed/);
+    await expect(options.first()).toContainText("Spec#10Login · Shipped");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("region", { name: "Feature Login" })).toBeVisible();
+
+    // A closed Ticket opens its Feature at its row.
+    await open("11");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Ticket#11Login form · Login · Closed");
+    await page.keyboard.press("Enter");
+    await expect(
+      page
+        .getByRole("region", { name: "Feature Login" })
+        .getByRole("listitem")
+        .filter({ hasText: "Login form" }),
+    ).toHaveClass(/sw-flash/);
+
+    // A merged PR of a closed Ticket, dimmed, with its Ticket.
+    await open("12");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText(
+      "PR#12Add the login form · #11 Login form · Merged",
+    );
   } finally {
     await fh.dispose();
   }

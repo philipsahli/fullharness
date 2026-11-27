@@ -98,6 +98,12 @@ type ghFake struct {
 	prComments func() string
 	// issueComments are the `issue comment` commands, one per line (#225).
 	issueComments func() string
+	// setIssue sets what `api repos/{owner}/{repo}/issues/<n>` answers for
+	// n (#255); a number without one gets GitHub's 404. issueCalls counts
+	// those reads; failIssues makes each fail, as a GitHub outage would.
+	setIssue   func(n int, v map[string]any)
+	issueCalls func() int
+	failIssues func()
 }
 
 // newFakeGh writes this test's fake gh. gh runs it in the repos linkFakeGh
@@ -132,6 +138,8 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	created := filepath.Join(dir, "labels-created")
 	commentsFile := filepath.Join(dir, "pr-comments")
 	issueCommentsFile := filepath.Join(dir, "issue-comments")
+	issueCallsFile := filepath.Join(dir, "issue-calls")
+	issueFails := filepath.Join(dir, "issue-fails")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
@@ -144,6 +152,9 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		"  \"pr view \"*) if [ -f \"" + dir + "/pr-$3.json\" ]; then cat \"" + dir + "/pr-$3.json\"; else echo '{\"files\":[],\"body\":\"\"}'; fi ;;\n" +
 		"  \"pr comment \"*) echo \"$*\" >> \"" + commentsFile + "\" ;;\n" +
 		"  \"issue comment \"*) echo \"$*\" >> \"" + issueCommentsFile + "\" ;;\n" +
+		"  \"api repos/\"*) echo x >> \"" + issueCallsFile + "\"; n=\"${2##*/}\"\n" +
+		"    if [ -f \"" + issueFails + "\" ]; then echo 'gh: Server Error (HTTP 502)' >&2; exit 1; fi\n" +
+		"    if [ -f \"" + dir + "/issue-$n.json\" ]; then cat \"" + dir + "/issue-$n.json\"; else echo '{\"message\":\"Not Found\"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi ;;\n" +
 		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
@@ -197,7 +208,10 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 			b, _ := os.ReadFile(issueCommentsFile) // no file yet means none
 			return string(b)
 		},
-		hold: func() { writeFile(t, gate, "") },
+		setIssue:   func(n int, v map[string]any) { write(fmt.Sprintf("issue-%d.json", n), v) },
+		issueCalls: count(issueCallsFile),
+		failIssues: func() { writeFile(t, issueFails, "") },
+		hold:       func() { writeFile(t, gate, "") },
 		release: func() {
 			if err := os.Remove(gate); err != nil && !os.IsNotExist(err) {
 				t.Error(err)

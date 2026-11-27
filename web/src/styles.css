@@ -1264,6 +1264,61 @@ span.agent i {
   letter-spacing: 0;
   font-weight: 500;
 }
+/* Closed and merged results (#255), as the mockup's Switcher draws them:
+   dimmed, a dashed tag and a struck-through number. They arrive after the
+   GitHub lookup and fade in. */
+.switcher li.closed .t {
+  color: var(--muted);
+  opacity: 0.8;
+}
+.switcher li.closed .ptag {
+  background: transparent;
+  border-style: dashed;
+}
+.switcher li.closed .t .pnum {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.switcher li.closed {
+  animation: pal-in 0.35s ease-out both;
+}
+/* What a number query is waiting for, and where its results came from. */
+.switcher .pal-foot {
+  border-top: 1px solid var(--line);
+  padding: 7px 14px;
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 31px;
+}
+.switcher .pal-foot .spin {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: pal-spin 0.8s linear infinite;
+  flex: none;
+}
+@keyframes pal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+@keyframes pal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .switcher li.closed,
+  .switcher .pal-foot .spin {
+    animation: none;
+  }
+}
 /* Where a Switcher pick landed: a short glow on the Ticket's row. */
 .sw-flash {
   animation: sw-flash 1.8s ease-out;
