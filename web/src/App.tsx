@@ -3,9 +3,10 @@ import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./Sessions";
 import { Switcher } from "./Switcher";
-import { Board } from "./Board";
+import { Board, type BoardFocus } from "./Board";
+import { Roadmap } from "./Roadmap";
 
-type View = "sessions" | "factory" | "inbox";
+type View = "sessions" | "factory" | "roadmap" | "inbox";
 
 export function App() {
   const [view, setView] = useState<View>("sessions");
@@ -36,6 +37,13 @@ export function App() {
   const [conn, update, reconnect] = useEventChannel(showNotification);
 
   const [switcher, setSwitcher] = useState(false);
+  // A Feature the Roadmap's Open asked the board to show. Picking a tab
+  // yourself drops it, so the board opens as you left it.
+  const [focus, setFocus] = useState<BoardFocus | undefined>();
+  const pickTab = (v: View) => {
+    setFocus(undefined);
+    setView(v);
+  };
 
   // ⌘K on macOS, Ctrl+K elsewhere, from anywhere in the page.
   useEffect(() => {
@@ -77,13 +85,16 @@ export function App() {
           Jump to a Session… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views">
-          <Tab view="sessions" current={view} onSelect={setView}>
+          <Tab view="sessions" current={view} onSelect={pickTab}>
             Sessions
           </Tab>
-          <Tab view="factory" current={view} onSelect={setView}>
+          <Tab view="factory" current={view} onSelect={pickTab}>
             Software factory
           </Tab>
-          <Tab view="inbox" current={view} onSelect={setView}>
+          <Tab view="roadmap" current={view} onSelect={pickTab}>
+            Roadmap
+          </Tab>
+          <Tab view="inbox" current={view} onSelect={pickTab}>
             Inbox{" "}
             <span className="count" data-zero={inboxCount === 0 || undefined}>
               {inboxCount}
@@ -127,6 +138,15 @@ export function App() {
               projects={snapshot.projects}
               autopilot={snapshot.autopilot}
               onStart={newSession}
+              focus={focus}
+            />
+          )}
+          {view === "roadmap" && (
+            <Roadmap
+              onOpen={(project, feature) => {
+                setFocus({ project, feature });
+                setView("factory");
+              }}
             />
           )}
           {view === "inbox" && snapshot && (
