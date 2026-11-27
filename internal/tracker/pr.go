@@ -9,6 +9,7 @@ import (
 // PR is one pull request as `gh pr list --json` returns it (FetchPRs).
 type PR struct {
 	Number      int     `json:"number"`
+	Title       string  `json:"title"`
 	HeadRefName string  `json:"headRefName"`
 	Body        string  `json:"body"`
 	State       string  `json:"state"` // OPEN, CLOSED or MERGED

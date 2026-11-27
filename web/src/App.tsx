@@ -116,7 +116,7 @@ export function App() {
           </button>
         )}
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
-          Find a Session or Ticket… <kbd>{shortcutLabel}</kbd>
+          Find a Session, Ticket or number… <kbd>{shortcutLabel}</kbd>
         </button>
         <div className="tabs" role="tablist" aria-label="Views" onKeyDown={onTabKey}>
           {tabs.map((t) => (
@@ -144,7 +144,16 @@ export function App() {
             setView("sessions");
             setOpened(id);
           }}
-          onOpenTicket={(project, feature, ticket) => showOnBoard({ project, feature, ticket })}
+          onOpenResult={(r) => {
+            const o = r.opens;
+            if (o.place === "github") {
+              if (o.url) window.open(o.url, "_blank", "noopener");
+            } else if (o.place === "triage") {
+              showOnBoard({ project: r.project, triage: o.ref });
+            } else {
+              showOnBoard({ project: r.project, feature: o.feature, ticket: o.ticket });
+            }
+          }}
           onNew={() => newSession()}
           onClose={() => setSwitcher(false)}
         />

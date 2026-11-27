@@ -3,6 +3,9 @@ import { Fh } from "./fh";
 import { fakeGhPath } from "./gh";
 import { tempRepo, tempRepoWith, withOrigin } from "./repo";
 
+const ticket = (n: string, title: string, status: string) =>
+  `# ${n}: ${title}\n\n**Blocked by:** None\n\n**Status:** ${status}\n`;
+
 // ⌘K finds the open Tickets of the board's Project (#195): by number or by
 // words in the title, after the Sessions, and a pick opens the Ticket's
 // Feature on the board with its row marked.
@@ -35,7 +38,7 @@ test("⌘K finds a Ticket of the board's Project and opens its Feature at the ro
 
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Switcher" });
-    const search = dialog.getByLabel("Find a Session or Ticket");
+    const search = dialog.getByLabel("Find a Session, Ticket or number");
     const options = dialog.getByRole("option");
 
     // Words: the Session first, then the open Tickets in board order; the
@@ -111,7 +114,7 @@ test("⌘K is a combobox that names the highlighted option and keeps focus", asy
 
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Switcher" });
-    const search = dialog.getByRole("combobox", { name: "Find a Session or Ticket" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session, Ticket or number" });
     const options = dialog.getByRole("option");
     // Modal, as the mockup's openPalette: the page behind is inert to a
     // screen reader while the Switcher is open.
@@ -183,7 +186,7 @@ test("⌘K option ids hold no whitespace and stay unique when a Feature id has a
 
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Switcher" });
-    const search = dialog.getByRole("combobox", { name: "Find a Session or Ticket" });
+    const search = dialog.getByRole("combobox", { name: "Find a Session, Ticket or number" });
     const options = dialog.getByRole("option");
     await search.fill("toggle");
     await expect(options).toHaveCount(2);
@@ -194,6 +197,110 @@ test("⌘K option ids hold no whitespace and stay unique when a Feature id has a
     await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
     await page.keyboard.press("ArrowDown");
     await expect(search).toHaveAttribute("aria-activedescendant", ids[1]);
+  } finally {
+    await fh.dispose();
+  }
+});
+
+// A number finds every open Spec, Ticket, PR and issue with that number in
+// all Projects, the board's Project first, each with a grey type tag
+// (#254). A pick opens it where fh shows it.
+test("⌘K finds anything by number across Projects and opens it where fh shows it", async ({
+  page,
+}) => {
+  const PATH = fakeGhPath(
+    [
+      { number: 10, title: "Login", labels: ["ready-for-agent"], subIssues: [11] },
+      { number: 11, title: "Login form", labels: ["ready-for-agent"], parent: 10 },
+      { number: 2, title: "Drift alert fires twice", labels: ["needs-triage"] },
+    ],
+    { prs: [{ number: 21, title: "Add the login form", headRefName: "11-form", state: "OPEN" }] },
+  );
+  const fh = await Fh.start({ env: { PATH } });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    const add = async (dir: string, name: string) => {
+      await projects.getByRole("button", { name: "+ Add Project" }).click();
+      await projects.getByLabel("Path to a git repository").fill(dir);
+      await projects.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(projects).toContainText(name);
+    };
+    await add(withOrigin(tempRepo("shop"), "git@github.com:someone/shop.git"), "shop");
+    await add(
+      tempRepoWith("notes", {
+        ".scratch/tags/spec.md": "# Tags\n",
+        ".scratch/tags/issues/02-colour.md": ticket("02", "Tag colour", "ready-for-agent"),
+      }),
+      "notes",
+    );
+    // The board shows shop, so shop's items come first.
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    await page.getByRole("combobox", { name: "Project" }).selectOption({ label: "shop" });
+
+    const dialog = page.getByRole("dialog", { name: "Switcher" });
+    const search = dialog.getByLabel("Find a Session, Ticket or number");
+    const options = dialog.getByRole("option");
+    const open = async (q: string) => {
+      await page.keyboard.press("ControlOrMeta+k");
+      await search.fill(q);
+    };
+
+    // #2 is an issue in shop and a Ticket in notes: two Project groups.
+    await open("#2");
+    await expect(options).toHaveCount(2);
+    await expect(dialog.locator("li.pgroup")).toHaveText(["shop· this Project", "notes"]);
+    await expect(options.nth(0)).toContainText("Issue#2Drift alert fires twice");
+    await expect(options.nth(0)).toContainText("→ Needs triage");
+    await expect(options.nth(1)).toContainText("Ticket#02Tag colour · Tags");
+    // By-number rows take part in the highlight (#248): each has its own id,
+    // which aria-activedescendant names as the keys move.
+    const ids = await options.evaluateAll((els) => els.map((el) => el.id));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(id).toMatch(/^\S+$/);
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
+    await page.keyboard.press("ArrowDown");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[1]);
+    await page.keyboard.press("ArrowUp");
+    await expect(search).toHaveAttribute("aria-activedescendant", ids[0]);
+    await page.keyboard.press("Enter");
+    await expect(
+      page
+        .getByRole("region", { name: "Needs triage" })
+        .getByRole("listitem")
+        .filter({ hasText: "Drift alert fires twice" }),
+    ).toHaveClass(/sw-flash/);
+
+    // A Spec opens its Feature page.
+    await open("10");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Spec#10Login");
+    await expect(options.first()).toContainText("→ Feature page");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("region", { name: "Feature Login" })).toBeVisible();
+
+    // An open PR opens its Ticket's row.
+    await open("21");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("PR#21Add the login form · #11 Login form");
+    await page.keyboard.press("Enter");
+    await expect(
+      page
+        .getByRole("region", { name: "Feature Login" })
+        .getByRole("listitem")
+        .filter({ hasText: "Login form" }),
+    ).toHaveClass(/sw-flash/);
+
+    // A Ticket in another Project opens that Project's board at its row.
+    await open("2");
+    await options.nth(1).click();
+    await expect(
+      page
+        .getByRole("region", { name: "Feature Tags" })
+        .getByRole("listitem")
+        .filter({ hasText: "Tag colour" }),
+    ).toHaveClass(/sw-flash/);
   } finally {
     await fh.dispose();
   }

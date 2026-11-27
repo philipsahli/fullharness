@@ -1245,6 +1245,25 @@ span.agent i {
 .switcher li[aria-selected="true"] > .s {
   color: var(--fg);
 }
+/* A number lists its results grouped (#254), as the mockup's Switcher
+   does: Sessions, then the board's Project, then the others by name. */
+.switcher li.pgroup {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 8px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: default;
+}
+.switcher li.pgroup small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
 /* Where a Switcher pick landed: a short glow on the Ticket's row. */
 .sw-flash {
   animation: sw-flash 1.8s ease-out;
@@ -2696,4 +2715,17 @@ svg.flow .fl-node[role="button"]:hover circle {
   .note-box {
     animation: none;
   }
+}
+
+/* Request changes (#227): a screenshot saved since the user's request
+   carries a "new" mark, in the waiting colour like the item. */
+.shot span .new {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-family: var(--f-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ap-waiting);
+  background: var(--ap-waiting-tint);
 }

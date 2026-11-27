@@ -20,6 +20,7 @@ export type GhIssue = {
 // GhPR is one PR, in any state, as `gh pr list --json number,headRefName,body` gives it.
 export type GhPR = {
   number: number;
+  title?: string;
   headRefName: string;
   body?: string;
   state?: "OPEN" | "CLOSED" | "MERGED";

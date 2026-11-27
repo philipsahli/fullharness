@@ -610,7 +610,7 @@ test("⌘K finds a Session by Project and opens it", async ({ page }) => {
 
     await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Switcher" });
-    await dialog.getByLabel("Find a Session or Ticket").fill("billing claude");
+    await dialog.getByLabel("Find a Session, Ticket or number").fill("billing claude");
     await expect(dialog.getByRole("option")).toHaveCount(1);
     await page.keyboard.press("Enter");
 
