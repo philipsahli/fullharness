@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -90,6 +91,11 @@ type ghFake struct {
 	// labelsCreated are the `label create` commands, one per line.
 	missingLabels func(labels ...string)
 	labelsCreated func() string
+	// setPRView sets what `pr view <n> --json files,body` answers for PR
+	// n: its changed files and description (#226). prComments are the
+	// `pr comment` commands, one per line.
+	setPRView  func(n int, files []string, body string)
+	prComments func() string
 }
 
 // newFakeGh writes this test's fake gh. gh runs it in the repos linkFakeGh
@@ -122,6 +128,7 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	after := filepath.Join(dir, "issues-after-edit.json")
 	missing := filepath.Join(dir, "missing-labels")
 	created := filepath.Join(dir, "labels-created")
+	commentsFile := filepath.Join(dir, "pr-comments")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
@@ -131,6 +138,8 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		"    if [ -f \"" + after + "\" ]; then mv \"" + after + "\" \"" + dir + "/issues.json\"; fi ;;\n" +
 		"  \"label create \"*) echo \"$*\" >> \"" + created + "\"\n" +
 		"    if [ -f \"" + missing + "\" ]; then grep -vxF \"$3\" \"" + missing + "\" > \"" + missing + ".new\"; mv \"" + missing + ".new\" \"" + missing + "\"; fi ;;\n" +
+		"  \"pr view \"*) if [ -f \"" + dir + "/pr-$3.json\" ]; then cat \"" + dir + "/pr-$3.json\"; else echo '{\"files\":[],\"body\":\"\"}'; fi ;;\n" +
+		"  \"pr comment \"*) echo \"$*\" >> \"" + commentsFile + "\" ;;\n" +
 		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
@@ -167,6 +176,17 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		},
 		labelsCreated: func() string {
 			b, _ := os.ReadFile(created) // no file yet means none
+			return string(b)
+		},
+		setPRView: func(n int, files []string, body string) {
+			fs := []map[string]any{}
+			for _, f := range files {
+				fs = append(fs, map[string]any{"path": f})
+			}
+			write(fmt.Sprintf("pr-%d.json", n), map[string]any{"files": fs, "body": body})
+		},
+		prComments: func() string {
+			b, _ := os.ReadFile(commentsFile) // no file yet means none
 			return string(b)
 		},
 		hold: func() { writeFile(t, gate, "") },

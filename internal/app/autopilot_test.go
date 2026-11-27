@@ -149,7 +149,8 @@ func TestAutopilotStartsTheNextStartableTicket(t *testing.T) {
 	}
 	id, _ := s["id"].(string)
 	f.waitTurnEnded(c, id)
-	if got := userTexts(f.transcript(c, id)); len(got) != 1 || got[0] != "/implement .scratch/login/issues/01-form.md" {
+	// The first line is the skill; the screenshot note follows it (#226).
+	if got := userTexts(f.transcript(c, id)); len(got) != 1 || firstLine(got[0]) != "/implement .scratch/login/issues/01-form.md" {
 		t.Errorf("prompt %v, want the implement skill on the Ticket", got)
 	}
 }
@@ -338,7 +339,7 @@ func TestAutopilotReviewsATicketInItsOwnSessionOnceItsPRIsOpen(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(got) != 2 || got[0] != "/implement #11" || got[1] != "/code-review #11" {
+	if len(got) != 2 || firstLine(got[0]) != "/implement #11" || got[1] != "/code-review #11" {
 		t.Fatalf("turns %v, want implement, then code-review in the same Session", got)
 	}
 	if n := len(f.autopilotSessions(c)); n != 1 {

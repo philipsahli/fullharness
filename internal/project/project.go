@@ -49,6 +49,22 @@ type Settings struct {
 	Autopilot bool `json:"autopilot" toml:"autopilot,omitempty"`
 	// Agent is the Agent Autopilot starts; empty means Claude Code.
 	Agent string `json:"agent,omitempty" toml:"agent,omitempty"`
+	// UIPaths are the paths that make up the Project's screens: a PR that
+	// changes a file under one stops at Screenshot review (ADR-0014).
+	// Empty means DefaultUIPaths.
+	UIPaths []string `json:"uiPaths,omitempty" toml:"uiPaths,omitempty"`
+}
+
+// DefaultUIPaths are a Project's UI paths until the user sets them:
+// fullharness's own screens.
+var DefaultUIPaths = []string{"web/src/**"}
+
+// ScreenPaths are the Project's UI paths, or DefaultUIPaths.
+func (s Settings) ScreenPaths() []string {
+	if len(s.UIPaths) == 0 {
+		return DefaultUIPaths
+	}
+	return s.UIPaths
 }
 
 // Registry is the list of Projects. It is safe for concurrent use.
@@ -194,8 +210,19 @@ func (r *Registry) Remove(path string) error {
 	return r.set(slices.Delete(list, i, i+1), true)
 }
 
-// SetAutopilot sets the Project's Autopilot settings and saves them.
+// SetAutopilot sets the Project's Autopilot switch and Agent and saves
+// them; its other settings stay.
 func (r *Registry) SetAutopilot(path string, settings Settings) error {
+	return r.update(path, func(s *Settings) { s.Autopilot, s.Agent = settings.Autopilot, settings.Agent })
+}
+
+// SetUIPaths sets the Project's UI paths and saves them; none means
+// DefaultUIPaths.
+func (r *Registry) SetUIPaths(path string, paths []string) error {
+	return r.update(path, func(s *Settings) { s.UIPaths = paths })
+}
+
+func (r *Registry) update(path string, change func(*Settings)) error {
 	r.change.Lock()
 	defer r.change.Unlock()
 	list := r.List()
@@ -203,7 +230,7 @@ func (r *Registry) SetAutopilot(path string, settings Settings) error {
 	if i < 0 {
 		return ErrNotFound
 	}
-	list[i].Settings = settings
+	change(&list[i].Settings)
 	return r.set(list, true)
 }
 

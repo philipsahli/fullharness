@@ -5,7 +5,7 @@ import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./
 import { Switcher } from "./Switcher";
 import { Board, type BoardFocus } from "./Board";
 import { Roadmap } from "./Roadmap";
-import { awaitingApproval } from "./StopPoints";
+import { awaitingUser } from "./StopPoints";
 
 type View = "sessions" | "factory" | "roadmap" | "inbox";
 
@@ -58,8 +58,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const snapshot = conn.status === "open" ? conn.snapshot : undefined;
-  const inboxCount =
-    (snapshot?.inbox.length ?? 0) + awaitingApproval(snapshot?.autopilot ?? []).length;
+  const inboxCount = (snapshot?.inbox.length ?? 0) + awaitingUser(snapshot?.autopilot ?? []).length;
 
   return (
     <div className="app" data-connection={conn.status}>

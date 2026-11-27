@@ -23,8 +23,15 @@ const defaultAutopilotAgent = "claude"
 // newAutopilot builds Autopilot on fh's own parts: the board as tabs see
 // it, and Sessions started the way the board's buttons start them.
 // changed runs after Autopilot's history changed.
-func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
+func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifier, changed func()) (*autopilot.Runner, error) {
 	return autopilot.New(autopilot.Deps{
+		ScreenReview: func(path string, t tracker.Ticket) (stops, ok bool) {
+			p, found := d.projects.Get(path)
+			if !found {
+				return false, false
+			}
+			return screenReview(context.Background(), prc, p, t)
+		},
 		Projects: func() []autopilot.Project { return autopilotProjects(d.projects) },
 		Board: func(path string, refresh bool) ([]tracker.Feature, bool) {
 			board, ok := b.read(path, refresh)
@@ -36,6 +43,12 @@ func newAutopilot(d sessionDeps, b *boards, c *classify.Classifier, changed func
 			prompt, err := d.skillPrompt(s.Agent, s.Skill, s.Ref)
 			if err != nil {
 				return "", err
+			}
+			if err := excludeFh(s.Project); err != nil {
+				d.log.Info("add .fh/ to .git/info/exclude failed", "project", s.Project, "err", err)
+			}
+			if strings.HasPrefix(s.Skill, "implement") {
+				prompt += screenshotNote
 			}
 			link := s.Link
 			req := newSession{Project: s.Project, Agent: s.Agent, Prompt: prompt, Link: &link, autopilot: true}
@@ -137,6 +150,36 @@ func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents [
 			if p.Path == req.Path {
 				background(func(context.Context) { pilot.Step(p, true) })
 			}
+		}
+	})
+}
+
+// registerUIPathsRoute sets a Project's UI paths: the paths whose change
+// stops a PR at Screenshot review (ADR-0014). An empty list goes back to
+// the default.
+func registerUIPathsRoute(srv *server.Server, reg *project.Registry) {
+	srv.Handle("POST /api/projects/ui-paths", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path    string   `json:"path"`
+			UIPaths []string `json:"uiPaths"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"path": "…", "uiPaths": ["web/src/**", …]}`)
+			return
+		}
+		var paths []string
+		for _, p := range req.UIPaths {
+			if p = strings.TrimSpace(p); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		switch err := reg.SetUIPaths(strings.TrimSpace(req.Path), paths); {
+		case errors.Is(err, project.ErrNotFound):
+			server.WriteError(w, http.StatusNotFound, err.Error())
+		case err != nil:
+			server.WriteError(w, http.StatusInternalServerError, err.Error())
+		default:
+			w.WriteHeader(http.StatusNoContent)
 		}
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -45,6 +46,17 @@ func MarkReady(ctx context.Context, repo, ref string) error {
 	default:
 		return ErrNoWrites
 	}
+}
+
+// CommentPR posts body as a comment on PR n, such as Looks good at
+// Screenshot review (ADR-0014). PRs are GitHub's only, so this runs gh in
+// the repo; a gh failure comes back with gh's own message.
+func CommentPR(ctx context.Context, repo string, n int, body string) error {
+	if kind, _ := Detect(repo); kind != KindGitHub {
+		return ErrNoWrites
+	}
+	_, err := gh(ctx, repo, "pr", "comment", strconv.Itoa(n), "--body", body)
+	return err
 }
 
 // ErrBadGroup: the group is not a Roadmap group fh knows.

@@ -121,7 +121,7 @@ What Autopilot is doing with one Feature right now, worked out by fullharness fr
 _Avoid_: status alone (say Autopilot status), state (that is a Session state), stage (that is a Stage), progress
 
 **Screenshot review**:
-The Stop point for a PR that changes a screen, which fullharness tells from the PR's changed files (in fullharness itself, files under `web/src`), unless its description says "No visible UI change". The user sees the Agent's screenshot of the changed screen in the Inbox and picks Looks good or Request changes; merging waits until then.
+The Stop point for a PR that changes a screen, which fullharness tells from the PR's changed files: a file under one of the Project's UI paths (by default `web/src/**`), unless its description says "No visible UI change". The user sees the Agent's screenshot of the changed screen in the Inbox and picks Looks good or Request changes; merging waits until then.
 _Avoid_: UI review, visual check, design review
 
 ## Planning
