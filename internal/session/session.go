@@ -112,6 +112,10 @@ type Summary struct {
 	FolderGone bool `json:"folderGone,omitempty"`
 	// Title is the Worktree's branch until the Agent names the Session.
 	Title string `json:"title"`
+	// Tool is the title of the tool call the Agent is on in the running
+	// turn, such as "Read internal/acp/client.go"; empty between turns.
+	// Autopilot's live pulse shows it (#205).
+	Tool string `json:"tool,omitempty"`
 	// Reason and Stderr explain an Exited Session.
 	Reason string   `json:"reason,omitempty"`
 	Stderr []string `json:"stderr,omitempty"`
@@ -350,6 +354,7 @@ type session struct {
 	transcript  []Item
 	seq         int            // conversation events sent so far; see emit
 	tools       map[string]int // tool call ID → transcript index
+	toolNow     string         // ID of the tool call sum.Tool names
 	pending     map[string]*pending
 	settled     []int // transcript indexes of cards settled since the last afterSettle
 	inTurn      bool  // a prompt is running
@@ -1722,8 +1727,18 @@ func (s *session) upsertTool(id string, apply func(*Tool)) {
 	s.transcript[i].Tool = &t
 	item := s.transcript[i]
 	seq := s.nextSeqLocked()
+	// The newest tool call of the running turn is the one the Agent is on;
+	// a title update to it renames it. A reopened Session's replay runs
+	// outside a turn, so it never sets one.
+	retitled := false
+	if s.inTurn && (!ok || id == s.toolNow) && (id != s.toolNow || t.Title != s.sum.Tool) {
+		s.toolNow, s.sum.Tool, retitled = id, t.Title, true
+	}
 	s.mu.Unlock()
 	s.emit("item", seq, i, "item", item)
+	if retitled {
+		s.publish()
+	}
 }
 
 func (s *session) addItem(it Item) {
@@ -1753,6 +1768,7 @@ func (s *session) endTurn(end turnEnd) (next string) {
 	failed := end == turnFailed
 	cancelled := end == turnCancelled || s.cancelRequested
 	s.inTurn = false
+	s.toolNow, s.sum.Tool = "", "" // no tool call between turns
 	if q := s.sum.Queued; q != "" {
 		if failed || (cancelled && !s.sendNow) {
 			s.giveBackQueuedLocked()

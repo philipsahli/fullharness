@@ -363,3 +363,50 @@ func TestStampDoesNotChangeItsInput(t *testing.T) {
 		t.Errorf("Stamp changed its input: %+v", next[0])
 	}
 }
+
+// The live pulse (#205): a running Autopilot status carries the tool call
+// its Session is on, and the next tool call replaces it.
+func TestRunningCarriesTheSessionsCurrentToolCall(t *testing.T) {
+	in := status.Input{On: true,
+		Features: []tracker.Feature{feature("login")},
+		History:  []autopilot.Event{skill("login", "11", "implement", "s1", t0)},
+	}
+	for _, tool := range []string{"Read internal/acp/client.go", "Edit web/src/Board.tsx"} {
+		s := sess("s1", session.Working)
+		s.Tool = tool
+		in.Sessions = []session.Summary{s}
+		check(t, statusOf(t, "login", in), want(status.Running, func(s *status.Status) {
+			s.Skill, s.Ticket, s.Session, s.Tool = "implement", "11", "s1", tool
+		}))
+	}
+}
+
+// Only a running Autopilot status shows a tool call: at a Stop point the
+// turn has ended, whatever the Session still remembers.
+func TestAWaitingStatusCarriesNoToolCall(t *testing.T) {
+	s := skill("login", "11", "implement", "s1", t0)
+	waiting := sess("s1", session.Waiting)
+	waiting.Tool = "Read internal/acp/client.go"
+	got := statusOf(t, "login", status.Input{On: true,
+		Features: []tracker.Feature{feature("login")},
+		History:  []autopilot.Event{s, classified(s, classify.Asking, t1), stop(s, "asking", t1)},
+		Sessions: []session.Summary{waiting},
+	})
+	if got.Kind != status.Waiting || got.Tool != "" {
+		t.Errorf("got %+v, want waiting with no tool call", got)
+	}
+}
+
+// A new tool call is not a new Autopilot status: Since stays while the
+// turn moves on to its next tool call.
+func TestStampKeepsTheTimeWhenOnlyTheToolCallChanges(t *testing.T) {
+	running := want(status.Running, func(s *status.Status) {
+		s.Skill, s.Ticket, s.Session, s.Tool = "implement", "11", "s1", "Read internal/acp/client.go"
+	})
+	prev := status.Stamp(nil, []status.Status{running}, t1)
+	running.Tool = "Edit web/src/Board.tsx"
+	got := status.Stamp(prev, []status.Status{running}, t2)
+	if !got[0].Since.Equal(t1) || got[0].Tool != "Edit web/src/Board.tsx" {
+		t.Errorf("got %+v, want the new tool call since %v", got[0], t1)
+	}
+}

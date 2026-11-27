@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { command, get } from "./api";
 import type { AutopilotStatus, Project } from "./events";
-import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
+import { AutopilotBadge, AutopilotLive, goToSwitch, showsBadge } from "./Autopilot";
 import { FeatureFlow } from "./Flow";
 import { PRPart, type PR } from "./PR";
 import { LinkOrText } from "./LinkOrText";
@@ -304,6 +304,7 @@ export function Board({
                     >
                       <span className="t">{f.title}</span>
                       {ap && <AutopilotBadge status={ap} />}
+                      {ap && <AutopilotLive status={ap} />}
                       <span className="s">{breakdown(f)}</span>
                       {f.note && <span className="s note">{f.note}</span>}
                     </button>
