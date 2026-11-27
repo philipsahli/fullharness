@@ -16,6 +16,7 @@ ADR-0005 allowed one direct write, the Roadmap group. Everything else still mean
 | Create an Idea issue (label `idea`) | Board, Roadmap, File as Idea on a Retro |
 | Add the `idea` label to an existing issue | Once per Project, for issues titled `Idea: …` |
 | Close an Idea issue with "Continued in Spec #N" when its Spec is linked | Linking an Idea to its Spec |
+| Comment "Screen reviewed in fh" on a PR (`gh pr comment`, from ADR-0014) | Looks good on a Screenshot review Inbox item |
 
 Every write is started by the user, and the ones that change code or close work (merge, close or reopen a Spec) ask for confirmation first. Stage is still derived from the tracker, never stored: a write changes the tracker, and the board shows the new Stage on its next read.
 

@@ -2,16 +2,22 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/philipsahli/fullharness/internal/autopilot"
 	"github.com/philipsahli/fullharness/internal/project"
+	"github.com/philipsahli/fullharness/internal/server"
+	"github.com/philipsahli/fullharness/internal/session"
 	"github.com/philipsahli/fullharness/internal/tracker"
 )
 
@@ -89,6 +95,152 @@ func excludeFh(repo string) error {
 	}
 	return os.WriteFile(file, append(b, ".fh/\n"...), 0o644)
 }
+
+// reviewedTicket finds Ticket ticket of Feature feature on Project
+// project's board, and the Project; status and msg say why not.
+func reviewedTicket(reg *project.Registry, b *boards, sessions *session.Manager, projectPath, feature, ticket string) (p project.Project, t tracker.Ticket, status int, msg string) {
+	p, ok := reg.Get(projectPath)
+	if !ok {
+		return p, t, http.StatusNotFound, "no such Project"
+	}
+	board, ok := b.read(p.Path, false)
+	if !ok {
+		return p, t, http.StatusBadGateway, board.Note
+	}
+	tracker.Derive(board.Features, sessions.Links(p.Path))
+	for _, f := range board.Features {
+		if f.ID != feature {
+			continue
+		}
+		for _, tk := range f.Tickets {
+			if tk.Number == ticket {
+				return p, tk, 0, ""
+			}
+		}
+	}
+	return p, t, http.StatusNotFound, "no such Ticket"
+}
+
+// screenshotFolder is the screenshot folder of Ticket t's Worktree in p,
+// or "" when t has no Worktree.
+func screenshotFolder(p project.Project, t tracker.Ticket) string {
+	for _, w := range p.Worktrees {
+		if w.Branch == t.Branch && !w.Missing {
+			return filepath.Join(w.Path, screenshotDir)
+		}
+	}
+	return ""
+}
+
+// screenshots are the PNG files in dir, sorted: plain files only, so a
+// link can't lead the Inbox to a file outside the Worktree.
+func screenshots(dir string) []string {
+	out := []string{}
+	if dir == "" {
+		return out
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if e.Type().IsRegular() && strings.EqualFold(filepath.Ext(e.Name()), ".png") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// registerScreenshotReviewRoutes adds Screenshot review to the Inbox
+// (#226, ADR-0014): the Agent's screenshots, served from the Ticket's
+// Worktree only and never uploaded, and Looks good.
+func registerScreenshotReviewRoutes(srv *server.Server, reg *project.Registry, b *boards, sessions *session.Manager, pilot *autopilot.Runner, background func(func(context.Context))) {
+	// The screenshots of one Ticket's PR, and the PR.
+	srv.Handle("GET /api/autopilot/screenshots", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		p, t, status, msg := reviewedTicket(reg, b, sessions, q.Get("project"), q.Get("feature"), q.Get("ticket"))
+		if status != 0 {
+			server.WriteError(w, status, msg)
+			return
+		}
+		out := map[string]any{"screenshots": screenshots(screenshotFolder(p, t))}
+		if pr, ok := openPR(t); ok {
+			out["pr"] = pr
+		}
+		server.WriteJSON(w, http.StatusOK, out)
+	})
+	// One screenshot. name must be one listed above: a plain .png file
+	// right in the Worktree's screenshot folder.
+	srv.Handle("GET /api/autopilot/screenshot", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		p, t, status, msg := reviewedTicket(reg, b, sessions, q.Get("project"), q.Get("feature"), q.Get("ticket"))
+		if status != 0 {
+			server.WriteError(w, status, msg)
+			return
+		}
+		dir, name := screenshotFolder(p, t), q.Get("name")
+		if dir == "" || !slices.Contains(screenshots(dir), name) {
+			server.WriteError(w, http.StatusNotFound, "no such screenshot")
+			return
+		}
+		// O_NOFOLLOW: a link swapped in after the listing isn't followed.
+		f, err := os.OpenFile(filepath.Join(dir, name), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			server.WriteError(w, http.StatusNotFound, "no such screenshot")
+			return
+		}
+		defer func() { _ = f.Close() }() // read only: nothing to flush
+		info, err := f.Stat()
+		if err != nil || !info.Mode().IsRegular() {
+			server.WriteError(w, http.StatusNotFound, "no such screenshot")
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store") // the Agent may take it again
+		http.ServeContent(w, r, name, info.ModTime(), f)
+	})
+	// Looks good: the screens are right, so the PR moves on to the merge
+	// Stop point. fh says so on the PR, records it as the user's, and
+	// steps the Project at once.
+	srv.Handle("POST /api/autopilot/looks-good", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Feature string `json:"feature"`
+			Ticket  string `json:"ticket"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Project == "" || req.Feature == "" || req.Ticket == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"project": "…", "feature": "…", "ticket": "…"}`)
+			return
+		}
+		p, t, status, msg := reviewedTicket(reg, b, sessions, req.Project, req.Feature, req.Ticket)
+		if status != 0 {
+			server.WriteError(w, status, msg)
+			return
+		}
+		stop, waits := pilot.Waiting(p.Path, req.Feature, req.Ticket)
+		pr, hasPR := openPR(t)
+		if !waits || stop.Reason != autopilot.ReasonScreenshot || !hasPR {
+			server.WriteError(w, http.StatusConflict, "this Ticket's PR doesn't wait at Screenshot review")
+			return
+		}
+		// The write runs to the end even if the tab goes away (#215).
+		if err := tracker.CommentPR(context.WithoutCancel(r.Context()), p.Path, pr.Number, looksGoodComment); err != nil {
+			server.WriteError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		pilot.Answered(stop.Step, autopilot.AnswerLooksGood)
+		w.WriteHeader(http.StatusNoContent)
+		for _, ap := range autopilotProjects(reg) {
+			if ap.Path == p.Path {
+				background(func(context.Context) { pilot.Step(ap, false) })
+			}
+		}
+	})
+}
+
+// looksGoodComment is what Looks good says on the PR, so GitHub shows
+// that someone looked (ADR-0014).
+const looksGoodComment = "Screen reviewed in fh"
 
 // openPR is t's Open or Draft PR, the newest; ok is false when it has none.
 func openPR(t tracker.Ticket) (tracker.PRRecord, bool) {

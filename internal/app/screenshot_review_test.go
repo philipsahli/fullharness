@@ -143,6 +143,9 @@ func TestScreenshotsAreServedOnlyFromTheTicketsWorktree(t *testing.T) {
 	f, c, repo, _, s := reviewed(t, []string{"web/src/Board.tsx"}, "", nil)
 	f.lastStop(c, repo)
 	shots := filepath.Join(s["worktree"].(string), ".fh", "screenshots")
+	if err := os.MkdirAll(shots, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeFile(t, filepath.Join(shots, "board.png"), "\x89PNG fake")
 	writeFile(t, filepath.Join(shots, "notes.txt"), "not a screenshot")
 	secret := filepath.Join(t.TempDir(), "secret.png")
@@ -152,7 +155,10 @@ func TestScreenshotsAreServedOnlyFromTheTicketsWorktree(t *testing.T) {
 	}
 
 	q := url.Values{"project": {repo}, "feature": {"10"}, "ticket": {"11"}}
-	resp := get(t, c, f.origin()+"/api/autopilot/screenshots?"+q.Encode())
+	resp, err := c.Get(f.origin() + "/api/autopilot/screenshots?" + q.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
 	list := decodeObject(t, readBody(t, resp))
 	if got := list["screenshots"]; !reflect.DeepEqual(got, []any{"board.png"}) {
 		t.Errorf("screenshots %v, want only board.png", got)
