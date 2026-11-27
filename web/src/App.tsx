@@ -202,12 +202,16 @@ export function App() {
 // alone tells you a Session needs you. It is not a Notification: those are
 // the desktop alerts. Both icons are in web/public; index.html links the
 // plain one, which is what a tab shows before the event channel opens.
-function useWaitingIndicator(waiting: number) {
+const appTitle = "fullharness";
+const plainIcon = "/favicon.svg";
+const waitingIcon = "/favicon-waiting.svg";
+
+function useWaitingIndicator(waitingCount: number) {
   useEffect(() => {
-    document.title = waiting > 0 ? `(${waiting}) fullharness` : "fullharness";
+    document.title = waitingCount > 0 ? `(${waitingCount}) ${appTitle}` : appTitle;
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    icon?.setAttribute("href", waiting > 0 ? "/favicon-waiting.svg" : "/favicon.svg");
-  }, [waiting]);
+    icon?.setAttribute("href", waitingCount > 0 ? waitingIcon : plainIcon);
+  }, [waitingCount]);
 }
 
 function Tab(props: {
