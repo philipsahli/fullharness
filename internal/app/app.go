@@ -285,6 +285,7 @@ func Start(ctx context.Context, opts Options) (*Instance, error) {
 	registerAutopilotHistoryRoute(srv, pilot)
 	registerUIPathsRoute(srv, reg)
 	registerScreenshotReviewRoutes(srv, reg, boards, changes, sessions, pilot, inst.goBackground)
+	registerRequestChangesRoute(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerStopPointRoutes(srv, reg, boards, sessions, pilot, inst.goBackground)
 	registerAutopilotFlowRoute(srv, reg, boards, sessions, pilot, statuses)
 	log.Info("fh started", "port", port, "dir", opts.Dir, "dev", opts.Dev)
