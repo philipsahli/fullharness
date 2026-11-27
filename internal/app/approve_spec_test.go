@@ -87,7 +87,7 @@ func TestApproveSpecMarksTheSpecReadyAndStartsTheNextSkillAtOnce(t *testing.T) {
 	}
 	id, _ := s["id"].(string)
 	var got []string
-	for deadline := time.Now().Add(statusWait); len(got) == 0 && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(waitBudget); len(got) == 0 && time.Now().Before(deadline); {
 		if got = userTexts(f.transcript(c, id)); len(got) == 0 {
 			time.Sleep(50 * time.Millisecond)
 		}
