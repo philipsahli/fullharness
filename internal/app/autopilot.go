@@ -141,6 +141,36 @@ func registerAutopilotRoutes(srv *server.Server, reg *project.Registry, agents [
 	})
 }
 
+// registerUIPathsRoute sets a Project's UI paths: the paths whose change
+// stops a PR at Screenshot review (ADR-0014). An empty list goes back to
+// the default.
+func registerUIPathsRoute(srv *server.Server, reg *project.Registry) {
+	srv.Handle("POST /api/projects/ui-paths", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path    string   `json:"path"`
+			UIPaths []string `json:"uiPaths"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"path": "…", "uiPaths": ["web/src/**", …]}`)
+			return
+		}
+		var paths []string
+		for _, p := range req.UIPaths {
+			if p = strings.TrimSpace(p); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		switch err := reg.SetUIPaths(strings.TrimSpace(req.Path), paths); {
+		case errors.Is(err, project.ErrNotFound):
+			server.WriteError(w, http.StatusNotFound, err.Error())
+		case err != nil:
+			server.WriteError(w, http.StatusInternalServerError, err.Error())
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+}
+
 // registerAutopilotHistoryRoute shows what Autopilot did per Feature (#112),
 // for the Loop view (#114); ?project= narrows it to one Project.
 func registerAutopilotHistoryRoute(srv *server.Server, pilot *autopilot.Runner) {
