@@ -167,6 +167,9 @@ export type AutopilotStatus = {
   ticket?: string;
   reason?: AutopilotReason;
   tool?: string; // running only: the tool call the turn is on (#205)
+  // outsideNow marks a running turn of a Feature that left Roadmap Now
+  // (#204): "Session running outside Now" until the turn ends.
+  outsideNow?: boolean;
 };
 
 // Snapshot is the full state the server sends when the event channel opens.

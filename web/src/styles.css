@@ -1539,6 +1539,23 @@ span.agent i {
   display: flex;
   flex-direction: column;
 }
+/* "Session running outside Now" (#204): the mockup's .warn pill with an ↗. */
+.ap-outside {
+  justify-self: start;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--waiting);
+  background: var(--waiting-soft);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.ap-outside::before {
+  content: "↗";
+  font-weight: 700;
+}
 .fcard-wrap:has(.ap-offlink) .fcard {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;

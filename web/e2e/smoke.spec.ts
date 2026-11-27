@@ -272,6 +272,54 @@ test("a running Feature's card follows its Agent's tool calls live", async ({ pa
   }
 });
 
+// Leaving Now (#204, ADR-0013): a Feature moved out of Now mid-turn keeps
+// running, marked "Session running outside Now", until its turn ends.
+test("a Feature moved out of Now mid-turn shows Session running outside Now until the turn ends", async ({
+  page,
+}) => {
+  const spec = (group: string) =>
+    `# Search\n\n**Roadmap:** ${group}\n\n**Status:** ready-for-agent\n`;
+  const repo = tempRepoWith("shop", { ".scratch/search/spec.md": spec("now") });
+  const fh = await Fh.start({
+    ghPRs: [],
+    agentScript: { default: [{ sleepMs: 4000 }, { say: "Which labels should the tickets get?" }] },
+    verdict: "asking",
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const projects = page.getByRole("region", { name: "Projects" });
+    await projects.getByRole("button", { name: "+ Add Project" }).click();
+    await projects.getByLabel("Path to a git repository").fill(repo);
+    await projects.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(projects).toContainText("main tree");
+
+    await page.getByRole("tab", { name: "Software factory" }).click();
+    const wrap = page.locator('.column[aria-label="Spec"] .fcard-wrap', { hasText: "Search" });
+    const badge = wrap.getByRole("img", { name: /^Autopilot status/ });
+    const mark = wrap.getByText("Session running outside Now");
+    const toggle = projects.getByRole("checkbox", { name: "Autopilot" });
+    await toggle.click();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Running /to-tickets");
+    await expect(mark).toHaveCount(0);
+
+    // The user moves Search to Next mid-turn. fh notices a tracker change
+    // on its next look; switching Autopilot off and on looks at once.
+    writeFileSync(path.join(repo, ".scratch/search/spec.md"), spec("next"));
+    await toggle.click();
+    await toggle.click();
+    await expect(mark).toBeVisible();
+    await expect(badge).toHaveAccessibleName("Autopilot status: Running /to-tickets");
+
+    // The turn ends: the Feature is outside Now and nothing runs, so the
+    // card is quiet again.
+    await expect(mark).toHaveCount(0, { timeout: 10_000 });
+    await expect(badge).toHaveCount(0);
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("in dev mode a restarted fh reloads the open tab instead of stopping it", async ({ page }) => {
   const fh = await Fh.start({ dev: true });
   try {
