@@ -33,9 +33,14 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	guardCleanup, err := installAgentGuard()
+	if err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	cleanup()
 	ghCleanup()
+	guardCleanup()
 	os.Exit(code)
 }
 
