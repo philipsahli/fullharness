@@ -251,11 +251,21 @@ func (r *Runner) TurnEnded(ctx context.Context, e session.TurnEnd, at time.Time)
 func (r *Runner) Step(p Project, refresh bool) {
 	unlock := r.lockProject(p.Path)
 	defer unlock()
-	if r.holding(p.Path) {
+	// The board is read at most once, and only when needed: a Project held
+	// by a running turn doesn't read it at all.
+	var features []tracker.Feature
+	ok, read := false, false
+	board := func() ([]tracker.Feature, bool) {
+		if !read {
+			features, ok = r.d.Board(p.Path, refresh)
+			read = true
+		}
+		return features, ok
+	}
+	if r.holding(p.Path, board) {
 		return
 	}
-	features, ok := r.d.Board(p.Path, refresh)
-	if !ok {
+	if _, ok := board(); !ok {
 		return
 	}
 	sessions := r.d.Sessions.List()
@@ -372,7 +382,15 @@ func (r *Runner) review(p Project, step Step, t tracker.Ticket, sessions []sessi
 // waiting on a permission, a question to the user, and a Session that
 // exited before its turn ended (a crash, or fh quit): each waits for the
 // user, across restarts. Closing that Session hands the Project back.
-func (r *Runner) holding(project string) bool {
+//
+// A Feature that left Roadmap Now holds the Project only while its turn
+// runs, so a Project never has two Autopilot turns at once. Once that turn
+// ended, with any verdict, or its Session exited, the wait is no longer
+// Autopilot's: the next Feature in Now goes on, and the left-behind
+// Session stays open for the user (ADR-0013).
+// board reads the Project's board; when it can't be read, the Project
+// stays held.
+func (r *Runner) holding(project string, board func() ([]tracker.Feature, bool)) bool {
 	r.mu.Lock()
 	var last *Action
 	for i := len(r.rec.Actions) - 1; i >= 0; i-- {
@@ -394,7 +412,18 @@ func (r *Runner) holding(project string) bool {
 		// wait here.
 		r.recordUnlessRepeated(Event{Step: last.Step, Kind: KindStop, Session: last.Session, Reason: ReasonExited})
 	}
-	return true
+	if last.Verdict == "" && d.State != session.Exited {
+		return true // the turn still runs
+	}
+	features, ok := board()
+	return !ok || inNow(features, last.Feature)
+}
+
+// inNow reports whether Feature id is in Roadmap Now on the board.
+func inNow(features []tracker.Feature, id string) bool {
+	return slices.ContainsFunc(features, func(f tracker.Feature) bool {
+		return f.ID == id && f.Roadmap == tracker.RoadmapNow
+	})
 }
 
 // lastActionOf is the index of id's latest Action, or -1; the caller holds

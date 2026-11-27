@@ -112,6 +112,13 @@ export function AutopilotLive({ status }: { status: AutopilotStatus }) {
   );
 }
 
+// OutsideNow is the warning beside a running Feature that left Roadmap Now
+// (#204, ADR-0013): its turn finishes, and Autopilot starts nothing new
+// for it.
+export function OutsideNow() {
+  return <span className="ap-outside">Session running outside Now</span>;
+}
+
 // showsBadge: a Feature outside Now that nothing runs for gets no badge on
 // its card; its Roadmap group already says why (the mockup).
 export function showsBadge(s: AutopilotStatus | undefined): s is AutopilotStatus {

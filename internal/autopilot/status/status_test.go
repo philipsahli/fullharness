@@ -140,6 +140,48 @@ func TestRunningEvenWithAutopilotOffAndOutsideNow(t *testing.T) {
 	}
 }
 
+// A Feature moved out of Now keeps running until its turn ends, marked
+// "Session running outside Now"; then it is off like any Feature outside
+// Now (#204, ADR-0013).
+func TestRunningOutsideNowUntilTheTurnEnds(t *testing.T) {
+	s := skill("login", "11", "implement", "s1", t0)
+	in := status.Input{On: true,
+		Features: []tracker.Feature{feature("login", inGroup("next"))},
+		History:  []autopilot.Event{s},
+		Sessions: []session.Summary{sess("s1", session.Working)},
+	}
+	check(t, statusOf(t, "login", in), want(status.Running, func(s *status.Status) {
+		s.Skill, s.Ticket, s.Session, s.OutsideNow = "implement", "11", "s1", true
+	}))
+
+	for _, end := range []struct {
+		name    string
+		history []autopilot.Event
+		state   string
+	}{
+		{"asking", []autopilot.Event{s, classified(s, classify.Asking, t1), stop(s, string(classify.Asking), t1)}, session.Waiting},
+		{"stuck", []autopilot.Event{s, classified(s, classify.Stuck, t1), stop(s, string(classify.Stuck), t1)}, session.Idle},
+		{"done", []autopilot.Event{s, classified(s, classify.Done, t1)}, session.Idle},
+		{"exited", []autopilot.Event{s}, session.Exited},
+	} {
+		t.Run(end.name, func(t *testing.T) {
+			in.History, in.Sessions = end.history, []session.Summary{sess("s1", end.state)}
+			check(t, statusOf(t, "login", in), want(status.Off, func(s *status.Status) { s.Reason = status.NotInNow }))
+		})
+	}
+}
+
+func TestARunningTurnInNowIsNotMarkedOutsideNow(t *testing.T) {
+	got := statusOf(t, "login", status.Input{On: true,
+		Features: []tracker.Feature{feature("login")},
+		History:  []autopilot.Event{skill("login", "11", "implement", "s1", t0)},
+		Sessions: []session.Summary{sess("s1", session.Working)},
+	})
+	if got.Kind != status.Running || got.OutsideNow {
+		t.Errorf("kind %s outsideNow %v, want running in Now", got.Kind, got.OutsideNow)
+	}
+}
+
 func TestIdleOnceTheTurnEndedDone(t *testing.T) {
 	s := skill("login", "11", "implement", "s1", t0)
 	got := statusOf(t, "login", status.Input{On: true,
