@@ -96,7 +96,7 @@ const prLimit = "500"
 // recent, with what a PRRecord needs.
 func FetchPRs(ctx context.Context, repo string) ([]PR, error) {
 	out, err := gh(ctx, repo, "pr", "list", "--state", "all", "--limit", prLimit,
-		"--json", "number,headRefName,body,state,isDraft,url,statusCheckRollup")
+		"--json", "number,title,headRefName,body,state,isDraft,url,statusCheckRollup")
 	if err != nil {
 		return nil, err
 	}
