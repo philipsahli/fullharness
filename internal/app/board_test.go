@@ -316,3 +316,42 @@ func TestLocalUntriagedIssuesAreNewestFirstByFileName(t *testing.T) {
 		t.Errorf("note = %q, want %q", note, "No Specs yet; 3 issues need triage")
 	}
 }
+
+func TestLocalSpecAndTicketNumbersLinkToTheirFilesInVSCode(t *testing.T) {
+	// The links name files on this machine, so the remote doesn't matter
+	// (#102): no remote, a GitLab remote and a GitHub remote all get them.
+	for name, origin := range map[string]string{
+		"no remote": "",
+		"GitLab":    "git@gitlab.com:someone/shop.git",
+		"GitHub":    "git@github.com:someone/shop.git",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fakeGh(t, nil, nil, true) // a GitHub remote makes the local board read PRs
+			f := startFh(t, t.TempDir())
+			c := f.authorisedClient()
+			repo := localBoardRepo(t)
+			if origin != "" {
+				git(t, repo, "remote", "add", "origin", origin)
+			}
+			f.addProject(c, repo)
+
+			b := f.board(c, repo)
+
+			if b["tracker"] != "local" {
+				t.Fatalf("tracker = %v, want local", b["tracker"])
+			}
+			if !filepath.IsAbs(repo) {
+				t.Fatalf("repo %s is not absolute: the URLs below would not be either", repo)
+			}
+			login := featureByID(t, b, "login")
+			want := "vscode://file" + repo + "/.scratch/login/spec.md"
+			if login["url"] != want {
+				t.Errorf("Spec url = %v, want %s", login["url"], want)
+			}
+			want = "vscode://file" + repo + "/.scratch/login/issues/02-session.md"
+			if got := ticketByNumber(t, login, "02")["url"]; got != want {
+				t.Errorf("Ticket 02 url = %v, want %s", got, want)
+			}
+		})
+	}
+}

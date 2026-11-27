@@ -293,8 +293,9 @@ tr:last-child td { border-bottom: 0; }
 .fphead .acts { margin-left: auto; }
 .ext { color: var(--accent); text-decoration: none; font-family: var(--f-mono); font-size: 12.5px; }
 .ext:hover { text-decoration: underline; }
-.fphead a.ext::after { content: " ↗"; }
-/* Spec, Ticket and blocker numbers link to their GitHub issues (#101); other #N in notes stay text (#89). */
+/* Only a link that opens a new tab gets the arrow; a vscode:// link opens VS Code in place (#102). */
+.fphead a.ext[target]::after { content: " ↗"; }
+/* Spec, Ticket and blocker numbers link to their GitHub issues (#101), or to their files in VS Code on a Local markdown tracker (#102); other #N in notes stay text (#89). */
 td.mono a { color: var(--accent); }
 td a:focus-visible, .ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stepper { display: flex; list-style: none; margin: 0; padding: 0; gap: 4px; flex-wrap: wrap; }
@@ -600,7 +601,7 @@ const projects = [
     { path: "inventory-operator", branch: "main" },
     { path: "flaky-reconcile", branch: "flaky-reconcile" },
   ]},
-  { id: "hf", name: "heroflow", tracker: "Local markdown", worktrees: [
+  { id: "hf", name: "heroflow", tracker: "Local markdown", path: "/Users/you/code/heroflow", worktrees: [
     { path: "heroflow", branch: "main" },
     { path: "idea/onboarding", branch: "idea/onboarding" },
     { path: "41-template-picker", branch: "41-template-picker" },
@@ -733,8 +734,8 @@ const factory = {
   ],
   hf: [
     { id: "f-hf1", name: "Onboarding", stage: "Idea", ref: "ideas/onboarding.md", trackerIdea: true, next: "Open grilling Session", skill: "", body: "First-run onboarding: sample Flow or empty start?" },
-    { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/", next: "Implement spec", skill: "/implement-spec",
-      tickets: [ { n: 40, t: "Template file format", stage: "Shipped" }, { n: 41, t: "Template picker", stage: "Implementing", sid: "s8" }, { n: 42, t: "Preview a template", stage: "Startable" }, { n: 43, t: "Share a template", stage: "Startable" } ] },
+    { id: "f-hf2", name: "Flow templates", stage: "Tickets", ref: ".scratch/flow-templates/spec.md", file: ".scratch/flow-templates/spec.md", next: "Implement spec", skill: "/implement-spec",
+      tickets: [ { n: 40, t: "Template file format", stage: "Shipped", file: ".scratch/flow-templates/issues/40-template-file-format.md" }, { n: 41, t: "Template picker", stage: "Implementing", sid: "s8", file: ".scratch/flow-templates/issues/41-template-picker.md" }, { n: 42, t: "Preview a template", stage: "Startable", file: ".scratch/flow-templates/issues/42-preview-a-template.md" }, { n: 43, t: "Share a template", stage: "Startable", file: ".scratch/flow-templates/issues/43-share-a-template.md" } ] },
   ],
 };
 /* Child Session requests made through fh's MCP tool start_session (ADR 0006); always need approval in the Inbox. */
@@ -810,6 +811,8 @@ const allFeats = () => Object.entries(factory).flatMap(([pid, fs]) => fs.map(f =
 const feat = id => allFeats().find(x => x.f.id === id);
 // issueLink: on a Project with a GitHub repo url, #N opens issue N there (#101); otherwise it is plain text, in a span when it has a class.
 const issueLink = (pid, n, text = `#${n}`, cls = "") => { const p = proj(pid), c = cls ? ` class="${cls}"` : ""; return p && p.url && n ? `<a${c} href="${p.url}/issues/${n}" target="_blank" rel="noopener">${text}</a>` : cls ? `<span${c}>${text}</span>` : text; };
+// fileLink: on a Local markdown tracker the Spec or Ticket number opens its file in VS Code (#102), in place, so no target.
+const fileLink = (pid, file, text, cls = "") => `<a${cls ? ` class="${cls}"` : ""} href="vscode://file${proj(pid).path}/${file}">${text}</a>`;
 const featSessions = fid => sessions.filter(s => s.fid === fid);
 // An Agent fh doesn't ship a colour for (any id not in AGENTS) gets the idle grey (ADR 0012).
 const agentOf = a => AGENTS[a] || { name: a, color: "var(--idle)" };
@@ -1060,7 +1063,7 @@ function ticketRow(fid, t) {
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info" || t.label === "needs-triage") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>${t.readyErr ? `<div class="error" role="alert">${esc(t.readyErr)}</div>` : ""}`;
-  return `<tr><td class="mono">${issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr><td class="mono">${t.file ? fileLink(feat(fid).pid, t.file, `#${t.n}`) : issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -1089,7 +1092,7 @@ function renderFeature() {
   const fups = f.followups ? `<section class="card"><h3><span>Retro follow-ups · ${f.followups.length}</span></h3><ul class="fups">${f.followups.map((x, i) => `<li><span>${esc(x.t)}</span>${x.filed ? `<span class="tag">Filed as ${x.filed}</span>` : `<button class="btn small" data-fileup="${f.id}:${i}">File as Idea</button>`}</li>`).join("")}</ul></section>` : "";
   $("#main").innerHTML = `<div class="fpage">
     <span class="crumb"><button class="btn small" data-tabgo="factory">← Software factory</button> ${p.name}</span>
-    <div class="fphead"><h2>${esc(f.name)}</h2>${issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${f.unapproved ? `<span class="lbl">${f.unapproved}</span><button class="btn small" data-readyspec="${f.id}">Mark ready-for-agent</button>` : ""}${mainBtn}</div></div>
+    <div class="fphead"><h2>${esc(f.name)}</h2>${f.file ? fileLink(pid, f.file, f.ref, "ext") : issueLink(pid, (f.ref.match(/#(\d+)/) || [])[1], f.ref, "ext")}<span class="stage ${f.stage.toLowerCase()}">${f.stage}</span>${rdBadge(f.id)}<div class="acts">${f.unapproved ? `<span class="lbl">${f.unapproved}</span><button class="btn small" data-readyspec="${f.id}">Mark ready-for-agent</button>` : ""}${mainBtn}</div></div>
     ${stepper}${apPanel(pid, f)}${callout}${tickets}${fups}${checks}${doc}</div>`;
 }
 

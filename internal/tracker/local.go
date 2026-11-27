@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,6 +44,7 @@ func ReadLocal(repo string, aheadBranches []string, prs []PR) Board {
 		// prompt names the file, relative to the Project.
 		f := Feature{ID: d.Name(), Title: heading(string(spec), d.Name()), Closed: isClosed(status(string(spec))),
 			Branch: d.Name(), Ref: filepath.ToSlash(filepath.Join(".scratch", d.Name(), "spec.md")), Tickets: []Ticket{},
+			URL:      vscodeURL(filepath.Join(dir, "spec.md")),
 			Roadmap:  strings.ToLower(field(string(spec), "Roadmap")),
 			Approved: status(string(spec)) == ReadyLabel}
 		files, _ := filepath.Glob(filepath.Join(dir, "issues", "*.md")) // a bad pattern is impossible here
@@ -55,6 +57,7 @@ func ReadLocal(repo string, aheadBranches []string, prs []PR) Board {
 			// The file's own name is a branch localBranchFor matches.
 			t.Branch = strings.TrimSuffix(filepath.Base(file), ".md")
 			t.Ref = filepath.ToSlash(filepath.Join(".scratch", d.Name(), "issues", filepath.Base(file)))
+			t.URL = vscodeURL(file)
 			mine := func(br string) bool { return localBranchFor(br, filepath.Base(file)) }
 			t.BranchAhead = slices.ContainsFunc(aheadBranches, mine)
 			t.linkPRs(prs, func(p PR) bool { return mine(p.HeadRefName) })
@@ -107,6 +110,13 @@ func readUntriaged(folder, dir string) []untriagedFile {
 		out = append(out, untriagedFile{folder: folder, file: name, issue: u})
 	}
 	return out
+}
+
+// vscodeURL opens file in VS Code (#102). It needs no remote, so a local
+// board links its numbers whatever the Project's origin is. repo comes from
+// git's top level, so file is absolute; url.URL percent-encodes spaces.
+func vscodeURL(file string) string {
+	return (&url.URL{Scheme: "vscode", Host: "file", Path: filepath.ToSlash(file)}).String()
 }
 
 var (
