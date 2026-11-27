@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { get } from "./api";
 import { byListOrder, projectName, type Project, type SessionSummary } from "./events";
 
@@ -33,6 +33,10 @@ export function Switcher(props: {
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
+  // Option ids come from the Entry key, so the input's aria-activedescendant
+  // names the same row while the list around it changes.
+  const listId = useId();
+  const optionId = (e: Entry) => `${listId}-${e.key}`;
 
   // The Tickets for the query, kept with the query they answer, so a late
   // answer to an older query is never shown under a newer one.
@@ -92,6 +96,13 @@ export function Switcher(props: {
     return [...sessions, ...ticketEntries, ...extra];
   }, [query, props, found, projectPath]);
 
+  // The highlighted row stays in sight when the keys move it past the
+  // list's edge; "nearest" leaves the list still if the row already shows.
+  const activeId = entries[active] && optionId(entries[active]);
+  useEffect(() => {
+    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
+
   const choose = (e: Entry | undefined) => {
     if (!e) return;
     e.pick();
@@ -105,12 +116,35 @@ export function Switcher(props: {
         role="dialog"
         aria-label="Switcher"
         onClick={(e) => e.stopPropagation()}
+        // Keys on the dialog, not the input, so they work wherever focus is
+        // inside it. The input is the only thing to focus here: Tab keeps
+        // focus on it, so focus never reaches the page behind until the
+        // Switcher closes.
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            props.onClose();
+          } else if (e.key === "Tab") {
+            e.preventDefault();
+            input.current?.focus();
+          }
+        }}
+        // A click on a row picks it with the mouse; keep focus on the input
+        // so the keys above still reach the dialog.
+        onMouseDown={(e) => {
+          if (e.target !== input.current) e.preventDefault();
+        }}
       >
         <input
           ref={input}
           value={query}
           placeholder="Find a Session, or a Ticket by number or title…"
           aria-label="Find a Session or Ticket"
+          role="combobox"
+          aria-controls={listId}
+          aria-expanded="true"
+          aria-autocomplete="list"
+          aria-activedescendant={activeId}
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
@@ -125,15 +159,14 @@ export function Switcher(props: {
             } else if (e.key === "Enter") {
               e.preventDefault();
               choose(entries[active]);
-            } else if (e.key === "Escape") {
-              props.onClose();
             }
           }}
         />
-        <ul role="listbox" aria-label="Matches">
+        <ul id={listId} role="listbox" aria-label="Matches">
           {entries.map((e, i) => (
             <li
               key={e.key}
+              id={optionId(e)}
               role="option"
               aria-selected={i === active}
               onMouseEnter={() => setActive(i)}
