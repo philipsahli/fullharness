@@ -54,6 +54,73 @@ test("the page links an SVG favicon with a dark variant", async ({ page, fh }) =
   expect(width).toBeGreaterThan(0);
 });
 
+test("the tab shows the Waiting indicator and count while Sessions are Waiting", async ({
+  page,
+}) => {
+  const fh = await Fh.start({
+    agentScript: {
+      default: [{ permission: { id: "t1", title: "rm -rf build", kind: "execute" } }],
+    },
+  });
+  try {
+    await page.goto(fh.launchURL);
+    await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");
+    const icon = page.locator('link[rel="icon"]');
+    await expect(page).toHaveTitle("fullharness");
+    await expect(icon).toHaveAttribute("href", "/favicon.svg");
+
+    // Two Projects, one Session each in its main tree, both asking permission.
+    const started = await page.evaluate(
+      async (repos) => {
+        const post = (path: string, body: unknown) =>
+          fetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        const codes: number[] = [];
+        for (const repo of repos) {
+          const p = await (await post("/api/projects", { path: repo })).json();
+          const r = await post("/api/sessions", {
+            project: p.path,
+            worktree: p.worktrees[0].path,
+            agent: "claude",
+            prompt: "clean up",
+          });
+          codes.push(r.status);
+        }
+        return codes;
+      },
+      [tempRepo("shop"), tempRepo("billing")],
+    );
+    expect(started).toEqual([201, 201]);
+
+    await expect(page).toHaveTitle("(2) fullharness");
+    await expect(icon).toHaveAttribute("href", "/favicon-waiting.svg");
+    const res = await page.request.get(new URL("/favicon-waiting.svg", fh.origin).toString());
+    expect(res.status()).toBe(200);
+    const svg = await res.text();
+    expect(svg).toContain("#ab4f09"); // Waiting colour
+    expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*#f2a541/); // dark Waiting colour
+
+    // Answered while open, a Session's turn ends seen, so it goes Idle (an
+    // unseen turn end would be Waiting again). Idle Sessions don't count.
+    const conversation = page.getByRole("region", { name: /^Session / });
+    for (const [project, title] of [
+      ["shop", "(1) fullharness"],
+      ["billing", "fullharness"],
+    ]) {
+      await page.getByRole("button", { name: new RegExp(`Waiting ${project}`) }).click();
+      await conversation.getByRole("button", { name: "Allow", exact: true }).click();
+      await expect(conversation.locator(".mhead .state")).toHaveText("Idle");
+      await expect(page).toHaveTitle(title);
+    }
+    await expect(icon).toHaveAttribute("href", "/favicon.svg");
+  } finally {
+    await fh.dispose();
+  }
+});
+
 test("a tab left open across a restart tells the user to run fh", async ({ page, fh }) => {
   await page.goto(fh.launchURL);
   await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");

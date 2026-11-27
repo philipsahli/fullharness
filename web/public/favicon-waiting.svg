@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- favicon.svg with the Waiting indicator (#251): the app links this
+       variant while at least one Session is Waiting. Keep the tile and mark
+       in step with favicon.svg. The dot's colours are the Waiting colours
+       from web/src/styles.css; its ring is the tab-bar side of the tile, so
+       it stays apart from the tile in both schemes. -->
+  <style>
+    .tile { fill: #0d6b5f; }
+    .mark { fill: #ffffff; }
+    .dot { fill: #ab4f09; stroke: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #3fb8a5; }
+      .mark { fill: #111816; }
+      .dot { fill: #f2a541; stroke: #111816; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32" rx="7" />
+  <text class="mark" x="16" y="22.5" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="19" font-weight="700" letter-spacing="-1">fh</text>
+  <circle class="dot" cx="25" cy="7" r="6" stroke-width="2" />
+</svg>
