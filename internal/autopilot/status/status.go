@@ -56,6 +56,10 @@ type Status struct {
 	// Tool is the tool call a running turn's Session is on (the live
 	// pulse, #205); empty for every other Kind.
 	Tool string `json:"tool,omitempty"`
+	// OutsideNow marks a running turn of a Feature that left Roadmap Now:
+	// the UI says "Session running outside Now" until the turn ends
+	// (ADR-0013).
+	OutsideNow bool `json:"outsideNow,omitempty"`
 	// Since is when this Autopilot status began; Stamp sets it.
 	Since time.Time `json:"since,omitzero"`
 }
@@ -130,6 +134,7 @@ func of(in Input, id string, f *tracker.Feature, e autopilot.Event, hasEvent boo
 	if open && e.Kind == autopilot.KindSkill && s.State != session.Exited {
 		st = fromEvent(Running, "")
 		st.Tool = s.Tool
+		st.OutsideNow = f != nil && f.Roadmap != tracker.RoadmapNow
 		return st
 	}
 	if f == nil {

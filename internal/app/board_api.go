@@ -78,7 +78,7 @@ func registerBoardRoutes(srv *server.Server, projects *project.Registry, b *boar
 }
 
 // registerTrackerWrites adds one POST endpoint per write fh runs itself
-// (ADR 0008), each taking {"project", "ref"}, with ref a Spec's or
+// (ADR 0008), each taking {"project", "ref", …}, with ref a Spec's or
 // Ticket's Ref from the board. After a write the repo's cached gh read is
 // expired and its PRs fetched again, so the board read the UI makes next
 // shows the change. A failed write answers with gh's own message.
@@ -109,6 +109,50 @@ func registerTrackerWrites(srv *server.Server, projects *project.Registry, b *bo
 		}
 		b.expire(p.Path)
 		projects.FetchPRs(p.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// Move a Feature to another Roadmap group (#215, ADR 0005): {"project",
+	// "ref", "group"}, with ref the Spec's Ref. The group it leaves is the
+	// one the board last read, so on GitHub only that label is removed.
+	srv.Handle("POST /api/tracker/roadmap", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Ref     string `json:"ref"`
+			Group   string `json:"group"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Project == "" {
+			server.WriteError(w, http.StatusBadRequest, `send {"project": "…", "ref": "…", "group": "now|next|later"}`)
+			return
+		}
+		p, ok := projects.Get(req.Project)
+		if !ok {
+			server.WriteError(w, http.StatusNotFound, "no such Project")
+			return
+		}
+		board, _ := b.read(p.Path, false)
+		from, found := "", false
+		for _, f := range board.Features {
+			if f.Ref == req.Ref {
+				from, found = f.Roadmap, true
+				break
+			}
+		}
+		err := tracker.ErrBadRef // only a Spec on the board has a Roadmap group
+		if found {
+			// A move the user made finishes even if the tab goes away
+			// meanwhile (a reload, a closed tab); gh still has its timeout.
+			err = tracker.SetRoadmap(context.WithoutCancel(r.Context()), p.Path, req.Ref, from, req.Group)
+		}
+		switch {
+		case errors.Is(err, tracker.ErrBadRef) || errors.Is(err, tracker.ErrBadGroup) || errors.Is(err, tracker.ErrNoWrites):
+			server.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		case err != nil:
+			server.WriteError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		b.expire(p.Path)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
