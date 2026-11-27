@@ -171,7 +171,8 @@ func Detect(repo string) (kind, name string) {
 //   - Startable: at the Tickets Stage (open, not started), labelled
 //     ready-for-agent, no open (or unknown) blocker. "Part of a Spec" is the adapter's job: it passes only
 //     Tickets that belong to a Spec.
-//   - Feature: Spec closed → Shipped; no Tickets → Spec; open Tickets → the
+//   - Feature: Spec closed → Shipped (with a Note if a Ticket is still
+//     open); no Tickets → Spec; open Tickets → the
 //     earliest Stage among them; all Tickets closed, Spec open → Review.
 //   - Next: each one's Stage's next step (next.go).
 func Derive(features []Feature, links []Link) {
@@ -233,6 +234,21 @@ func Derive(features []Feature, links []Link) {
 		switch {
 		case f.Closed:
 			f.Stage = StageShipped
+			// GLOSSARY Stage: Shipped still, but a mistake to show, e.g. a
+			// Spec closed by hand before its Tickets were done (#140).
+			var still []string
+			for _, t := range f.Tickets {
+				if !t.Closed {
+					still = append(still, "#"+t.Number)
+				}
+			}
+			switch len(still) {
+			case 0:
+			case 1:
+				f.Note = "Spec closed with Ticket " + still[0] + " open"
+			default:
+				f.Note = "Spec closed with Tickets " + strings.Join(still, ", ") + " open"
+			}
 		case len(f.Tickets) == 0:
 			f.Stage = StageSpec
 		case earliest >= 0:
