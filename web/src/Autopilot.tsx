@@ -5,8 +5,9 @@ import type { AutopilotKind, AutopilotReason, AutopilotStatus } from "./events";
 // ADR-0013). fh works the Autopilot status out; this only words and
 // colours it.
 
-// What the user reads for each Stop point, and for why Autopilot is off.
-const reasonName: Record<AutopilotReason, string> = {
+// What the user reads for each Stop point, and for why Autopilot is off;
+// the flow graph (Flow.tsx) names its Stop points the same way.
+export const reasonName: Record<AutopilotReason, string> = {
   "spec-approval": "Approve spec",
   merge: "Merge",
   exited: "Session exited",

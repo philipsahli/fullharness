@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { command, get } from "./api";
 import type { AutopilotStatus, Project } from "./events";
 import { AutopilotBadge, goToSwitch, showsBadge } from "./Autopilot";
+import { FeatureFlow } from "./Flow";
 import { PRPart, type PR } from "./PR";
 import { LinkOrText } from "./LinkOrText";
 import type { StartFrom } from "./Sessions";
@@ -105,11 +106,13 @@ export function Board({
   autopilot,
   onStart,
   focus,
+  onOpenSession,
 }: {
   projects: Project[];
   autopilot: AutopilotStatus[];
   onStart: (from: StartFrom) => void;
   focus?: BoardFocus;
+  onOpenSession: (id: string) => void;
 }) {
   const [project, setProject] = useState(() => {
     if (focus) return focus.project;
@@ -328,6 +331,21 @@ export function Board({
           mainTree={mainTree(chosen)}
           // fh expired its cached read with the write: a plain read shows it.
           onWritten={() => setReloads((n) => n + 1)}
+          flow={
+            <FeatureFlow
+              project={chosen.path}
+              feature={feature.id}
+              title={feature.title}
+              status={autopilot.find((x) => x.project === chosen.path && x.feature === feature.id)}
+              boardKey={JSON.stringify([
+                feature.stage,
+                feature.closed,
+                feature.approved,
+                feature.tickets,
+              ])}
+              onOpenSession={onOpenSession}
+            />
+          }
         />
       )}
     </section>
@@ -463,12 +481,14 @@ function FeatureDetail({
   start,
   mainTree,
   onWritten,
+  flow,
 }: {
   feature: Feature;
   project: string;
   start: (from: Omit<StartFrom, "project">) => void;
   mainTree: string;
   onWritten: () => void;
+  flow: ReactNode; // the Feature's flow graph (Flow.tsx)
 }) {
   // A Spec is never Startable itself; it offers its Stage's next skill.
   const step = feature.next;
@@ -515,6 +535,7 @@ function FeatureDetail({
           </button>
         </p>
       )}
+      {flow}
       {feature.tickets.length === 0 && <p className="empty">No Tickets yet.</p>}
       <ul className="ticketlist">
         {feature.tickets.map((t) => {

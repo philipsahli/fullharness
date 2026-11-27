@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { tempRepoWith } from "./repo";
 
-// Local pixel tests (ADR 0012): six screens in light and dark, compared with
+// Local pixel tests (ADR 0012): seven screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -158,6 +158,65 @@ for (const scheme of ["light", "dark"] as const) {
           "Start Session",
         );
         await expect(page).toHaveScreenshot(`feature-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    // The flow graph (#206): 01 merged back, 02 failed to start once and
+    // now runs (Autopilot is here), 03 blocked by 02.
+    test("Feature page with the flow graph", async ({ page }) => {
+      const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+      const repo = tempRepoWith(
+        "shop",
+        {
+          ".scratch/login/spec.md": "# Login\n\n**Roadmap:** now\n\n**Status:** ready-for-agent\n",
+          ".scratch/login/issues/01-form.md":
+            "# 01: Login form\n\n**Blocked by:** None\n\n**Status:** done\n",
+          ".scratch/login/issues/02-cookie.md": ticket("02", "Session cookie", "None"),
+          ".scratch/login/issues/03-logout.md": ticket("03", "Logout", "02"),
+        },
+        path.join(tmpdir(), "fh-visual", slug),
+      );
+      const at = (n: string, skill: string) => ({
+        project: repo,
+        feature: "login",
+        ticket: n,
+        skill,
+        time: "2026-11-27T10:00:00Z",
+      });
+      const fh = await Fh.start({
+        ghPRs: [],
+        agentScript: { default: [{ sleepMs: 60_000 }] },
+        verdict: "done",
+        autopilotHistory: [
+          { ...at("", "to-tickets"), kind: "skill", session: "gone-0" },
+          { ...at("", "to-tickets"), kind: "classified", session: "gone-0", verdict: "done" },
+          { ...at("01", "implement"), kind: "skill", session: "gone-1" },
+          { ...at("01", "implement"), kind: "classified", session: "gone-1", verdict: "done" },
+          { ...at("01", "code-review"), kind: "stop", reason: "merge" },
+          { ...at("02", "implement"), kind: "failed", error: "the Agent didn't start" },
+        ],
+      });
+      try {
+        await open(page, fh, repo);
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        await page
+          .locator(".column")
+          .getByRole("button", { name: /^Login/ })
+          .click();
+        await page
+          .getByRole("region", { name: "Projects" })
+          .getByRole("checkbox", { name: "Autopilot" })
+          .click();
+        const graph = page.getByRole("group", { name: /^Flow graph of Login/ });
+        await expect(
+          graph.locator('.fl-node[data-ticket="02"][data-state="running"][data-current]'),
+        ).toBeVisible();
+        await expect(page.getByRole("region", { name: "Feature Login" })).toHaveScreenshot(
+          `feature-flow-${scheme}.png`,
+          { mask: dynamic(page) },
+        );
       } finally {
         await fh.dispose();
       }

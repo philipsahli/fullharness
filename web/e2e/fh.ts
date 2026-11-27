@@ -29,15 +29,27 @@ export class Fh {
   // answers with those PRs (as `gh pr list --json` gives them); any other gh
   // command fails. verdict sets a fake turn-end classifier that answers
   // it for every turn (asking, done, stuck), so Autopilot never calls the
-  // real Claude Code.
+  // real Claude Code. autopilotHistory seeds Autopilot's history in
+  // state.json (internal/autopilot Event, oldest first), for screens that
+  // draw a history no fake turn can reach quickly, such as a failed start.
   static async start({
     dev = false,
     agentScript = undefined as object | undefined,
     ghPRs = undefined as object[] | undefined,
     env = {} as Record<string, string>,
     verdict = undefined as string | undefined,
+    autopilotHistory = undefined as object[] | undefined,
   } = {}): Promise<Fh> {
     const fh = new Fh(await freePort(), mkdtempSync(path.join(tmpdir(), "fh-e2e-")), dev, env);
+    if (autopilotHistory) {
+      writeFileSync(
+        path.join(fh.dir, "state.json"),
+        JSON.stringify({
+          createdWorktrees: [],
+          autopilot: { actions: [], history: autopilotHistory },
+        }),
+      );
+    }
     if (ghPRs) {
       const bin = path.join(fh.dir, "bin");
       mkdirSync(bin);
