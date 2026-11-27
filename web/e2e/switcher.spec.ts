@@ -143,6 +143,21 @@ test("⌘K finds anything by number across Projects and opens it where fh shows 
     await expect(options.first()).toContainText("→ Feature page");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("region", { name: "Feature Login" })).toBeVisible();
+    await expect(page.locator(".sw-flash")).toHaveCount(0);
+
+    // A pasted PR link goes to that one PR, and opens its Ticket's row
+    // (#256).
+    await open("https://github.com/someone/shop/pull/21/files");
+    await expect(options).toHaveCount(1);
+    await expect(dialog.locator("li.pgroup")).toHaveText(["shop· this Project"]);
+    await expect(options.first()).toContainText("PR#21Add the login form · #11 Login form");
+    await page.keyboard.press("Enter");
+    await expect(
+      page
+        .getByRole("region", { name: "Feature Login" })
+        .getByRole("listitem")
+        .filter({ hasText: "Login form" }),
+    ).toHaveClass(/sw-flash/);
 
     // An open PR opens its Ticket's row.
     await open("21");
@@ -155,6 +170,18 @@ test("⌘K finds anything by number across Projects and opens it where fh shows 
         .getByRole("listitem")
         .filter({ hasText: "Login form" }),
     ).toHaveClass(/sw-flash/);
+
+    // A type word keeps that type; a repo that isn't a Project opens on
+    // GitHub (#256).
+    await open("Ticket 2");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText("Ticket#02Tag colour");
+    await search.fill("other/repo#5");
+    await expect(options).toHaveCount(1);
+    await expect(dialog.locator("li.pgroup")).toHaveCount(0);
+    await expect(options.first()).toContainText("Issue#5other/repo · not one of your Projects");
+    await expect(options.first()).toContainText("GitHub ↗");
+    await page.keyboard.press("Escape");
 
     // A Ticket in another Project opens that Project's board at its row.
     await open("2");

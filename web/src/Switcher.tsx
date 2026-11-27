@@ -6,6 +6,8 @@ import { byListOrder, projectName, type Project, type SessionSummary } from "./e
 // Spec, Ticket, PR or issue, with its Project and where picking it goes.
 export type SwitcherResult = {
   kind: "spec" | "ticket" | "pr" | "issue";
+  // project is empty for an item in a repo that isn't a Project
+  // (owner/repo#N, #256); projectName is then "owner/repo".
   project: string;
   projectName: string;
   number: string;
@@ -28,9 +30,12 @@ const placeName = {
   github: "GitHub ↗",
 } as const;
 
-// A query that is a number, with or without "#", searches every Project;
-// the list then comes grouped under Sessions and each Project's name.
-const isNumber = (q: string) => /^#?\d+$/.test(q.trim());
+// A query that is a number searches by number: "42", "#42", owner/repo#42
+// or a github.com link, with an optional type word before it ("PR 42",
+// #256). The list then comes grouped under Sessions and each Project's
+// name. internal/switcher reads the same forms.
+const isNumber = (q: string) =>
+  /^((spec|ticket|pr|issue)\s+)?(#?\d+|[\w.-]+\/[\w.-]+#\d+|https?:\/\/\S+)$/i.test(q.trim());
 
 type Entry = {
   key: string;
@@ -117,8 +122,9 @@ export function Switcher(props: {
       ),
       detail: placeName[r.opens.place],
       pick: () => props.onOpenResult(r),
+      // A repo that isn't a Project gets no heading: its row says so.
       group:
-        grouped && (i === 0 || results[i - 1].project !== r.project) ? (
+        grouped && r.project && (i === 0 || results[i - 1].project !== r.project) ? (
           <>
             {r.projectName}
             {r.project === projectPath && <small>· this Project</small>}
