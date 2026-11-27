@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { shortcutLabel, useEventChannel, type Connection, type Notify } from "./events";
 import { Projects } from "./Projects";
 import { Conversation, Inbox, NewSession, SessionList, type StartFrom } from "./Sessions";
@@ -8,6 +14,8 @@ import { Roadmap } from "./Roadmap";
 import { awaitingUser } from "./StopPoints";
 
 type View = "sessions" | "factory" | "roadmap" | "inbox";
+// The header tabs in screen order; ArrowLeft/ArrowRight step through it.
+const views: View[] = ["sessions", "factory", "roadmap", "inbox"];
 
 export function App() {
   const [view, setView] = useState<View>("sessions");
@@ -53,6 +61,16 @@ export function App() {
     setFocus(undefined);
     setView(v);
   };
+  // ARIA tabs pattern: arrows select the next/previous tab, wrapping at the
+  // ends, and focus follows because only the selected tab is focusable.
+  const onTabKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const step = e.key === "ArrowRight" ? 1 : -1;
+    const next = views[(views.indexOf(view) + step + views.length) % views.length];
+    pickTab(next);
+    document.getElementById(`tab-${next}`)?.focus();
+  };
 
   // ⌘K on macOS, Ctrl+K elsewhere, from anywhere in the page.
   useEffect(() => {
@@ -93,7 +111,7 @@ export function App() {
         <button className="jump" type="button" onClick={() => setSwitcher(true)}>
           Find a Session or Ticket… <kbd>{shortcutLabel}</kbd>
         </button>
-        <div className="tabs" role="tablist" aria-label="Views">
+        <div className="tabs" role="tablist" aria-label="Views" onKeyDown={onTabKey}>
           <Tab view="sessions" current={view} onSelect={pickTab}>
             Sessions
           </Tab>
@@ -215,6 +233,7 @@ function Tab(props: {
       role="tab"
       id={`tab-${props.view}`}
       aria-selected={props.view === props.current}
+      tabIndex={props.view === props.current ? 0 : -1}
       onClick={() => props.onSelect(props.view)}
     >
       {props.children}

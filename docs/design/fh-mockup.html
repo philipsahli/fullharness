@@ -1285,7 +1285,7 @@ function render() {
   ({ factory: renderFactory, feature: renderFeature, sessions: renderSession, roadmap: renderRoadmap, inbox: renderInbox })[ui.view]();
   $("#shell").dataset.view = ui.view;
   const tab = ui.view === "feature" ? "factory" : ui.view;
-  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.view === tab));
+  document.querySelectorAll(".tab").forEach(t => { t.setAttribute("aria-selected", t.dataset.view === tab); t.tabIndex = t.dataset.view === tab ? 0 : -1; });
   renderRail();
 }
 
