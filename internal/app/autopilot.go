@@ -50,13 +50,14 @@ func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifi
 			if strings.HasPrefix(s.Skill, "implement") {
 				prompt += screenshotNote
 			}
+			prompt = withReviewNote(prompt, s.Note)
 			link := s.Link
 			req := newSession{Project: s.Project, Agent: s.Agent, Prompt: prompt, Link: &link, autopilot: true}
 			req.Worktree, req.Branch = d.worktreeFor(s.Project, s.Branch)
 			sum, err := d.start(req)
 			return sum.ID, err
 		},
-		FollowUp: func(id, skill, ref string) error {
+		FollowUp: func(id, skill, ref, note string) error {
 			det, err := d.sessions.Get(id)
 			if err != nil {
 				return err
@@ -65,7 +66,7 @@ func newAutopilot(d sessionDeps, b *boards, prc *prChanges, c *classify.Classifi
 			if err != nil {
 				return err
 			}
-			return d.sessions.Prompt(id, prompt)
+			return d.sessions.Prompt(id, withReviewNote(prompt, note))
 		},
 		Classify: c.Classify,
 		Load:     func(r *autopilot.Record) error { return d.state.Autopilot(r) },
@@ -87,6 +88,16 @@ func (d sessionDeps) skillPrompt(agentID, skill, ref string) (string, error) {
 		return "", err
 	}
 	return cmd + " " + ref, nil
+}
+
+// withReviewNote adds the user's Reject note to a revision's prompt
+// (ADR-0014), so the Agent knows what to change; no note leaves the
+// prompt as the board's buttons write it.
+func withReviewNote(prompt, note string) string {
+	if note == "" {
+		return prompt
+	}
+	return prompt + "\n\nThe user rejected this Spec at Approve spec. Revise it with their note:\n\n" + note
 }
 
 // worktreeFor picks where a step runs: the main tree for no branch, the

@@ -27,7 +27,14 @@ export function awaitingUser(statuses: AutopilotStatus[]): AutopilotStatus[] {
 
 // What the user did just now, under the items: the row keeps the Feature's
 // live Autopilot status, so the user sees it move on.
-type Done = { key: string; project: string; feature: string; text: string; what: string };
+type Done = {
+  key: string;
+  project: string;
+  feature: string;
+  text: string;
+  what: string;
+  mark?: string;
+};
 
 const keyOf = (s: { project: string; feature: string }) => `${s.project}\n${s.feature}`;
 
@@ -76,6 +83,19 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
                 ...d.filter((x) => x.key !== keyOf(s)),
               ])
             }
+            onRejected={() =>
+              setDone((d) => [
+                {
+                  key: keyOf(s),
+                  project: s.project,
+                  feature: s.feature,
+                  mark: "↩",
+                  text: `Rejected ${f?.title ?? s.feature}`,
+                  what: `note added to ${f?.ref ?? s.feature} · Autopilot revises it with /to-spec`,
+                },
+                ...d.filter((x) => x.key !== keyOf(s)),
+              ])
+            }
           />
         );
       })}
@@ -110,7 +130,7 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
             return (
               <div key={d.key} className="jn">
                 <span className="ok" aria-hidden="true">
-                  ✓
+                  {d.mark ?? "✓"}
                 </span>
                 <strong>{d.text}</strong>
                 <span className="what">{d.what}</span>
@@ -125,7 +145,8 @@ export function StopPoints({ statuses }: { statuses: AutopilotStatus[] }) {
   );
 }
 
-// ApproveSpec is one "Approve spec" item. Reject comes with #225.
+// ApproveSpec is one "Approve spec" item: Approve, or Reject with a note
+// (#225).
 function ApproveSpec(props: {
   status: AutopilotStatus;
   title: string;
@@ -133,9 +154,26 @@ function ApproveSpec(props: {
   url?: string;
   project: string;
   onApproved: () => void;
+  onRejected: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // note is the open Reject note box's text; undefined while it is closed.
+  const [note, setNote] = useState<string>();
+  const reject = async () => {
+    setBusy(true);
+    const r = await command("/api/autopilot/reject", {
+      project: props.status.project,
+      feature: props.status.feature,
+      note: note ?? "",
+    });
+    setBusy(false);
+    setError(r.ok ? "" : r.error);
+    if (r.ok) {
+      setNote(undefined);
+      props.onRejected();
+    }
+  };
   const approve = async () => {
     setBusy(true);
     const r = await command("/api/autopilot/approve", {
@@ -176,6 +214,41 @@ function ApproveSpec(props: {
           <span className="mono">ready-for-agent</span> and starts{" "}
           <b className="mono">/{props.status.skill ?? "to-tickets"}</b> at once.
         </div>
+        {note !== undefined && (
+          <div className="note-box">
+            <label htmlFor={`note-${props.status.feature}`}>
+              {/* A GitHub ref is "#N"; a local one is a path, with a VS Code url. */}
+              {props.specRef.startsWith("#")
+                ? `Why reject? fh posts this on Spec ${props.specRef}.`
+                : `Why reject? fh adds this to ${props.specRef} under Review notes.`}
+            </label>
+            <textarea
+              id={`note-${props.status.feature}`}
+              value={note}
+              placeholder="What the Spec gets wrong or leaves out"
+              onChange={(e) => setNote(e.target.value)}
+              autoFocus
+            />
+            <span className="goes">
+              Then fh sends it to the Autopilot Session that wrote the Spec, or starts a new one
+              with <b className="mono">/to-spec</b>, your note and the Spec. When the revision ends,
+              a new Approve spec item comes back here.
+            </span>
+            <div className="row">
+              <button type="button" className="btn" onClick={() => setNote(undefined)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={busy || note.trim() === ""}
+                onClick={() => void reject()}
+              >
+                Post and send
+              </button>
+            </div>
+          </div>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}
@@ -190,6 +263,15 @@ function ApproveSpec(props: {
           onClick={() => void approve()}
         >
           Approve
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          aria-expanded={note !== undefined}
+          onClick={() => setNote((n) => (n === undefined ? "" : undefined))}
+        >
+          Reject
         </button>
       </div>
     </div>

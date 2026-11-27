@@ -96,6 +96,8 @@ type ghFake struct {
 	// `pr comment` commands, one per line.
 	setPRView  func(n int, files []string, body string)
 	prComments func() string
+	// issueComments are the `issue comment` commands, one per line (#225).
+	issueComments func() string
 }
 
 // newFakeGh writes this test's fake gh. gh runs it in the repos linkFakeGh
@@ -129,6 +131,7 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 	missing := filepath.Join(dir, "missing-labels")
 	created := filepath.Join(dir, "labels-created")
 	commentsFile := filepath.Join(dir, "pr-comments")
+	issueCommentsFile := filepath.Join(dir, "issue-comments")
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"  *\"auth status\"*) [ " + auth + " = 0 ] || echo 'You are not logged into any GitHub hosts' >&2; exit " + auth + " ;;\n" +
 		"  *graphql*) echo x >> \"" + callsFile + "\"; cat \"" + dir + "/issues.json\" ;;\n" +
@@ -140,6 +143,7 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		"    if [ -f \"" + missing + "\" ]; then grep -vxF \"$3\" \"" + missing + "\" > \"" + missing + ".new\"; mv \"" + missing + ".new\" \"" + missing + "\"; fi ;;\n" +
 		"  \"pr view \"*) if [ -f \"" + dir + "/pr-$3.json\" ]; then cat \"" + dir + "/pr-$3.json\"; else echo '{\"files\":[],\"body\":\"\"}'; fi ;;\n" +
 		"  \"pr comment \"*) echo \"$*\" >> \"" + commentsFile + "\" ;;\n" +
+		"  \"issue comment \"*) echo \"$*\" >> \"" + issueCommentsFile + "\" ;;\n" +
 		"  *\"pr list --state all --limit 500 \"*) echo x >> \"" + prCallsFile + "\"; while [ -f \"" + gate + "\" ]; do sleep 0.02; done; cat \"" + dir + "/prs.json\" ;;\n" +
 		"  *) echo \"$*\" >> \"" + unexpectedFile + "\"; echo \"fake gh: unexpected $*\" >&2; exit 2 ;;\n" +
 		"esac\n"
@@ -187,6 +191,10 @@ func newFakeGh(t *testing.T, issues []ghIssue, prs []map[string]any, authOK bool
 		},
 		prComments: func() string {
 			b, _ := os.ReadFile(commentsFile) // no file yet means none
+			return string(b)
+		},
+		issueComments: func() string {
+			b, _ := os.ReadFile(issueCommentsFile) // no file yet means none
 			return string(b)
 		},
 		hold: func() { writeFile(t, gate, "") },

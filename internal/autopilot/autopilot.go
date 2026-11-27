@@ -34,6 +34,9 @@ type Start struct {
 	// the Project's main tree (a skill that writes issues).
 	Branch string
 	Link   tracker.Link
+	// Note is the user's review note, sent with the skill's prompt: a
+	// Spec's revision after Reject (ADR-0014). Empty for every other step.
+	Note string
 }
 
 // Sessions is what Autopilot reads of fh's Sessions.
@@ -52,8 +55,9 @@ type Deps struct {
 	// Start starts a Session and returns its ID.
 	Start func(Start) (string, error)
 	// FollowUp sends skill on ref to a running Session as its next turn: a
-	// Queued message when the Agent is still busy (#93).
-	FollowUp func(id, skill, ref string) error
+	// Queued message when the Agent is still busy (#93). note is as in
+	// Start.Note.
+	FollowUp func(id, skill, ref, note string) error
 	// ScreenReview reports whether Ticket t's PR, which Autopilot reviewed
 	// done, stops at Screenshot review (ADR-0014); ok is false when it
 	// can't tell yet. Nil means no PR ever does.
@@ -95,7 +99,22 @@ type Action struct {
 type Record struct {
 	Actions []Action `json:"actions"`
 	History []Event  `json:"history,omitempty"`
+	// Revisions are Specs the user rejected, waiting for their revision
+	// turn, oldest first: it starts once the Project isn't held, so a
+	// Project still never runs two Autopilot turns at once.
+	Revisions []Revision `json:"revisions,omitempty"`
 }
+
+// Revision is a rejected Spec's revision: its Step runs SkillRevise on
+// the Spec named by Ref, with the user's Note.
+type Revision struct {
+	Step
+	Ref  string `json:"ref"`
+	Note string `json:"note"`
+}
+
+// SkillRevise is the skill that revises a rejected Spec.
+const SkillRevise = "to-spec"
 
 // EventKind says what Autopilot did.
 type EventKind string
@@ -112,6 +131,7 @@ const (
 const (
 	AnswerApprove   = "approve"    // Approve spec: the Spec is ready-for-agent
 	AnswerLooksGood = "looks-good" // Screenshot review: the screens are right
+	AnswerReject    = "reject"     // Approve spec: the Spec goes back for a revision with the user's note
 )
 
 // Stop point reasons besides a turn-end verdict (asking, stuck, unsure).
@@ -280,6 +300,9 @@ func (r *Runner) Step(p Project, refresh bool) {
 	if r.holding(p.Path, board) {
 		return
 	}
+	if r.revise(p) {
+		return
+	}
 	if _, ok := board(); !ok {
 		return
 	}
@@ -384,7 +407,7 @@ func (r *Runner) review(p Project, step Step, t tracker.Ticket, sessions []sessi
 		return false
 	}
 	if s := sessions[i]; s.State != session.Exited {
-		if err := r.d.FollowUp(s.ID, step.Skill, t.Ref); err != nil {
+		if err := r.d.FollowUp(s.ID, step.Skill, t.Ref, ""); err != nil {
 			r.d.Log.Info("autopilot follow-up failed", "session", s.ID, "skill", step.Skill, "err", err)
 			r.recordUnlessRepeated(Event{Step: step, Kind: KindFailed, Session: s.ID, Error: err.Error()})
 			return false
@@ -582,6 +605,74 @@ func (r *Runner) Answered(step Step, answer string) {
 	defer r.mu.Unlock()
 	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: answer})
 	r.save()
+}
+
+// Rejected records the user's Reject at Approve spec, and the revision it
+// asks for: SkillRevise on the Spec ref of Feature feature, with note. The
+// caller has already written the note to the Spec (ADR-0014) and steps the
+// Project next, which starts the revision.
+func (r *Runner) Rejected(project, feature, ref, note string) {
+	step := Step{Project: project, Feature: feature, Skill: SkillRevise}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rec.History = append(r.rec.History, Event{Step: step, Kind: KindUser, Time: time.Now().UTC(), Answer: AnswerReject})
+	r.rec.Revisions = append(r.rec.Revisions, Revision{Step: step, Ref: ref, Note: note})
+	r.save()
+}
+
+// revise starts p's oldest waiting revision, and reports whether it did:
+// as the next turn of the Autopilot Session that wrote the Spec, or in a
+// new Session when that one is gone or exited. A revision that fails to
+// start stays, and the next look tries again.
+func (r *Runner) revise(p Project) bool {
+	r.mu.Lock()
+	i := slices.IndexFunc(r.rec.Revisions, func(v Revision) bool { return v.Project == p.Path })
+	if i < 0 {
+		r.mu.Unlock()
+		return false
+	}
+	rev := r.rec.Revisions[i]
+	r.mu.Unlock()
+
+	id := r.specWriter(rev.Step)
+	var err error
+	if id != "" {
+		err = r.d.FollowUp(id, rev.Skill, rev.Ref, rev.Note)
+	} else {
+		id, err = r.d.Start(Start{Project: p.Path, Agent: p.Agent, Skill: rev.Skill, Ref: rev.Ref, Note: rev.Note,
+			Link: tracker.Link{Feature: rev.Feature}})
+	}
+	if err != nil {
+		r.d.Log.Info("autopilot revision failed", "project", p.Path, "feature", rev.Feature, "err", err)
+		r.recordUnlessRepeated(Event{Step: rev.Step, Kind: KindFailed, Session: id, Error: err.Error()})
+		return false
+	}
+	r.mu.Lock()
+	if j := slices.Index(r.rec.Revisions, rev); j >= 0 {
+		r.rec.Revisions = slices.Delete(r.rec.Revisions, j, j+1)
+	}
+	r.mu.Unlock()
+	r.record(rev.Step, id) // saves the record, with the revision gone
+	return true
+}
+
+// specWriter is the Autopilot Session that wrote step's Spec, if it hasn't
+// exited: the Session whose latest step was a revision of that Spec.
+func (r *Runner) specWriter(step Step) string {
+	for _, s := range r.d.Sessions.List() {
+		if !s.Autopilot || s.Project != step.Project || s.State == session.Exited ||
+			s.Link == nil || s.Link.Feature != step.Feature || s.Link.Ticket != "" {
+			continue
+		}
+		r.mu.Lock()
+		i := r.lastActionOf(s.ID)
+		wrote := i >= 0 && r.rec.Actions[i].Step == step
+		r.mu.Unlock()
+		if wrote {
+			return s.ID
+		}
+	}
+	return ""
 }
 
 func lastAgentMessage(items []session.Item) string {
