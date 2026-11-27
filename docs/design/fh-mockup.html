@@ -1667,16 +1667,17 @@ const SW_EXTRA = { fh: [
   { n: 200, type: "PR", t: "Glossary: Autopilot status, Screenshot review", state: "Merged" },
   { n: 61, type: "Issue", t: "Board read fails behind a proxy", state: "Closed" },
 ] };
-const SW_TYPES = { pr: "PR", spec: "Spec", ticket: "Ticket", issue: "Issue", idea: "Idea" };
+const SW_TYPES = { pr: "PR", spec: "Spec", ticket: "Ticket", issue: "Issue" };
 const swLooked = {}; /* number → already looked up on GitHub (the 5 min cache) */
 function swNumbered() {
   const out = [];
   for (const p of projects) {
     const add = x => out.push({ kind: "num", pid: p.id, ...x });
     for (const f of factory[p.id] || []) {
-      const m = /^(Spec|Idea) #(\d+)$/.exec(f.ref);
-      if (m) add({ n: +m[2], type: m[1], title: f.name, closed: f.stage === "Shipped", state: f.stage,
-        where: m[1] === "Spec" ? "Feature page" : "Idea card", to: m[1] === "Spec" ? { feat: f.id } : { card: f.id } });
+      /* An Idea has no number in fh, so only Specs are found by number; Ideas by words. */
+      const m = /^Spec #(\d+)$/.exec(f.ref);
+      if (m) add({ n: +m[1], type: "Spec", title: f.name, closed: f.stage === "Shipped", state: f.stage,
+        where: "Feature page", to: { feat: f.id } });
       for (const t of f.tickets || []) {
         add({ n: t.n, type: "Ticket", title: t.t, closed: t.stage === "Shipped", state: t.stage === "Shipped" ? "Closed" : t.stage, sub: f.name, where: "Ticket row", to: { feat: f.id, ticket: t.n } });
         for (const pr of t.pr ? [t.pr, ...(t.older || [])] : [])
@@ -1693,7 +1694,7 @@ function swNumbered() {
 function swParse(q) {
   let m;
   if ((m = /^#?(\d+)$/.exec(q))) return { n: +m[1] };
-  if ((m = /^(pr|spec|ticket|issue|idea)\s+#?(\d+)$/i.exec(q))) return { n: +m[2], type: SW_TYPES[m[1].toLowerCase()] };
+  if ((m = /^(pr|spec|ticket|issue)\s+#?(\d+)$/i.exec(q))) return { n: +m[2], type: SW_TYPES[m[1].toLowerCase()] };
   if ((m = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(q))) return { n: +m[2], repo: m[1] };
   if ((m = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)/.exec(q))) return { n: +m[3], repo: m[1], type: m[2] === "pull" ? "PR" : null };
   return null;
