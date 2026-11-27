@@ -10,11 +10,11 @@ ADR-0009 lists the Stop points but not what the user does at one. Today fh recor
 
 - **Approve spec** is an Inbox item with Approve and Reject.
   - Approve adds `ready-for-agent` to the Spec, a write already on ADR-0008's list.
-  - Reject asks for a note, and fh posts the note as a comment on the Spec issue.
+  - Reject asks for a note, and fh posts the note as a comment on the Spec issue. Local markdown has no comments, so there fh adds the note to `spec.md`, quoted under a `## Review notes` heading at the end.
   - fh sends the note as a follow-up turn to the Autopilot Session that wrote the Spec.
-  - If there is no such Session, or it has exited, fh starts a new Autopilot Session in the Feature's Worktree with `/to-spec`, the note and the Spec as input.
+  - If there is no such Session, or it has exited, fh starts a new Autopilot Session in the Project's main tree, where the Spec is written (a Feature has no Worktree before its Tickets), with `/to-spec`, the note and the Spec as input.
   - When the revision ends, the Feature is back at Approve spec.
-- **Screenshot review** applies to a PR that changes a screen, unless its description says "No visible UI change". fh reads the PR's changed files from GitHub to decide. In fullharness, that means files under `web/src`. How fh tells for other Projects is open in #199.
+- **Screenshot review** applies to a PR that changes a screen, unless its description says "No visible UI change". fh reads the PR's changed files from GitHub to decide. A PR changes a screen when it changes a file under one of the Project's **UI paths**, a Project setting the user edits in the Projects rail. Until the user sets them, they are `web/src/**`, which is right for fullharness itself (decided 2026-11-27 on #199).
   - The Agent saves a screenshot of each changed screen in its Worktree under `.fh/screenshots/`. fh adds `.fh/` to the repo's `.git/info/exclude`, so it never gets committed, and shows the files in the Inbox item. Nothing is uploaded.
   - Looks good records an Autopilot history event marked as the user's, and posts "Screen reviewed in fh" as a PR comment. The PR then moves on to the merge Stop point.
   - Request changes asks for a note. fh posts it as a PR comment and sends it as a follow-up turn to the PR's Autopilot Session. When that turn ends with a new screenshot, the PR is back at Screenshot review.

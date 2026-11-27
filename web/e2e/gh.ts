@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,7 +18,37 @@ export type GhIssue = {
 };
 
 // GhPR is one PR, in any state, as `gh pr list --json number,headRefName,body` gives it.
-export type GhPR = { number: number; headRefName: string; body?: string };
+export type GhPR = {
+  number: number;
+  headRefName: string;
+  body?: string;
+  state?: "OPEN" | "CLOSED" | "MERGED";
+  url?: string;
+};
+
+// GhPRView is what `gh pr view <n> --json files,body` answers (#226).
+export type GhPRView = { files: string[]; body?: string };
+
+// fakeGhDir is the fake gh's folder of a PATH fakeGhPath returned.
+const fakeGhDir = (PATH: string) => PATH.split(path.delimiter)[0];
+
+// setFakeGhPRs changes the PRs `pr list` answers with from now on, as when
+// a skill opens a PR during its turn.
+export function setFakeGhPRs(PATH: string, prs: GhPR[]) {
+  writeFileSync(
+    path.join(fakeGhDir(PATH), "prs.json"),
+    JSON.stringify(prs.map((p) => ({ ...p, body: p.body ?? "" }))),
+  );
+}
+
+// fakeGhComments are the `gh pr comment` commands the fake got, one per line.
+export function fakeGhComments(PATH: string): string {
+  try {
+    return readFileSync(path.join(fakeGhDir(PATH), "comments"), "utf8");
+  } catch {
+    return ""; // no file yet means none
+  }
+}
 
 function issuesPage(issues: GhIssue[], repo: string) {
   const nodes = issues.map((i) => ({
@@ -60,9 +90,15 @@ export function fakeGhPath(
     prs = [] as GhPR[],
     afterEdit = undefined as GhIssue[] | undefined,
     editFails = undefined as string | undefined,
+    prViews = {} as Record<number, GhPRView>,
   } = {},
 ): string {
   const dir = mkdtempSync(path.join(tmpdir(), "fh-e2e-gh-"));
+  for (const [n, v] of Object.entries(prViews))
+    writeFileSync(
+      path.join(dir, `pr-${n}.json`),
+      JSON.stringify({ files: v.files.map((p) => ({ path: p })), body: v.body ?? "" }),
+    );
   writeFileSync(path.join(dir, "issues.json"), JSON.stringify(issuesPage(issues, repo)));
   if (afterEdit)
     writeFileSync(path.join(dir, "after.json"), JSON.stringify(issuesPage(afterEdit, repo)));
@@ -80,6 +116,8 @@ export function fakeGhPath(
       '  *"auth status"*) exit 0 ;;',
       `  *graphql*) cat "${dir}/issues.json" ;;`,
       `  *"pr list"*) cat "${dir}/prs.json" ;;`,
+      `  "pr view "*) if [ -f "${dir}/pr-$3.json" ]; then cat "${dir}/pr-$3.json"; else echo '{"files":[],"body":""}'; fi ;;`,
+      `  "pr comment "*) echo "$*" >> "${dir}/comments" ;;`,
       `  "issue edit "*) if [ -f "${dir}/edit-fails" ]; then cat "${dir}/edit-fails" >&2; exit 1; fi`,
       `    if [ -f "${dir}/after.json" ]; then mv "${dir}/after.json" "${dir}/issues.json"; fi ;;`,
       '  *) echo "fake gh: unexpected $*" >&2; exit 2 ;;',

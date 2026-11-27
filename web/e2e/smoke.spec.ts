@@ -28,6 +28,32 @@ test("the token URL opens the empty app shell", async ({ page, fh }) => {
   await expect(page.getByText("No Sessions yet.")).toBeVisible();
 });
 
+test("the page links an SVG favicon with a dark variant", async ({ page, fh }) => {
+  await page.goto(fh.launchURL);
+
+  await expect(page).toHaveTitle("fullharness");
+  const icon = page.locator('link[rel="icon"]');
+  await expect(icon).toHaveAttribute("type", "image/svg+xml");
+  const href = await icon.getAttribute("href");
+  expect(href).toBeTruthy();
+
+  const res = await page.request.get(new URL(href!, fh.origin).toString());
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("image/svg+xml");
+  const svg = await res.text();
+  expect(svg).toContain("#0d6b5f"); // accent
+  expect(svg).toMatch(/@media \(prefers-color-scheme: dark\)[^}]*\{[^}]*#3fb8a5/);
+
+  // The browser can draw it: a malformed SVG is served fine but shows nothing.
+  const width = await page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = src;
+    await img.decode().catch(() => {});
+    return img.naturalWidth;
+  }, href!);
+  expect(width).toBeGreaterThan(0);
+});
+
 test("a tab left open across a restart tells the user to run fh", async ({ page, fh }) => {
   await page.goto(fh.launchURL);
   await expect(page.locator("[data-connection]")).toHaveAttribute("data-connection", "open");

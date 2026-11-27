@@ -1,4 +1,6 @@
 <title>fullharness UI</title>
+<!-- The app's favicon (#250), linked from its source so the two can't drift. -->
+<link rel="icon" type="image/svg+xml" href="../../web/public/favicon.svg">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -216,6 +218,28 @@ tr:last-child td { border-bottom: 0; }
 .palette ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow: auto; }
 .palette li button { width: 100%; text-align: left; border: 0; background: transparent; border-radius: 7px; padding: 8px 10px; display: grid; grid-template-columns: 10px minmax(0,1fr) auto; gap: 10px; align-items: center; }
 .palette li button:hover, .palette li button.hl { background: var(--sunken); }
+/* Switcher by number (#201): grey type tags, Project groups, closed items dimmed, where each result goes. Colour stays for Autopilot status. */
+.palette li.pgroup { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px 10px 3px; display: flex; gap: 6px; align-items: baseline; }
+.palette li.pgroup small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.palette .ptag { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .03em; color: var(--muted); background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; margin-right: 6px; line-height: 17px; vertical-align: 1px; }
+.palette .pnum { font-family: var(--f-mono); font-size: 12.5px; margin-right: 6px; }
+.palette .pwhere { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.palette li button.hl .pwhere { color: var(--fg); }
+.palette li.closed button { color: var(--muted); }
+.palette li.closed .pl { color: var(--muted); opacity: .8; }
+.palette li.closed .ptag { background: transparent; border-style: dashed; }
+.palette li.closed .pl .pnum { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.palette li.fresh { animation: pal-in .35s ease-out both; }
+.palette li.pal-hint { padding: 8px 10px 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.palette li.pal-hint button { width: auto; display: inline; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; font-family: var(--f-mono); font-size: 11.5px; color: var(--fg); background: var(--bg); }
+.palette .pal-foot { border-top: 1px solid var(--line); padding: 7px 14px; font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; min-height: 31px; }
+.palette .pal-foot .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: pal-spin .8s linear infinite; flex: none; }
+@keyframes pal-in { from { opacity: 0; transform: translateY(-3px); } }
+@keyframes pal-spin { to { transform: rotate(360deg); } }
+/* Where a Switcher pick landed: a short glow on the row or card. */
+.sw-flash { animation: sw-flash 1.8s ease-out; border-radius: 8px; }
+@keyframes sw-flash { 0%, 35% { box-shadow: 0 0 0 3px var(--accent); background: var(--accent-soft); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@media (prefers-reduced-motion: reduce) { .palette li.fresh, .palette .pal-foot .spin, .sw-flash { animation: none; } .sw-flash { box-shadow: 0 0 0 3px var(--accent); } }
 .modal form { padding: 18px; display: grid; gap: 14px; }
 .modal h3 { font-family: var(--f-display); font-size: 18px; }
 .field { display: grid; gap: 6px; }
@@ -623,7 +647,7 @@ svg.flow text.glyph { font-size: 12px; font-weight: 700; fill: var(--c); }
       <button class="tab" role="tab" id="tab-roadmap" data-view="roadmap" aria-selected="false">Roadmap</button>
       <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count" id="inbox-count">2</span></button>
     </div>
-    <button class="jump" id="jump-btn" type="button">Jump to a Feature, Ticket or Session… <kbd>⌘K</kbd></button>
+    <button class="jump" id="jump-btn" type="button">Find a Session, Feature or number… <kbd>⌘K</kbd></button>
   </header>
   <div id="banner"></div>
 
@@ -860,6 +884,9 @@ const untriaged = {
     { n: 58, t: "Copilot CLI asks for permission twice", labels: ["needs-info"] },
     { n: 52, t: "Inbox contrast in dark mode", labels: ["ready-for-human"] },
   ],
+  io: [
+    { n: 200, t: "Drift alert fires twice after a restart", labels: ["needs-triage"] },
+  ],
   /* Local markdown (#182): open issue files in a .scratch folder without spec.md. The ref is the file path; Status is the one tag. Newest first by file name. */
   hf: [
     { ref: ".scratch/bugs/issues/02-avatar-upload-fails.md", t: "Avatar upload fails on large images", labels: ["needs-triage"] },
@@ -1074,7 +1101,7 @@ function featCard(f) {
 function triageGroup(p, unt) {
   if (!unt.length) return "";
   const key = p.id + ":" + ui.demo, open = ui.triageOpen[key] ?? unt.length <= 5;
-  const rows = unt.map(u => `<li><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}${u.note ? `<span class="note">${esc(u.note)}</span>` : ""}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
+  const rows = unt.map(u => `<li${u.n ? ` data-un="${u.n}"` : ""}><span class="mono">${u.ref ? esc(u.ref) : issueLink(p.id, u.n)}</span><span class="t">${esc(u.t)}</span>${u.labels.map(l => `<span class="lbl">${l}</span>`).join("")}${u.note ? `<span class="note">${esc(u.note)}</span>` : ""}<button class="btn small" data-triage="${p.id}" data-triageref="${esc(u.ref || "#" + u.n)}">Triage</button></li>`).join("");
   return `<section class="triage" aria-label="Needs triage"><button class="triage-head" aria-expanded="${open}" data-triagetoggle="${key}"><span class="caret" aria-hidden="true">${open ? "▾" : "▸"}</span>Needs triage<span class="count">${unt.length}</span></button>${open ? `<ul>${rows}</ul>` : ""}</section>`;
 }
 function openTriage(pid, ref) {
@@ -1139,7 +1166,7 @@ function ticketRow(fid, t) {
   else if (pr && pr.state === "open" && pr.ci === "pass") act = `<button class="btn small" data-toast="Session started: /code-review on PR #${pr.n}">Review</button> <button class="btn primary small" data-merge="${fid}:${t.n}">Merge</button>`;
   else if (pr && pr.state === "open" && pr.ci === "fail") act = `<button class="btn small" data-toast="Session started on ${pr.checks.split(" ")[0]} failure of PR #${pr.n}">Fix checks</button>`;
   else if (t.label === "needs-info" || t.label === "needs-triage") act = `<button class="btn small" data-ready="${fid}:${t.n}">Mark ready-for-agent</button>${t.readyErr ? `<div class="error" role="alert">${esc(t.readyErr)}</div>` : ""}`;
-  return `<tr><td class="mono">${t.file ? fileLink(feat(fid).pid, t.file, `#${t.n}`) : issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  return `<tr data-tn="${t.n}"><td class="mono">${t.file ? fileLink(feat(fid).pid, t.file, `#${t.n}`) : issueLink(feat(fid).pid, t.n)}</td><td>${esc(t.t)}${t.blockedBy || t.note ? `<br><span class="chain">${[t.blockedBy && `blocked by ${t.blockedBy.map(n => issueLink(feat(fid).pid, n)).join(", ")}`, t.note && inline(t.note)].filter(Boolean).join(" · ")}</span>` : ""}</td><td><span class="stage ${t.stage.toLowerCase()}">${t.stage}</span>${t.startable ? ` <span class="stage startable">Startable</span>` : ""}${t.label ? ` <span class="lbl">${t.label}</span>` : ""}</td><td>${sessCell}</td><td>${prCell}</td><td class="chain">${pr && pr.review || "—"}</td><td style="white-space:nowrap">${act}</td></tr>`;
 }
 function renderFeature() {
   const { pid, f } = feat(ui.feature), p = proj(pid), r = RD[f.id], v = verdict(f.id);
@@ -1627,33 +1654,143 @@ function answer(id, ok, always) {
   s.state = ok ? "working" : "idle";
   toast(`${s.perm.answer} for ${s.title}`); render();
 }
+/* ---------- Switcher (⌘K, #195, #201) ----------
+   Words find Sessions, Features and the current Project's open Tickets (#195).
+   A number finds the Spec, Ticket, PR, Idea or issue with that number in every Project, the current Project first.
+   Open items come from the board fh already has. Closed and merged ones come from one GitHub lookup per Project,
+   300 ms after typing stops, cached for 5 min (simulated here). No index, no call per key press. */
+const GH_REPO = pid => (proj(pid).url || "").replace("https://github.com/", "");
+/* Items fh doesn't show on its board: they open on GitHub. */
+const SW_EXTRA = { fh: [
+  { n: 200, type: "PR", t: "Glossary: Autopilot status, Screenshot review", state: "Merged" },
+  { n: 61, type: "Issue", t: "Board read fails behind a proxy", state: "Closed" },
+] };
+const SW_TYPES = { pr: "PR", spec: "Spec", ticket: "Ticket", issue: "Issue", idea: "Idea" };
+const swLooked = {}; /* number → already looked up on GitHub (the 5 min cache) */
+function swNumbered() {
+  const out = [];
+  for (const p of projects) {
+    const add = x => out.push({ kind: "num", pid: p.id, ...x });
+    for (const f of factory[p.id] || []) {
+      const m = /^(Spec|Idea) #(\d+)$/.exec(f.ref);
+      if (m) add({ n: +m[2], type: m[1], title: f.name, closed: f.stage === "Shipped", state: f.stage,
+        where: m[1] === "Spec" ? "Feature page" : "Idea card", to: m[1] === "Spec" ? { feat: f.id } : { card: f.id } });
+      for (const t of f.tickets || []) {
+        add({ n: t.n, type: "Ticket", title: t.t, closed: t.stage === "Shipped", state: t.stage === "Shipped" ? "Closed" : t.stage, sub: f.name, where: "Ticket row", to: { feat: f.id, ticket: t.n } });
+        for (const pr of t.pr ? [t.pr, ...(t.older || [])] : [])
+          add({ n: pr.n, type: "PR", title: t.t, closed: pr.state === "merged" || pr.state === "closed", state: PR_STATE[pr.state], sub: `for #${t.n}`, where: "Ticket row", to: { feat: f.id, ticket: t.n } });
+      }
+    }
+    for (const u of untriaged[p.id] || []) if (u.n) add({ n: u.n, type: "Issue", title: u.t, closed: false, state: "Needs triage", where: "Needs triage", to: { triage: true, n: u.n } });
+    for (const x of SW_EXTRA[p.id] || []) add({ n: x.n, type: x.type, title: x.t, closed: true, state: x.state, where: "GitHub ↗", to: { gh: `${GH_REPO(p.id)}#${x.n}` } });
+  }
+  /* On GitHub one number is one item per repo. The example data reuses a few numbers, so keep the first. */
+  const seen = new Set();
+  return out.filter(x => { const k = x.pid + ":" + x.n; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+function swParse(q) {
+  let m;
+  if ((m = /^#?(\d+)$/.exec(q))) return { n: +m[1] };
+  if ((m = /^(pr|spec|ticket|issue|idea)\s+#?(\d+)$/i.exec(q))) return { n: +m[2], type: SW_TYPES[m[1].toLowerCase()] };
+  if ((m = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(q))) return { n: +m[2], repo: m[1] };
+  if ((m = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(issues|pull)\/(\d+)/.exec(q))) return { n: +m[3], repo: m[1], type: m[2] === "pull" ? "PR" : null };
+  return null;
+}
+function swFlash(sel) {
+  requestAnimationFrame(() => {
+    const el = $(sel); if (!el) return;
+    el.scrollIntoView({ block: "center" }); el.classList.add("sw-flash");
+    setTimeout(() => el.classList.remove("sw-flash"), 1900);
+  });
+}
+function swGo(x) {
+  closeOverlay();
+  if (x.kind === "sess") return go(x.id);
+  if (x.kind === "new") return openNew();
+  if (x.kind === "feat") return openFeature(x.id);
+  const to = x.to;
+  if (to.gh) return toast(`Opens ${to.gh} on GitHub`);
+  if (to.feat) { openFeature(to.feat); if (to.ticket) swFlash(`tr[data-tn="${to.ticket}"]`); return; }
+  ui.view = "factory"; ui.factoryProject = x.pid;
+  if (to.triage) ui.triageOpen[x.pid + ":" + ui.demo] = true;
+  render();
+  swFlash(to.card ? `.fcard[data-feat="${to.card}"]` : `.triage li[data-un="${to.n}"]`);
+}
 function openPalette() {
-  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="palette" role="dialog" aria-modal="true" aria-label="Jump">
-    <input id="pal-q" type="text" placeholder="Jump to a Feature, Ticket or Session…" autocomplete="off" role="combobox" aria-controls="pal-list" aria-expanded="true"><ul id="pal-list" role="listbox"></ul></div></div>`;
-  let hl = 0;
-  const items = () => {
-    const q = $("#pal-q").value.toLowerCase();
-    const fs = allFeats().map(({ pid, f }) => ({ kind: "feat", id: f.id, label: f.name, sub: `${proj(pid).name} · ${f.ref} · ${f.stage}` }));
-    const ts = allFeats().flatMap(({ f }) => (f.tickets || []).map(t => ({ kind: "feat", id: f.id, label: `#${t.n} ${t.t}`, sub: `Ticket · ${f.name} · ${t.stage}` })));
-    const ss = sorted(sessions).map(s => ({ kind: "sess", id: s.id, label: s.title, sub: `Session · ${STATE_LABEL[s.state]}`, state: s.state }));
-    return [...ss, ...fs, ...ts].filter(x => (x.label + x.sub).toLowerCase().includes(q)).slice(0, 12);
+  $("#overlay").innerHTML = `<div class="scrim" data-close="1"><div class="palette" role="dialog" aria-modal="true" aria-label="Switcher">
+    <input id="pal-q" type="text" placeholder="Find a Session or Feature, or type a number such as 200…" autocomplete="off" role="combobox" aria-controls="pal-list" aria-expanded="true"><ul id="pal-list" role="listbox"></ul><div class="pal-foot" id="pal-foot" aria-live="polite"></div></div></div>`;
+  let hl = 0, timer = 0, list = [];
+  const shown = new Set();
+  const cur = () => ui.view === "sessions" ? sess(ui.current).project : ui.factoryProject;
+  const sessRow = s => ({ kind: "sess", id: s.id, label: s.title, sub: `Session · ${STATE_LABEL[s.state]}`, state: s.state });
+  const build = () => {
+    const raw = $("#pal-q").value.trim(), num = swParse(raw);
+    const words = raw.toLowerCase().split(/\s+/).filter(Boolean), has = t => words.every(w => t.toLowerCase().includes(w));
+    if (!num) {
+      const ss = sorted(sessions).filter(s => has(`${s.title} ${proj(s.project).name} ${STATE_LABEL[s.state]}`)).map(sessRow);
+      const fs = allFeats().filter(({ pid, f }) => has(`${f.name} ${f.ref} ${proj(pid).name}`)).map(({ pid, f }) => ({ kind: "feat", id: f.id, label: f.name, sub: `${proj(pid).name} · ${f.ref} · ${f.stage}`, where: "Feature page" }));
+      const ts = words.length ? (factory[cur()] || []).flatMap(f => (f.tickets || []).filter(t => t.stage !== "Shipped" && has(t.t))
+        .map(t => ({ kind: "num", type: "Ticket", n: t.n, pid: cur(), title: t.t, state: t.stage, sub: f.name, where: "Ticket row", to: { feat: f.id, ticket: t.n } }))) : [];
+      const nw = has("new session") ? [{ kind: "new", label: "New Session", sub: "start an Agent" }] : [];
+      return { rows: [...ss, ...fs, ...ts].slice(0, 12).concat(nw) };
+    }
+    const repoProj = num.repo && projects.find(p => GH_REPO(p.id) === num.repo);
+    if (num.repo && !repoProj) return { num, off: true, rows: [{ kind: "num", type: num.type || "Issue", n: num.n, title: num.repo, sub: "not one of your Projects", where: "GitHub ↗", to: { gh: `${num.repo}#${num.n}` } }] };
+    const looked = !!swLooked[num.n];
+    const all = swNumbered().filter(x => x.n === num.n && (!num.type || x.type === num.type) && (!repoProj || x.pid === repoProj.id));
+    const order = [cur(), ...projects.map(p => p.id).filter(id => id !== cur()).sort((a, b) => proj(a).name.localeCompare(proj(b).name))];
+    const hits = all.filter(x => looked || !x.closed).sort((a, b) => order.indexOf(a.pid) - order.indexOf(b.pid) || a.closed - b.closed);
+    const ss = repoProj ? [] : sorted(sessions).filter(s => new RegExp(`#${num.n}\\b`).test(s.title)).map(sessRow);
+    return { num, looked, closed: all.filter(x => x.closed).length, rows: [...ss, ...hits] };
+  };
+  const rowHtml = (x, i) => {
+    const key = x.pid + ":" + x.n, fresh = x.closed && !shown.has(key);
+    if (x.closed) shown.add(key);
+    const lab = x.kind === "num"
+      ? `<span class="ptag">${x.type}</span><span class="pnum">#${x.n}</span>${esc(x.title)} <span class="crumb">· ${[x.sub, x.state].filter(Boolean).map(esc).join(" · ")}</span>`
+      : `${esc(x.label)} <span class="crumb">· ${esc(x.sub)}</span>`;
+    const where = x.kind === "sess" ? "→ Session" : x.kind === "new" ? "" : x.where.endsWith("↗") ? x.where : "→ " + x.where;
+    return `<li role="option" id="pal-${i}" aria-selected="${i === hl}" class="${x.closed ? "closed" : ""}${fresh ? " fresh" : ""}"><button class="${i === hl ? "hl" : ""}" data-sw="${i}"><span class="dot ${x.kind === "sess" ? x.state : ""}" ${x.kind === "sess" ? "" : 'style="opacity:0"'}></span><span class="pl">${lab}</span><span class="pwhere">${where}</span></button></li>`;
   };
   const draw = () => {
-    const list = items(); hl = Math.min(hl, Math.max(0, list.length - 1));
-    $("#pal-list").innerHTML = list.map((x, i) => `<li role="option" id="pal-${i}" aria-selected="${i === hl}"><button class="${i === hl ? "hl" : ""}" ${x.kind === "sess" ? `data-open="${x.id}"` : `data-feat="${x.id}"`}><span class="dot ${x.state || ""}" ${x.state ? "" : 'style="opacity:0"'}></span><span>${esc(x.label)} <span class="crumb">· ${esc(x.sub)}</span></span><span></span></button></li>`).join("") || `<li class="empty-note">Nothing matches.</li>`;
+    const r = build(); list = r.rows; hl = Math.min(hl, Math.max(0, list.length - 1));
+    let html = "", group = null;
+    list.forEach((x, i) => {
+      /* For a number, results come grouped: Sessions, then the current Project, then the others by name. */
+      const g = !r.num ? null : x.kind === "sess" ? "sess" : x.pid || null;
+      if (g && g !== group) {
+        html += `<li class="pgroup" role="presentation">${g === "sess" ? "Sessions" : esc(proj(g).name) + (g === cur() ? " <small>· this Project</small>" : "")}</li>`;
+        group = g;
+      }
+      html += rowHtml(x, i);
+    });
+    const empty = !$("#pal-q").value;
+    const hint = empty ? `<li class="pal-hint" role="presentation">Type a number: ${["200", "#13", "PR 21", "Spec 96", "Issue 200", "example/inventory-operator#89", "example/other#12", "https://github.com/example/fullharness/pull/21"]
+      .map(v => `<button type="button" data-pq="${v}">${v.startsWith("https") ? "a GitHub link" : v}</button>`).join("")}</li>` : "";
+    const none = r.num ? (r.looked ? `Nothing numbered ${r.num.n} in your Projects.` : `No open item numbered ${r.num.n}.`) : "Nothing matches.";
+    $("#pal-list").innerHTML = hint + (html || `<li class="empty-note">${none}</li>`);
+    $("#pal-foot").innerHTML = !r.num ? `<span>Words find Sessions, Features and open Tickets of ${esc(proj(cur()).name)}. A number finds anything in every Project.</span>`
+      : r.off ? `<span>${esc(r.num.repo)} isn't one of your Projects.</span>`
+      : r.looked ? `<span>Open items from the board · closed and merged ones from GitHub, cached for 5 min${r.closed ? ` · ${r.closed} closed` : ""}</span>`
+      : `<span class="spin" aria-hidden="true"></span><span>Looking up closed and merged #${r.num.n} on GitHub…</span>`;
     $("#pal-q").setAttribute("aria-activedescendant", `pal-${hl}`);
     $("#pal-" + hl)?.scrollIntoView({ block: "nearest" });
-    return list;
+    if (r.num && !r.looked && !r.off) { clearTimeout(timer); timer = setTimeout(() => { swLooked[r.num.n] = true; draw(); }, 300 + 450); }
   };
   draw();
   const q = $("#pal-q"); q.focus();
-  q.addEventListener("input", () => { hl = 0; draw(); });
+  q.addEventListener("input", () => { hl = 0; clearTimeout(timer); draw(); });
   q.addEventListener("keydown", e => {
-    const list = items();
     if (e.key === "ArrowDown") { hl = Math.min(hl + 1, list.length - 1); draw(); e.preventDefault(); }
     if (e.key === "ArrowUp") { hl = Math.max(hl - 1, 0); draw(); e.preventDefault(); }
-    if (e.key === "Enter" && list[hl]) { const x = list[hl]; closeOverlay(); x.kind === "sess" ? go(x.id) : openFeature(x.id); }
-    if (e.key === "Tab") e.preventDefault(); /* focus stays in the switcher until Escape */
+    if (e.key === "Enter" && list[hl]) swGo(list[hl]);
+    if (e.key === "Tab") e.preventDefault(); /* focus stays in the Switcher until Escape */
+  });
+  $(".palette").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    e.stopPropagation();
+    if (b.dataset.pq) { q.value = b.dataset.pq; hl = 0; draw(); q.focus(); return; }
+    if (b.dataset.sw) swGo(list[+b.dataset.sw]);
   });
 }
 function openNew(pid = ui.view === "sessions" ? sess(ui.current).project : ui.factoryProject) {
