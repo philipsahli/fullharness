@@ -130,6 +130,38 @@ func FetchPRChanges(ctx context.Context, repo string, n int) (PR, error) {
 	return p, nil
 }
 
+// Numbered is one issue or PR as GitHub's REST API answers for its number.
+type Numbered struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"` // open or closed
+	URL    string `json:"html_url"`
+	// PullRequest is set when the number is a PR; MergedAt is null for a
+	// PR closed without merging.
+	PullRequest *struct {
+		MergedAt *string `json:"merged_at"`
+	} `json:"pull_request"`
+}
+
+// FetchNumbered reads the issue or PR numbered n of the repo's GitHub
+// repository, closed ones included (#255). The issues endpoint answers for
+// PRs too, so one call covers both. ok is false when GitHub has no such
+// number (404, or 410 for a deleted issue).
+func FetchNumbered(ctx context.Context, repo string, n int) (Numbered, bool, error) {
+	out, err := gh(ctx, repo, "api", "repos/{owner}/{repo}/issues/"+strconv.Itoa(n))
+	if err != nil {
+		if msg := err.Error(); strings.Contains(msg, "HTTP 404") || strings.Contains(msg, "HTTP 410") {
+			return Numbered{}, false, nil
+		}
+		return Numbered{}, false, err
+	}
+	var v Numbered
+	if err := json.Unmarshal(out, &v); err != nil {
+		return Numbered{}, false, fmt.Errorf("reading gh's #%d: %w", n, err)
+	}
+	return v, true, nil
+}
+
 func gh(ctx context.Context, repo string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, ghTimeout)
 	defer cancel()

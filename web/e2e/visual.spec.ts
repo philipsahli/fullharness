@@ -5,7 +5,7 @@ import path from "node:path";
 import { tempRepoWith } from "./repo";
 import { reachScreenshotReview, startScreenshotReview } from "./screens";
 
-// Local pixel tests (ADR 0012): ten screens in light and dark, compared with
+// Local pixel tests (ADR 0012): twelve screens in light and dark, compared with
 // the contributor's own last baseline. They run only in the "visual" project
 // (make e2e-visual), never in make check or CI, because font rendering differs
 // between OSes. Baselines live in e2e/__visual__/, which is gitignored.
@@ -68,7 +68,41 @@ for (const scheme of ["light", "dark"] as const) {
         const dialog = page.getByRole("dialog", { name: "Switcher" });
         await dialog.getByLabel("Find a Session, Ticket or number").fill("#1");
         await expect(dialog.getByRole("option")).toHaveCount(1);
+        await expect(dialog.locator(".pal-foot")).toContainText("cached for 5 min");
         await expect(dialog).toHaveScreenshot(`switcher-${scheme}.png`, { mask: dynamic(page) });
+      } finally {
+        await fh.dispose();
+      }
+    });
+
+    // A closed Ticket after the open one with the same number, dimmed (#255).
+    test("Switcher with a closed item", async ({ page }) => {
+      const fh = await Fh.start({ ghPRs: [] });
+      try {
+        const slug = test.info().titlePath.slice(1).join("-").replace(/\W+/g, "-");
+        const repo = tempRepoWith(
+          "shop",
+          {
+            ".scratch/login/spec.md": "# Login\n",
+            ".scratch/login/issues/01-form.md": ticket("01", "Login form", "None"),
+            ".scratch/search/spec.md": "# Search\n",
+            ".scratch/search/issues/01-box.md":
+              "# 01: Search box\n\n**Blocked by:** None\n\n**Status:** done\n",
+          },
+          path.join(tmpdir(), "fh-visual", slug),
+        );
+        await open(page, fh, repo);
+        await page.getByRole("tab", { name: "Software factory" }).click();
+        await page.keyboard.press("ControlOrMeta+k");
+        const dialog = page.getByRole("dialog", { name: "Switcher" });
+        await dialog.getByLabel("Find a Session, Ticket or number").fill("#1");
+        await expect(dialog.getByRole("option")).toHaveCount(2);
+        await expect(dialog.locator(".pal-foot")).toContainText("1 closed");
+        // The closed row fades in; wait for it to settle.
+        await expect(dialog.locator("li.closed")).toHaveCSS("opacity", "1");
+        await expect(dialog).toHaveScreenshot(`switcher-closed-${scheme}.png`, {
+          mask: dynamic(page),
+        });
       } finally {
         await fh.dispose();
       }

@@ -30,6 +30,11 @@ export type GhPR = {
 // GhPRView is what `gh pr view <n> --json files,body` answers (#226).
 export type GhPRView = { files: string[]; body?: string };
 
+// GhNumbered is what `gh api repos/{owner}/{repo}/issues/<n>` answers: an
+// issue, or a PR when merged is set (true for merged, false for closed
+// unmerged). The Switcher asks it for closed items (#255).
+export type GhNumbered = { title: string; state: "open" | "closed"; url: string; merged?: boolean };
+
 // fakeGhDir is the fake gh's folder of a PATH fakeGhPath returned.
 const fakeGhDir = (PATH: string) => PATH.split(path.delimiter)[0];
 
@@ -83,7 +88,8 @@ function issuesPage(issues: GhIssue[], repo: string) {
 // "owner/repo" the issues are in; match it to the test repo's origin.
 // An `issue edit` succeeds and makes the issues read afterEdit from then
 // on, as GitHub would show them; with editFails it fails with that
-// message on stderr instead.
+// message on stderr instead. numbered answers the REST read of one number;
+// any other number is GitHub's 404.
 export function fakeGhPath(
   issues: GhIssue[],
   {
@@ -92,9 +98,23 @@ export function fakeGhPath(
     afterEdit = undefined as GhIssue[] | undefined,
     editFails = undefined as string | undefined,
     prViews = {} as Record<number, GhPRView>,
+    numbered = {} as Record<number, GhNumbered>,
   } = {},
 ): string {
   const dir = mkdtempSync(path.join(tmpdir(), "fh-e2e-gh-"));
+  for (const [n, v] of Object.entries(numbered))
+    writeFileSync(
+      path.join(dir, `issue-${n}.json`),
+      JSON.stringify({
+        number: Number(n),
+        title: v.title,
+        state: v.state,
+        html_url: v.url,
+        ...(v.merged === undefined
+          ? {}
+          : { pull_request: { merged_at: v.merged ? "2026-01-02T03:04:05Z" : null } }),
+      }),
+    );
   for (const [n, v] of Object.entries(prViews))
     writeFileSync(
       path.join(dir, `pr-${n}.json`),
@@ -119,6 +139,7 @@ export function fakeGhPath(
       `  *"pr list"*) cat "${dir}/prs.json" ;;`,
       `  "pr view "*) if [ -f "${dir}/pr-$3.json" ]; then cat "${dir}/pr-$3.json"; else echo '{"files":[],"body":""}'; fi ;;`,
       `  "pr comment "*) echo "$*" >> "${dir}/comments" ;;`,
+      `  "api repos/"*) n="\${2##*/}"; if [ -f "${dir}/issue-$n.json" ]; then cat "${dir}/issue-$n.json"; else echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi ;;`,
       `  "issue edit "*) if [ -f "${dir}/edit-fails" ]; then cat "${dir}/edit-fails" >&2; exit 1; fi`,
       `    if [ -f "${dir}/after.json" ]; then mv "${dir}/after.json" "${dir}/issues.json"; fi ;;`,
       '  *) echo "fake gh: unexpected $*" >&2; exit 2 ;;',

@@ -1659,13 +1659,17 @@ function answer(id, ok, always) {
 /* ---------- Switcher (⌘K, #195, #201) ----------
    Words find Sessions, Features and the current Project's open Tickets (#195).
    A number finds the Spec, Ticket, PR, Idea or issue with that number in every Project, the current Project first.
-   Open items come from the board fh already has. Closed and merged ones come from one GitHub lookup per Project,
-   300 ms after typing stops, cached for 5 min (simulated here). No index, no call per key press. */
+   Open items come from the board fh already has. Closed and merged ones show 300 ms after typing stops (#255):
+   those on the board (shipped Specs, closed Tickets, merged PRs, local files) come with it; a number no board has
+   costs one GitHub lookup per GitHub Project, cached for 5 min (simulated here). A failed lookup leaves the open
+   results as they are. No index, no call per key press. A closed Ticket opens its row, a shipped Spec its Feature
+   page; a closed issue or PR the board doesn't place opens on GitHub. */
 const GH_REPO = pid => (proj(pid).url || "").replace("https://github.com/", "");
 /* Items fh doesn't show on its board: they open on GitHub. */
 const SW_EXTRA = { fh: [
   { n: 200, type: "PR", t: "Glossary: Autopilot status, Screenshot review", state: "Merged" },
   { n: 61, type: "Issue", t: "Board read fails behind a proxy", state: "Closed" },
+  { n: 59, type: "PR", t: "Try a YAML parser for spec.md", state: "Closed" },
 ] };
 const SW_TYPES = { pr: "PR", spec: "Spec", ticket: "Ticket", issue: "Issue", idea: "Idea" };
 const swLooked = {}; /* number → already looked up on GitHub (the 5 min cache) */
